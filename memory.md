@@ -33,6 +33,25 @@ Each ticket has a block under "Ticket log" with a `Status`:
 Main agent writes: what was built, files, test command + result, which acceptance criteria/edge cases map to which tests, deviations, open questions.
 Reviewer writes: commands run, results, criterion-by-criterion verdict, findings, PR number, merge commit.
 
+## Builder checklist (main agent role; a builder subagent follows this too)
+
+1. `git pull` main; read this file; read the issue (`gh issue view N -R Matt-Murungi/home-school`) and the SR/PRD sections its "Spec refs" cite (product docs folder above). Confirm all "Blocked by" tickets are `merged` or `blocked-foundation-merged`; if not, stop and report.
+2. Branch `<id>-<slug>` from fresh main. Work in a git worktree under the scratchpad if another agent could touch the main checkout.
+3. **Tests first**: write tests that encode each acceptance criterion and each edge case in the issue; see them fail; then write the code until they pass. Keep tests runnable offline (no live Appwrite, no network, no real providers). Use stand-ins/fakes behind interfaces (adapter pattern) for Appwrite, MoMo, FCM, email, SMS, Maps, Sentry.
+4. Put new packages where F01 (#27) defines: `apps/parent`, `apps/teacher`, `apps/admin`, `packages/flutter_shared`, `services/core`, `appwrite/`, `docs/`. Add each package's test command to "How to run tests". Keep the diff to one ticket.
+5. Anything needing the owner's account, credentials, deployment or a product decision: build the interface, a fake implementation and tests, document the missing piece, add it to "Blocked on owner" and "Questions for the owner" (with your recommended default), and mark the ticket `blocked-foundation-merged` after merge. Never deploy, never call live services, never pick the payment gateway or email domain.
+6. Commit on the branch (message starts with the backlog ID, ends with the Co-Authored-By line), push the branch. **Do not open the PR** (the reviewer does).
+7. Update this file on main (`memory: ...` commit): ticket block with Status `ready-for-review`, what was built, files, test command and result, a table mapping each acceptance criterion and edge case to a test (or to "owner/blocked" with why), deviations, follow-ups. Enough detail for a fresh session to continue.
+8. Report briefly: what was built, test result, anything blocked.
+
+## Reviewer checklist
+
+1. `git pull` main; read this file and the ticket block; read the issue.
+2. Verify in a separate worktree: run the documented test commands from a clean checkout (record the real output); try to break the new logic with your own repro scripts; check every acceptance criterion and edge case against code and tests (a criterion without a test that proves it is a finding); check the diff for secrets, accidental live-service calls, committed `.env`, and that the diff is only this ticket.
+3. If anything is amiss: ticket Status `changes-requested` with precise findings, commit to main, stop and report.
+4. If fine: open PR (title starts with backlog ID; body: summary, evidence, caveats, `Closes #N`, the 🤖 line), review the diff, `gh pr review --comment`, `gh pr merge --squash --delete-branch`, confirm the issue closed, set Status `merged` (or `blocked-foundation-merged` for owner-blocked tickets) with PR number and commands/results, commit and push memory.md to main.
+5. Report: verdict, commands and results, findings, PR URL.
+
 ## How to run tests
 
 | Package | Command |
