@@ -41,3 +41,7 @@ Fly.io app and deployment (owner-blocked, ADR 0003); seeing `heartbeat` run on s
 ## Travel time (X01)
 
 `src/hs_core/travel/`: zone-pair cached travel minutes for matching, with a provider interface (Google Routes adapter, unverified, plus a fake), cost guard, fallbacks and the `travel-cache-refresh` job. See `docs/ops/travel-time.md`.
+
+## Ledger (`hs_core.ledger`, $01 #76)
+
+Double-entry, append-only money ledger behind a `LedgerStore` interface (Appwrite adapter with a crash-safe write protocol, in-memory fake). Python API only; design, guarantees, key conventions and the Appwrite-vs-Postgres swap boundary: `docs/ops/ledger.md`. Tests: `uv run pytest -q tests/test_ledger_*.py`.

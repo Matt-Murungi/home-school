@@ -285,9 +285,14 @@ class DocConsistency(unittest.TestCase):
     def test_append_only_notes_say_intended_opt_in_not_wired(self):
         for t in APPEND_ONLY:
             note = META[t]["note"]
-            self.assertIn("INTENDED", note, t)
             self.assertIn("opt-in", note, t)
-            self.assertIn("not wired yet", note, t)
+            if t in ("ledger_entry", "ledger_transaction"):
+                self.assertIn("used by the ledger service", note, t)
+                self.assertIn("opt-in elsewhere", note, t)
+                self.assertNotIn("not wired yet", note, t)
+            else:
+                self.assertIn("INTENDED", note, t)
+                self.assertIn("not wired yet", note, t)
             self.assertIn("appwrite/README.md", note, t)
         for name in ("money", "platform", "safeguarding"):
             self.assertNotIn("insert-only repository in the core service", BY_NAME[name]["description"])

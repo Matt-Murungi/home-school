@@ -1,7 +1,8 @@
 """Insert-only access to the append-only tables (M04 #39, SEC-6, SR 7.10, ADR 0012).
 
 Appwrite cannot revoke update/delete from the server API key, so the protection is
-two separate, partial things; nothing uses it yet (the wrapper is not wired in).
+two separate, partial things; the wrapper is used by the ledger service (hs_core.ledger)
+and is opt-in elsewhere (audit_log and safeguarding_action are not wired yet).
 
 1. `AppendOnlyRepository` is OPT-IN runtime protection: code that holds it can only
    create/get/list; update, delete and the bulk/upsert/increment variants raise.
