@@ -146,6 +146,7 @@ class Settings(BaseSettings):
         if not bands or any(b not in BANDS for b in bands):
             out.append("TRAVEL_WARM_BANDS must list time bands: " + ", ".join(BANDS))
         return out
+
     # S01 session generation (non-secret tuning). Horizon: owner preference pending (default 28
     # days).
     session_gen_horizon_days: int = 28
