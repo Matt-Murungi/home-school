@@ -90,6 +90,9 @@ Which variable exists in which environment, what kind it is and where it lives. 
 | `OTP_PHONE_REQUESTS_PER_HOUR` | config | core-service | 5 | 5 | 5 | fly_env |
 | `OTP_RESEND_COOLDOWN_S` | config | core-service | 30 | 30 | 30 | fly_env |
 | `OTP_TTL_S` | config | core-service | 300 | 300 | 300 | fly_env |
+| `ROLE_CHANGES_PER_HOUR` | config | core-service | 60 | 60 | 60 | fly_env |
+| `ROLE_RECONCILE_GRACE_S` | config | core-service | 300 | 300 | 300 | fly_env |
+| `ROLE_RECONCILE_REMOVE_UNRECORDED_STAFF` | config | core-service | false | false | false | fly_env |
 | `TRAVEL_CACHE_TTL_DAYS` | config | core-service | 7 | 7 | 7 | fly_env |
 | `TRAVEL_DAILY_ELEMENT_BUDGET` | config | core-service | 1000 | 1000 | 1000 | fly_env |
 | `TRAVEL_ELEMENT_COST_MICRO_USD` | config | core-service | 10000 | 10000 | 10000 | fly_env |

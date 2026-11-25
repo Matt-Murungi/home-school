@@ -10,6 +10,16 @@ enum OtpFailure {
   smsUnavailable,
   numberUnreachable,
   accountBlocked,
+
+  /// A03: the account (for the teacher app: the teacher profile) is suspended.
+  /// A state to explain, not a sign-in error.
+  suspended,
+
+  /// A03 (owner question 27): staff accounts sign in to the admin dashboard.
+  staffAccount,
+
+  /// A03: staff withdrew this role; signing in does not return it.
+  roleRevoked,
   serverUnavailable,
   unknown,
 }

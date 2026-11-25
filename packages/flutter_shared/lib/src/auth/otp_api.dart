@@ -97,6 +97,9 @@ class CoreOtpApi {
       'sms_unavailable' => const OtpException(OtpFailure.smsUnavailable),
       'number_unreachable' => const OtpException(OtpFailure.numberUnreachable),
       'account_blocked' => const OtpException(OtpFailure.accountBlocked),
+      'account_suspended' => const OtpException(OtpFailure.suspended),
+      'staff_account' => const OtpException(OtpFailure.staffAccount),
+      'role_revoked' => const OtpException(OtpFailure.roleRevoked),
       'service_unavailable' ||
       'auth_unavailable' => const OtpException(OtpFailure.serverUnavailable),
       _ when status == 429 => OtpException(

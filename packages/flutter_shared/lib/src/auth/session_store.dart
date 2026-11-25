@@ -48,6 +48,8 @@ class StoredSession {
     required this.expiresAt,
     this.phoneMasked,
     this.secret,
+    this.labels,
+    this.status = 'active',
   });
   final String userId;
   final String sessionId;
@@ -55,12 +57,20 @@ class StoredSession {
   final String? phoneMasked;
   final String? secret;
 
+  /// Role labels and account status as last fetched (A03): lets the app start
+  /// offline and still route to the right experience. Null = stored by an
+  /// older version (A01), which the apps treat as "the role this app signs in".
+  final List<String>? labels;
+  final String status;
+
   Map<String, Object?> toJson() => {
     'userId': userId,
     'sessionId': sessionId,
     'expiresAt': expiresAt.toUtc().toIso8601String(),
     'phoneMasked': phoneMasked,
     'secret': secret,
+    'labels': labels,
+    'status': status,
   };
 
   static StoredSession? fromJson(Object? j) {
@@ -75,6 +85,13 @@ class StoredSession {
       expiresAt: e,
       phoneMasked: j['phoneMasked'] as String?,
       secret: j['secret'] as String?,
+      labels: j['labels'] is List
+          ? [
+              for (final l in j['labels'] as List)
+                if (l is String) l,
+            ]
+          : null,
+      status: j['status'] is String ? j['status'] as String : 'active',
     );
   }
 }

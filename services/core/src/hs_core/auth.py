@@ -9,8 +9,8 @@ from typing import Any, Protocol
 from fastapi import Depends, Request
 
 from .errors import AppError
+from .roles.model import ROLES, clean_labels
 
-ROLES = ("parent", "guardian", "teacher", "opsadmin", "curator", "safeguardinglead", "superadmin")
 MAX_TOKEN_LEN = 4096  # Appwrite JWTs are well under this
 
 
@@ -26,9 +26,10 @@ class Principal:
     roles: list[str] = field(default_factory=list)
 
 
-def roles_from_labels(labels: list[Any]) -> list[str]:
-    """Exact, case-sensitive match against known labels; anything else is ignored."""
-    return sorted({lbl for lbl in labels if isinstance(lbl, str) and lbl in ROLES})
+def roles_from_labels(labels: Any) -> list[str]:
+    """Exact, case-sensitive match against known labels; anything else is ignored (A03: the one
+    definition lives in `roles.model.clean_labels`)."""
+    return sorted(clean_labels(labels))
 
 
 class TokenVerifier(Protocol):

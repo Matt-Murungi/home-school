@@ -32,6 +32,9 @@ String? otpFailureMessage(HsStrings s, OtpFlowState st) {
     OtpFailure.smsUnavailable => s.otpSmsUnavailable,
     OtpFailure.numberUnreachable => s.otpNumberUnreachable,
     OtpFailure.accountBlocked => s.otpAccountBlocked,
+    OtpFailure.suspended => s.suspendedTitle,
+    OtpFailure.staffAccount => s.otpStaffAccount,
+    OtpFailure.roleRevoked => s.otpRoleRevoked,
     OtpFailure.serverUnavailable => s.otpServerUnavailable,
     OtpFailure.unknown => s.otpUnknownError,
   };
@@ -218,9 +221,14 @@ class CodeEntryScreen extends ConsumerStatefulWidget {
     super.key,
     required this.onSignedIn,
     required this.onChangeNumber,
+    this.onSuspended,
   });
   final VoidCallback onSignedIn;
   final VoidCallback onChangeNumber;
+
+  /// A03: the account is suspended (teacher app: a suspended teacher). Shown
+  /// as its own state, not as a sign-in error.
+  final VoidCallback? onSuspended;
 
   @override
   ConsumerState<CodeEntryScreen> createState() => _CodeEntryScreenState();
@@ -277,6 +285,10 @@ class _CodeEntryScreenState extends ConsumerState<CodeEntryScreen> {
     final flow = ref.read(otpFlowProvider.notifier);
     ref.listen(otpFlowProvider, (prev, next) {
       if (prev?.session == null && next.session != null) widget.onSignedIn();
+      if (prev?.failure != OtpFailure.suspended &&
+          next.failure == OtpFailure.suspended) {
+        widget.onSuspended?.call();
+      }
       if (prev?.failure == null &&
           next.failure != null &&
           next.step == OtpStep.code &&

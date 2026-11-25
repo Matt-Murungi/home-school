@@ -607,7 +607,7 @@ void main() {
     testWidgets('teacher app (T-02) runs the same flow and lands on Today', (
       t,
     ) async {
-      final auth = FakeAuthService();
+      final auth = FakeAuthService()..signUpLabels = ['teacher'];
       await t.pumpWidget(flowApp(auth, spec: AppSpec.teacher));
       await t.pumpAndSettle();
       await enterPhone(t, '0752000111');
@@ -622,6 +622,8 @@ void main() {
       final auth = FakeAuthService();
       await toCodeScreen(t, auth);
       await typeCode(t, '123456');
+      await auth
+          .signOut(); // A03: a signed-in user is led home, so sign out first
       await t.pumpWidget(flowApp(auth));
       await t.pumpAndSettle();
       expect(find.text('Enter your phone number'), findsOneWidget);

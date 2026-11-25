@@ -1,7 +1,7 @@
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../providers/providers.dart';
+import '../auth/session_controller.dart';
 
 /// Extends the stored session when the app returns to the foreground (A01:
 /// "session persisted securely and refreshed"). Failures are ignored here:
@@ -36,7 +36,8 @@ class _SessionRefresherState extends ConsumerState<SessionRefresher>
 
   Future<void> _refresh() async {
     try {
-      await ref.read(authServiceProvider).refreshSession();
+      // Re-reads labels and status too, so a role change re-routes (A03).
+      await ref.read(sessionProvider.notifier).refresh();
     } on Object {
       // No auth service wired (tests) or a transient failure: keep going.
     }

@@ -10,18 +10,25 @@ from __future__ import annotations
 import logging
 import uuid
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-from typing import Any, Protocol
+from typing import Any
 
 from appwrite.permission import Permission
 from appwrite.role import Role
 
-from ..audit import bind_actor, client_ip_var
-from ..jobs.idempotency import row_id
+from ..audit import AuditContext, bind_actor, client_ip_var
 from ..logging_setup import request_id_var
 from ..repository import Conflict, NotFound, Repository, RepositoryUnavailable
-from .store import iso, parse
+from ..roles.directory import (
+    AuthUser,
+    DirectoryConflict,
+    DirectoryUnavailable,
+    UserDirectory,
+)
+from ..roles.model import STAFF_ROLES, clean_labels
+from ..roles.service import SIGNUP, RevokedByStaff, RoleError, RoleService, TargetNotActive
+from .store import parse
 
 log = logging.getLogger("hs_core.auth_otp.accounts")
 
@@ -46,34 +53,24 @@ class AccountConflict(AccountError):  # noqa: N818
     """Data disagree (e.g. the phone is on another profile): needs a human."""
 
 
-class DirectoryConflict(Exception):  # noqa: N818
-    """A user with this phone (or ID) already exists."""
+class AccountSuspended(AccountError):  # noqa: N818
+    """The user (or, for the teacher app, the teacher profile) is suspended: the app shows a
+    suspended state, not a sign-in error (A03)."""
 
 
-class DirectoryUnavailable(Exception):  # noqa: N818
-    ...
+class AccountStaff(AccountError):  # noqa: N818
+    """Q27 default: a user holding any staff label signs in to the admin dashboard (MFA, SEC-4),
+    never through the phone flow. No token, no label or profile side effects."""
 
 
-@dataclass
-class AuthUser:
-    id: str
-    phone: str
-    labels: list[str] = field(default_factory=list)
-    active: bool = True
-    accessed_at: datetime | None = None
+class AccountRoleRevoked(AccountError):  # noqa: N818
+    """Staff withdrew this app's role from the user; signing in does not give it back."""
 
 
 @dataclass(frozen=True)
 class IssuedToken:
     secret: str
     expire: datetime
-
-
-class UserDirectory(Protocol):
-    def find_by_phone(self, phone: str) -> AuthUser | None: ...
-    def create(self, user_id: str, phone: str) -> AuthUser: ...
-    def add_label(self, user_id: str, label: str) -> AuthUser: ...
-    def create_token(self, user_id: str, ttl_s: int) -> IssuedToken: ...
 
 
 class FakeUserDirectory:
@@ -83,6 +80,7 @@ class FakeUserDirectory:
         self.tokens: list[tuple[str, str]] = []
         self.available = True
         self.race_on_create = False
+        self.sessions_ended: list[str] = []
 
     def _up(self) -> None:
         if not self.available:
@@ -104,8 +102,10 @@ class FakeUserDirectory:
         self.users[uid] = AuthUser(uid, phone, list(labels or []), active, accessed)
         return uid
 
-    def get(self, user_id: str) -> AuthUser:
-        return self.users[user_id]
+    def get(self, user_id: str) -> AuthUser | None:
+        self._up()
+        u = self.users.get(user_id)
+        return None if u is None else AuthUser(**{**u.__dict__, "labels": list(u.labels)})
 
     def change_phone(self, user_id: str, new_phone: str) -> None:
         self.users[user_id].phone = new_phone
@@ -130,6 +130,22 @@ class FakeUserDirectory:
         if label not in u.labels:
             u.labels.append(label)
         return u
+
+    def remove_label(self, user_id: str, label: str) -> AuthUser:
+        self._up()
+        u = self.users[user_id]
+        u.labels[:] = [x for x in u.labels if x != label]
+        return u
+
+    def end_sessions(self, user_id: str) -> None:
+        self._up()
+        self.sessions_ended.append(user_id)
+
+    def labelled(self, label: str, after: str | None, limit: int) -> list[AuthUser]:
+        self._up()
+        ids = sorted(i for i, u in self.users.items() if label in u.labels)
+        ids = [i for i in ids if after is None or i > after][:limit]
+        return [self.users[i] for i in ids]
 
     def create_token(self, user_id: str, ttl_s: int) -> IssuedToken:
         self._up()
@@ -210,6 +226,43 @@ class AppwriteUserDirectory:
             u = self._wrap(self._users.update_labels, user_id=user_id, labels=[*labels, label])
         return self._user(u)
 
+    def get(self, user_id: str) -> AuthUser | None:
+        from appwrite.exception import AppwriteException
+
+        try:
+            return self._user(self._users.get(user_id=user_id))
+        except AppwriteException as e:
+            if e.code == 404:
+                return None
+            raise DirectoryUnavailable from None
+        except OSError:
+            raise DirectoryUnavailable from None
+
+    def remove_label(self, user_id: str, label: str) -> AuthUser:
+        u = self._wrap(self._users.get, user_id=user_id)
+        labels = list(_get(u, "labels") or [])
+        if label in labels:
+            u = self._wrap(
+                self._users.update_labels, user_id=user_id, labels=[x for x in labels if x != label]
+            )
+        return self._user(u)
+
+    def end_sessions(self, user_id: str) -> None:
+        """Deletes every session of the user (`users.delete_sessions`): a revoked staff user
+        loses even a live admin session. Mock-tested only (owner-blocked, docs/ops/roles.md)."""
+        self._wrap(self._users.delete_sessions, user_id=user_id)
+
+    def labelled(self, label: str, after: str | None, limit: int) -> list[AuthUser]:
+        """Users holding `label`, by ID, after the cursor. The `labels` filter on `users.list`
+        is unverified against a real project (owner step, docs/ops/roles.md)."""
+        from appwrite.query import Query
+
+        q = [Query.equal("labels", [label]), Query.order_asc("$id"), Query.limit(limit)]
+        if after:
+            q.append(Query.cursor_after(after))
+        res = self._wrap(self._users.list, queries=q, total=False)
+        return [self._user(r) for r in (_get(res, "users") or [])]
+
     def create_token(self, user_id: str, ttl_s: int) -> IssuedToken:
         t = self._wrap(self._users.create_token, user_id=user_id, expire=ttl_s)
         secret = _get(t, "secret")
@@ -235,7 +288,9 @@ class AccountService:
         clock: Callable[[], datetime],
         dormant_days: int,
         token_ttl_s: int,
+        roles: RoleService | None = None,
     ) -> None:
+        self.roles = roles or RoleService(repo, users, clock)
         self.users, self.repo, self.clock = users, repo, clock
         self.dormant_days, self.token_ttl_s = dormant_days, token_ttl_s
 
@@ -253,15 +308,23 @@ class AccountService:
                     is_new = False
                     if user is None:
                         raise AccountUnavailable from None
+            if clean_labels(user.labels) & set(STAFF_ROLES):
+                raise AccountStaff  # Q27: before anything is written
             if not user.active:
                 raise AccountBlocked
+            self._check_status(user.id, app)
             dormant = self._dormant(user, is_new)
-            grant = app not in user.labels
-            if grant:
-                user = self.users.add_label(user.id, app)
             self._ensure_profile(user, phone, app)
-            if grant:
-                self._record_grant(user.id, app)
+            try:
+                # Idempotent: a no-op when the role is already held, repairs a half-done grant.
+                # Audited as the user signing up (M06), through the role service.
+                self.roles.grant_role(SIGNUP, user.id, app, ctx=self._ctx(user.id, app))
+            except RevokedByStaff:
+                raise AccountRoleRevoked from None
+            except TargetNotActive:
+                raise AccountBlocked from None
+            except RoleError:
+                raise AccountUnavailable from None
             issued = self.users.create_token(user.id, self.token_ttl_s)
         except (DirectoryUnavailable, RepositoryUnavailable):
             raise AccountUnavailable from None
@@ -269,10 +332,36 @@ class AccountService:
             log.warning("sign-in to a dormant account", extra={"event": "otp_dormant_login"})
         return SignIn(user.id, issued, is_new, dormant)
 
+    def _check_status(self, user_id: str, app: str) -> None:
+        """Suspended accounts get a suspended state in the app, not a login error (A03)."""
+        try:
+            profile = self.repo.get("user_profile", user_id)
+        except NotFound:
+            profile = None
+        if profile is not None:
+            if profile.get("deleted_at") or profile.get("status") == "deactivated":
+                raise AccountBlocked
+            if profile.get("status") == "suspended":
+                raise AccountSuspended
+        if app == "teacher":
+            from appwrite.query import Query
+
+            rows = self.repo.list(
+                "teacher_profile", [Query.equal("user_id", [user_id]), Query.limit(5)]
+            )
+            if any(r.get("status") == "suspended" and not r.get("deleted_at") for r in rows):
+                raise AccountSuspended
+
     def _dormant(self, user: AuthUser, is_new: bool) -> bool:
         if is_new or user.accessed_at is None:
             return False
         return self.clock() - user.accessed_at > timedelta(days=self.dormant_days)
+
+    @staticmethod
+    def _ctx(user_id: str, role: str) -> AuditContext:
+        return AuditContext.for_principal(
+            user_id, [role], request_id=request_id_var.get(), ip=client_ip_var.get()
+        )
 
     def _audited(self, user_id: str, role: str):
         """M06: the writes below change audited tables; the actor is the user signing up."""
@@ -300,23 +389,3 @@ class AccountService:
                 self.repo.get("user_profile", user.id)
             except NotFound:
                 raise AccountConflict from None
-
-    def _record_grant(self, user_id: str, role: str) -> None:
-        """M01 `role_assignment` is the grant history (`active_key`: one active grant per role)."""
-        audited = self._audited(user_id, role)
-        data = {
-            "user_id": user_id,
-            "role": role,
-            "granted_at": iso(self.clock()),
-            "active_key": f"{user_id}:{role}",
-        }
-        rid = row_id("role_assignment", user_id, role, "self")
-        try:
-            audited.create("role_assignment", rid, data)
-        except Conflict:
-            # Granted before. If that grant was revoked, this is a new grant: record it.
-            if self.repo.get("role_assignment", rid).get("revoked_at"):
-                try:
-                    audited.create("role_assignment", uuid.uuid4().hex[:32], data)
-                except Conflict:
-                    pass

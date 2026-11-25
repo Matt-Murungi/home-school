@@ -234,4 +234,53 @@ class HsStringsEn extends HsStrings {
 
   @override
   String get otpClose => 'Close';
+
+  @override
+  String get startLoading => 'Loading';
+
+  @override
+  String get wrongAppTitleParent => 'This is the parent app';
+
+  @override
+  String get wrongAppTitleTeacher => 'This is the teacher app';
+
+  @override
+  String get wrongAppToParent =>
+      'Your account is a parent account. Please open the Home School parent app instead.';
+
+  @override
+  String get wrongAppToTeacher =>
+      'Your account is a teacher account. Please open the Home School teacher app instead.';
+
+  @override
+  String get wrongAppToAdmin =>
+      'Your account is a staff account. Staff sign in to the admin dashboard on the web, not in this app.';
+
+  @override
+  String get noAccessTitle => 'No access with this account';
+
+  @override
+  String get noAccessBody =>
+      'This account can\'t use this app. Please contact support if you think this is a mistake.';
+
+  @override
+  String get signOut => 'Sign out';
+
+  @override
+  String get suspendedTitle => 'Your account is suspended';
+
+  @override
+  String get suspendedBody =>
+      'You can\'t use the app while your account is suspended. Please contact support to find out more.';
+
+  @override
+  String get suspendedBack => 'Back';
+
+  @override
+  String get otpStaffAccount =>
+      'Staff accounts sign in to the admin dashboard on the web, not in this app.';
+
+  @override
+  String get otpRoleRevoked =>
+      'This account can\'t use this app. Please contact support.';
 }

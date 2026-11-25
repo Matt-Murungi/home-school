@@ -17,11 +17,14 @@ void main() {
   testWidgets('returning to the foreground refreshes the session', (t) async {
     final auth = FakeAuthService();
     await t.pumpWidget(host(auth));
-    expect(auth.refreshCalls, 0);
+    await t.pump();
+    final atStart =
+        auth.refreshCalls; // the app reads the stored session once (A03)
+    expect(atStart, 1);
     t.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
     await t.pump();
     final afterFirstResume = auth.refreshCalls;
-    expect(afterFirstResume, greaterThan(0));
+    expect(afterFirstResume, greaterThan(atStart));
     for (final s in [
       AppLifecycleState.inactive,
       AppLifecycleState.hidden,

@@ -12,7 +12,7 @@ from .policy import OtpPolicy
 from .service import OtpError, OtpService
 from .sms import AfricasTalkingSender, SmsSender, UnconfiguredSmsSender
 
-__all__ = ["OtpError", "OtpService", "build_otp_service"]
+__all__ = ["OtpError", "OtpService", "build_otp_service", "build_user_directory"]
 
 log = logging.getLogger("hs_core.auth_otp")
 
@@ -47,6 +47,7 @@ def build_otp_service(
     repo: Any,
     sms: SmsSender | None = None,
     users: UserDirectory | None = None,
+    roles: Any | None = None,
 ) -> OtpService:
     pepper = settings.otp_pepper.get_secret_value()
     if not pepper:  # only reachable in dev (deployed settings require it): per-process pepper
@@ -57,4 +58,5 @@ def build_otp_service(
         users=users or build_user_directory(settings),
         pepper=pepper,
         policy=OtpPolicy.from_settings(settings),
+        roles=roles,
     )

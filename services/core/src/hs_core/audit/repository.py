@@ -13,6 +13,7 @@ elsewhere. That is protection by wiring and convention, not enforcement.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import Any
 
 from ..append_only import APPEND_ONLY_TABLES, AppendOnlyViolation
@@ -58,6 +59,17 @@ class AuditedRepository:
         return self._inner.list(table, queries)
 
     # -------------------------------------------------------------- audited writes
+    @staticmethod
+    def _applied(before_apply: Callable[[], Any] | None, write: Callable[..., Any], *args: Any):
+        """`before_apply` runs INSIDE the audited change, after the intent row and before the
+        write: for a change whose business effect has a part outside this repository that must
+        happen first (A03: a staff role's Appwrite label is removed before its history row is
+        closed). It is one logical change, so there is exactly one audit row. An exception that
+        proves nothing was written must be a `NotWritten`; anything else is left to recovery."""
+        if before_apply is not None:
+            before_apply()
+        return write(*args)
+
     def _audited(self, table: str, op: str, ctx: AuditContext | None) -> AuditContext | None:
         """None = not an audited table (pass through); otherwise the context to use."""
         if table == TABLE:
@@ -81,6 +93,7 @@ class AuditedRepository:
         ctx: AuditContext | None = None,
         action: str | None = None,
         reason: str | None = None,
+        before_apply: Callable[[], Any] | None = None,
     ) -> dict[str, Any]:
         use = self._audited(table, "create", ctx)
         if use is None:
@@ -95,7 +108,10 @@ class AuditedRepository:
         return self._svc.run_change(
             use, action=action or f"{table}.create", entity=table, entity_id=row_id, op="create",
             before=None, after=after, reason=reason,
-            apply=lambda: self._inner.create(table, row_id, data, permissions), on_replay=replay,
+            apply=lambda: self._applied(
+                before_apply, self._inner.create, table, row_id, data, permissions
+            ),
+            on_replay=replay,
         )  # fmt: skip
 
     def update(
@@ -108,6 +124,7 @@ class AuditedRepository:
         ctx: AuditContext | None = None,
         action: str | None = None,
         reason: str | None = None,
+        before_apply: Callable[[], Any] | None = None,
     ) -> dict[str, Any]:
         use = self._audited(table, "update", ctx)
         if use is None:
@@ -128,7 +145,9 @@ class AuditedRepository:
         return self._svc.run_change(
             use, action=action or f"{table}.update", entity=table, entity_id=row_id, op="update",
             before=before, after=after, reason=reason,
-            apply=lambda: self._inner.update(table, row_id, data, permissions),
+            apply=lambda: self._applied(
+                before_apply, self._inner.update, table, row_id, data, permissions
+            ),
         )  # fmt: skip
 
     def delete(
