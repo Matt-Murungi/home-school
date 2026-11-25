@@ -1,0 +1,724 @@
+{
+  "domain": "catalogue",
+  "description": "M03 (#38): curriculum catalogue (SR 5.3, 7.8): curricula, versioned levels, subjects, strands and topics, level equivalence, struggle tags. Published versions are immutable (core-service rule; no client write permission). Unique values use derived *_key columns (soft-delete convention in appwrite/README.md).",
+  "tables": [
+    {
+      "$id": "curriculum",
+      "name": "curriculum",
+      "enabled": true,
+      "rowSecurity": true,
+      "$permissions": [],
+      "columns": [
+        {
+          "key": "code",
+          "type": "varchar",
+          "size": 16,
+          "required": true
+        },
+        {
+          "key": "name",
+          "type": "varchar",
+          "size": 80,
+          "required": true
+        },
+        {
+          "key": "code_key",
+          "type": "varchar",
+          "size": 16,
+          "required": false
+        },
+        {
+          "key": "deleted_at",
+          "type": "datetime",
+          "required": false
+        }
+      ],
+      "indexes": [
+        {
+          "key": "unique_curriculum_code",
+          "type": "unique",
+          "columns": [
+            "code_key"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        }
+      ]
+    },
+    {
+      "$id": "catalogue_version",
+      "name": "catalogue_version",
+      "enabled": true,
+      "rowSecurity": true,
+      "$permissions": [],
+      "columns": [
+        {
+          "key": "curriculum_id",
+          "type": "varchar",
+          "size": 36,
+          "required": true
+        },
+        {
+          "key": "version",
+          "type": "integer",
+          "required": true
+        },
+        {
+          "key": "status",
+          "type": "string",
+          "format": "enum",
+          "elements": [
+            "draft",
+            "published",
+            "retired"
+          ],
+          "required": true
+        },
+        {
+          "key": "published_at",
+          "type": "datetime",
+          "required": false
+        },
+        {
+          "key": "retired_at",
+          "type": "datetime",
+          "required": false
+        },
+        {
+          "key": "created_by_id",
+          "type": "varchar",
+          "size": 36,
+          "required": false
+        },
+        {
+          "key": "version_key",
+          "type": "varchar",
+          "size": 60,
+          "required": false
+        },
+        {
+          "key": "published_key",
+          "type": "varchar",
+          "size": 36,
+          "required": false
+        },
+        {
+          "key": "deleted_at",
+          "type": "datetime",
+          "required": false
+        }
+      ],
+      "indexes": [
+        {
+          "key": "by_curriculum_status",
+          "type": "key",
+          "columns": [
+            "curriculum_id",
+            "status"
+          ],
+          "orders": [
+            "ASC",
+            "ASC"
+          ]
+        },
+        {
+          "key": "unique_curriculum_version",
+          "type": "unique",
+          "columns": [
+            "version_key"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        },
+        {
+          "key": "unique_published_per_curriculum",
+          "type": "unique",
+          "columns": [
+            "published_key"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_creator",
+          "type": "key",
+          "columns": [
+            "created_by_id"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        }
+      ]
+    },
+    {
+      "$id": "level",
+      "name": "level",
+      "enabled": true,
+      "rowSecurity": true,
+      "$permissions": [],
+      "columns": [
+        {
+          "key": "catalogue_version_id",
+          "type": "varchar",
+          "size": 36,
+          "required": true
+        },
+        {
+          "key": "code",
+          "type": "varchar",
+          "size": 32,
+          "required": true
+        },
+        {
+          "key": "name",
+          "type": "varchar",
+          "size": 80,
+          "required": true
+        },
+        {
+          "key": "sort_order",
+          "type": "integer",
+          "required": true
+        },
+        {
+          "key": "code_key",
+          "type": "varchar",
+          "size": 80,
+          "required": false
+        },
+        {
+          "key": "deleted_at",
+          "type": "datetime",
+          "required": false
+        }
+      ],
+      "indexes": [
+        {
+          "key": "by_version_order",
+          "type": "key",
+          "columns": [
+            "catalogue_version_id",
+            "sort_order"
+          ],
+          "orders": [
+            "ASC",
+            "ASC"
+          ]
+        },
+        {
+          "key": "unique_version_level_code",
+          "type": "unique",
+          "columns": [
+            "code_key"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        }
+      ]
+    },
+    {
+      "$id": "level_equivalence",
+      "name": "level_equivalence",
+      "enabled": true,
+      "rowSecurity": true,
+      "$permissions": [],
+      "columns": [
+        {
+          "key": "level_id",
+          "type": "varchar",
+          "size": 36,
+          "required": true
+        },
+        {
+          "key": "equivalent_level_id",
+          "type": "varchar",
+          "size": 36,
+          "required": true
+        },
+        {
+          "key": "pair_key",
+          "type": "varchar",
+          "size": 80,
+          "required": false
+        },
+        {
+          "key": "deleted_at",
+          "type": "datetime",
+          "required": false
+        }
+      ],
+      "indexes": [
+        {
+          "key": "by_level",
+          "type": "key",
+          "columns": [
+            "level_id"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_equivalent",
+          "type": "key",
+          "columns": [
+            "equivalent_level_id"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        },
+        {
+          "key": "unique_level_pair",
+          "type": "unique",
+          "columns": [
+            "pair_key"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        }
+      ]
+    },
+    {
+      "$id": "subject",
+      "name": "subject",
+      "enabled": true,
+      "rowSecurity": true,
+      "$permissions": [],
+      "columns": [
+        {
+          "key": "catalogue_version_id",
+          "type": "varchar",
+          "size": 36,
+          "required": true
+        },
+        {
+          "key": "code",
+          "type": "varchar",
+          "size": 32,
+          "required": true
+        },
+        {
+          "key": "name",
+          "type": "varchar",
+          "size": 80,
+          "required": true
+        },
+        {
+          "key": "code_key",
+          "type": "varchar",
+          "size": 80,
+          "required": false
+        },
+        {
+          "key": "deleted_at",
+          "type": "datetime",
+          "required": false
+        }
+      ],
+      "indexes": [
+        {
+          "key": "by_version",
+          "type": "key",
+          "columns": [
+            "catalogue_version_id"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        },
+        {
+          "key": "unique_version_subject_code",
+          "type": "unique",
+          "columns": [
+            "code_key"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        }
+      ]
+    },
+    {
+      "$id": "strand",
+      "name": "strand",
+      "enabled": true,
+      "rowSecurity": true,
+      "$permissions": [],
+      "columns": [
+        {
+          "key": "catalogue_version_id",
+          "type": "varchar",
+          "size": 36,
+          "required": true
+        },
+        {
+          "key": "subject_id",
+          "type": "varchar",
+          "size": 36,
+          "required": true
+        },
+        {
+          "key": "level_id",
+          "type": "varchar",
+          "size": 36,
+          "required": true
+        },
+        {
+          "key": "name",
+          "type": "varchar",
+          "size": 120,
+          "required": true
+        },
+        {
+          "key": "sort_order",
+          "type": "integer",
+          "required": true
+        },
+        {
+          "key": "deleted_at",
+          "type": "datetime",
+          "required": false
+        }
+      ],
+      "indexes": [
+        {
+          "key": "by_version_subject_level",
+          "type": "key",
+          "columns": [
+            "catalogue_version_id",
+            "subject_id",
+            "level_id"
+          ],
+          "orders": [
+            "ASC",
+            "ASC",
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_subject",
+          "type": "key",
+          "columns": [
+            "subject_id"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_level",
+          "type": "key",
+          "columns": [
+            "level_id"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        }
+      ]
+    },
+    {
+      "$id": "topic",
+      "name": "topic",
+      "enabled": true,
+      "rowSecurity": true,
+      "$permissions": [],
+      "columns": [
+        {
+          "key": "catalogue_version_id",
+          "type": "varchar",
+          "size": 36,
+          "required": true
+        },
+        {
+          "key": "subject_id",
+          "type": "varchar",
+          "size": 36,
+          "required": true
+        },
+        {
+          "key": "level_id",
+          "type": "varchar",
+          "size": 36,
+          "required": true
+        },
+        {
+          "key": "strand_id",
+          "type": "varchar",
+          "size": 36,
+          "required": false
+        },
+        {
+          "key": "parent_topic_id",
+          "type": "varchar",
+          "size": 36,
+          "required": false
+        },
+        {
+          "key": "code",
+          "type": "varchar",
+          "size": 40,
+          "required": true
+        },
+        {
+          "key": "title",
+          "type": "varchar",
+          "size": 200,
+          "required": true
+        },
+        {
+          "key": "description",
+          "type": "text",
+          "required": false
+        },
+        {
+          "key": "sort_order",
+          "type": "integer",
+          "required": true
+        },
+        {
+          "key": "code_key",
+          "type": "varchar",
+          "size": 160,
+          "required": false
+        },
+        {
+          "key": "deleted_at",
+          "type": "datetime",
+          "required": false
+        }
+      ],
+      "indexes": [
+        {
+          "key": "by_version_subject_level_order",
+          "type": "key",
+          "columns": [
+            "catalogue_version_id",
+            "subject_id",
+            "level_id",
+            "sort_order"
+          ],
+          "orders": [
+            "ASC",
+            "ASC",
+            "ASC",
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_subject",
+          "type": "key",
+          "columns": [
+            "subject_id"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_level",
+          "type": "key",
+          "columns": [
+            "level_id"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_strand",
+          "type": "key",
+          "columns": [
+            "strand_id"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_parent",
+          "type": "key",
+          "columns": [
+            "parent_topic_id"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        },
+        {
+          "key": "unique_version_topic_code",
+          "type": "unique",
+          "columns": [
+            "code_key"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        }
+      ]
+    },
+    {
+      "$id": "struggle_tag",
+      "name": "struggle_tag",
+      "enabled": true,
+      "rowSecurity": true,
+      "$permissions": [],
+      "columns": [
+        {
+          "key": "subject_id",
+          "type": "varchar",
+          "size": 36,
+          "required": false
+        },
+        {
+          "key": "label",
+          "type": "varchar",
+          "size": 120,
+          "required": true
+        },
+        {
+          "key": "active",
+          "type": "boolean",
+          "required": false,
+          "default": true
+        },
+        {
+          "key": "label_key",
+          "type": "varchar",
+          "size": 160,
+          "required": false
+        },
+        {
+          "key": "deleted_at",
+          "type": "datetime",
+          "required": false
+        }
+      ],
+      "indexes": [
+        {
+          "key": "by_subject",
+          "type": "key",
+          "columns": [
+            "subject_id"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        },
+        {
+          "key": "unique_subject_label",
+          "type": "unique",
+          "columns": [
+            "label_key"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        }
+      ]
+    }
+  ],
+  "meta": {
+    "curriculum": {
+      "deletion": "soft",
+      "note": "code (UG, CAM, US) and name. Reference data maintained by curators through the core service (curators have no direct write permission). code_key = lower-case code, nulled on soft delete."
+    },
+    "catalogue_version": {
+      "deletion": "soft",
+      "note": "status draft -> published -> retired (CUR-2). A PUBLISHED or RETIRED version and everything under it (levels, subjects, strands, topics) is immutable: curators have no write permission on any table, and the core service rejects edits through catalogue_rules.assert_editable (only a draft is editable; publishing is the only way out of draft). New wording = a new draft version copied from the old one. version is an integer >= 1 per curriculum; version_key '<curriculum_id>:<version>' makes it unique. published_key = curriculum_id while status is published: at most one published version per curriculum; publishing a new one retires the old one (children stay on the version they were linked to, so retired versions keep resolving). published_at/retired_at UTC."
+    },
+    "level": {
+      "deletion": "soft",
+      "note": "Per catalogue version (P4, Stage 3, Grade 3). sort_order is the display order. code_key '<version>:<code>'."
+    },
+    "level_equivalence": {
+      "deletion": "soft",
+      "note": "Matching only (CUR-4): pairs of levels across curricula. pair_key is the two ids sorted and joined with ':' (catalogue_rules.level_pair_key), so A~B and B~A are one row. Equivalence is symmetric; the core service reads both columns."
+    },
+    "subject": {
+      "deletion": "soft",
+      "note": "Per catalogue version (Maths, English, Science). code_key '<version>:<code>'."
+    },
+    "strand": {
+      "deletion": "soft",
+      "note": "Optional grouping of topics within a subject and level of one version. Not in SR 5.3; the live project has it and topic.strand_id points here (owner question: keep)."
+    },
+    "topic": {
+      "deletion": "soft",
+      "note": "Platform's own wording (CUR-6). Belongs to a catalogue version (catalogue_version_id) and, through subject/level, to the same version (core service rule: subject, level, strand and parent_topic must be in the same version; catalogue_rules.check_topic_refs). parent_topic_id nests topics; sort_order orders siblings. code_key '<version>:<subject>:<level>:<code>'. A topic is never edited once its version is published: a topic retired in a new version is simply absent from the new version, the old row stays, and logs that reference it keep resolving (SR 5.5)."
+    },
+    "struggle_tag": {
+      "deletion": "soft",
+      "note": "Configurable list (CUR-5), optionally scoped to a subject; not versioned (SR 5.3). A tag is retired with active=false, not deleted, because logs reference it. label_key '<subject_id or all>:<lower-case label>'."
+    }
+  },
+  "relations": [
+    {
+      "from": "catalogue_version.curriculum_id",
+      "to": "curriculum"
+    },
+    {
+      "from": "catalogue_version.created_by_id",
+      "to": "user_profile"
+    },
+    {
+      "from": "level.catalogue_version_id",
+      "to": "catalogue_version"
+    },
+    {
+      "from": "level_equivalence.level_id",
+      "to": "level"
+    },
+    {
+      "from": "level_equivalence.equivalent_level_id",
+      "to": "level"
+    },
+    {
+      "from": "subject.catalogue_version_id",
+      "to": "catalogue_version"
+    },
+    {
+      "from": "strand.catalogue_version_id",
+      "to": "catalogue_version"
+    },
+    {
+      "from": "strand.subject_id",
+      "to": "subject"
+    },
+    {
+      "from": "strand.level_id",
+      "to": "level"
+    },
+    {
+      "from": "topic.catalogue_version_id",
+      "to": "catalogue_version"
+    },
+    {
+      "from": "topic.subject_id",
+      "to": "subject"
+    },
+    {
+      "from": "topic.level_id",
+      "to": "level"
+    },
+    {
+      "from": "topic.strand_id",
+      "to": "strand"
+    },
+    {
+      "from": "topic.parent_topic_id",
+      "to": "topic"
+    },
+    {
+      "from": "struggle_tag.subject_id",
+      "to": "subject"
+    }
+  ]
+}

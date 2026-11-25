@@ -1,0 +1,697 @@
+{
+  "domain": "records",
+  "description": "M03 (#38): session logs, topic progress, school uploads and handover summaries (SR 5.3, 7.6). Child data: no table-level read for anyone; per-row grants set by the core service. Logs reference topics of the child's catalogue version, so history survives catalogue changes.",
+  "tables": [
+    {
+      "$id": "session_log",
+      "name": "session_log",
+      "enabled": true,
+      "rowSecurity": true,
+      "$permissions": [],
+      "columns": [
+        {
+          "key": "session_id",
+          "type": "varchar",
+          "size": 36,
+          "required": true
+        },
+        {
+          "key": "child_id",
+          "type": "varchar",
+          "size": 36,
+          "required": true
+        },
+        {
+          "key": "teacher_id",
+          "type": "varchar",
+          "size": 36,
+          "required": true
+        },
+        {
+          "key": "submitted_at",
+          "type": "datetime",
+          "required": true
+        },
+        {
+          "key": "note",
+          "type": "text",
+          "required": false
+        },
+        {
+          "key": "homework",
+          "type": "text",
+          "required": false
+        },
+        {
+          "key": "edited_at",
+          "type": "datetime",
+          "required": false
+        },
+        {
+          "key": "session_key",
+          "type": "varchar",
+          "size": 36,
+          "required": false
+        },
+        {
+          "key": "deleted_at",
+          "type": "datetime",
+          "required": false
+        }
+      ],
+      "indexes": [
+        {
+          "key": "by_session",
+          "type": "key",
+          "columns": [
+            "session_id"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_child_submitted",
+          "type": "key",
+          "columns": [
+            "child_id",
+            "submitted_at"
+          ],
+          "orders": [
+            "ASC",
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_teacher_submitted",
+          "type": "key",
+          "columns": [
+            "teacher_id",
+            "submitted_at"
+          ],
+          "orders": [
+            "ASC",
+            "ASC"
+          ]
+        },
+        {
+          "key": "unique_log_per_session",
+          "type": "unique",
+          "columns": [
+            "session_key"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        }
+      ]
+    },
+    {
+      "$id": "session_log_topic",
+      "name": "session_log_topic",
+      "enabled": true,
+      "rowSecurity": true,
+      "$permissions": [],
+      "columns": [
+        {
+          "key": "session_log_id",
+          "type": "varchar",
+          "size": 36,
+          "required": true
+        },
+        {
+          "key": "topic_id",
+          "type": "varchar",
+          "size": 36,
+          "required": true
+        },
+        {
+          "key": "mastery",
+          "type": "string",
+          "format": "enum",
+          "elements": [
+            "not_yet",
+            "developing",
+            "secure"
+          ],
+          "required": true
+        },
+        {
+          "key": "log_topic_key",
+          "type": "varchar",
+          "size": 80,
+          "required": false
+        },
+        {
+          "key": "deleted_at",
+          "type": "datetime",
+          "required": false
+        }
+      ],
+      "indexes": [
+        {
+          "key": "by_log",
+          "type": "key",
+          "columns": [
+            "session_log_id"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_topic",
+          "type": "key",
+          "columns": [
+            "topic_id"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        },
+        {
+          "key": "unique_log_topic",
+          "type": "unique",
+          "columns": [
+            "log_topic_key"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        }
+      ]
+    },
+    {
+      "$id": "session_log_struggle",
+      "name": "session_log_struggle",
+      "enabled": true,
+      "rowSecurity": true,
+      "$permissions": [],
+      "columns": [
+        {
+          "key": "session_log_id",
+          "type": "varchar",
+          "size": 36,
+          "required": true
+        },
+        {
+          "key": "struggle_tag_id",
+          "type": "varchar",
+          "size": 36,
+          "required": true
+        },
+        {
+          "key": "topic_id",
+          "type": "varchar",
+          "size": 36,
+          "required": false
+        },
+        {
+          "key": "log_struggle_key",
+          "type": "varchar",
+          "size": 120,
+          "required": false
+        },
+        {
+          "key": "deleted_at",
+          "type": "datetime",
+          "required": false
+        }
+      ],
+      "indexes": [
+        {
+          "key": "by_log",
+          "type": "key",
+          "columns": [
+            "session_log_id"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_tag",
+          "type": "key",
+          "columns": [
+            "struggle_tag_id"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_topic",
+          "type": "key",
+          "columns": [
+            "topic_id"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        },
+        {
+          "key": "unique_log_struggle",
+          "type": "unique",
+          "columns": [
+            "log_struggle_key"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        }
+      ]
+    },
+    {
+      "$id": "topic_progress",
+      "name": "topic_progress",
+      "enabled": true,
+      "rowSecurity": true,
+      "$permissions": [],
+      "columns": [
+        {
+          "key": "child_id",
+          "type": "varchar",
+          "size": 36,
+          "required": true
+        },
+        {
+          "key": "topic_id",
+          "type": "varchar",
+          "size": 36,
+          "required": true
+        },
+        {
+          "key": "current_mastery",
+          "type": "string",
+          "format": "enum",
+          "elements": [
+            "not_yet",
+            "developing",
+            "secure"
+          ],
+          "required": true
+        },
+        {
+          "key": "last_session_id",
+          "type": "varchar",
+          "size": 36,
+          "required": false
+        },
+        {
+          "key": "updated_at",
+          "type": "datetime",
+          "required": true
+        }
+      ],
+      "indexes": [
+        {
+          "key": "unique_child_topic",
+          "type": "unique",
+          "columns": [
+            "child_id",
+            "topic_id"
+          ],
+          "orders": [
+            "ASC",
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_topic",
+          "type": "key",
+          "columns": [
+            "topic_id"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_last_session",
+          "type": "key",
+          "columns": [
+            "last_session_id"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        }
+      ]
+    },
+    {
+      "$id": "school_upload",
+      "name": "school_upload",
+      "enabled": true,
+      "rowSecurity": true,
+      "$permissions": [],
+      "columns": [
+        {
+          "key": "child_id",
+          "type": "varchar",
+          "size": 36,
+          "required": true
+        },
+        {
+          "key": "type",
+          "type": "string",
+          "format": "enum",
+          "elements": [
+            "report",
+            "current_topics"
+          ],
+          "required": true
+        },
+        {
+          "key": "file_id",
+          "type": "varchar",
+          "size": 36,
+          "required": true
+        },
+        {
+          "key": "uploaded_by_id",
+          "type": "varchar",
+          "size": 36,
+          "required": true
+        },
+        {
+          "key": "uploaded_at",
+          "type": "datetime",
+          "required": true
+        },
+        {
+          "key": "deleted_at",
+          "type": "datetime",
+          "required": false
+        }
+      ],
+      "indexes": [
+        {
+          "key": "by_child",
+          "type": "key",
+          "columns": [
+            "child_id",
+            "uploaded_at"
+          ],
+          "orders": [
+            "ASC",
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_uploader",
+          "type": "key",
+          "columns": [
+            "uploaded_by_id"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        }
+      ]
+    },
+    {
+      "$id": "handover_summary",
+      "name": "handover_summary",
+      "enabled": true,
+      "rowSecurity": true,
+      "$permissions": [],
+      "columns": [
+        {
+          "key": "child_id",
+          "type": "varchar",
+          "size": 36,
+          "required": true
+        },
+        {
+          "key": "teacher_id",
+          "type": "varchar",
+          "size": 36,
+          "required": true
+        },
+        {
+          "key": "assignment_id",
+          "type": "varchar",
+          "size": 36,
+          "required": false
+        },
+        {
+          "key": "session_id",
+          "type": "varchar",
+          "size": 36,
+          "required": false
+        },
+        {
+          "key": "generation",
+          "type": "integer",
+          "required": true
+        },
+        {
+          "key": "source_key",
+          "type": "varchar",
+          "size": 80,
+          "required": true
+        },
+        {
+          "key": "snapshot_at",
+          "type": "datetime",
+          "required": true
+        },
+        {
+          "key": "content",
+          "type": "text",
+          "required": true
+        }
+      ],
+      "indexes": [
+        {
+          "key": "by_child",
+          "type": "key",
+          "columns": [
+            "child_id",
+            "snapshot_at"
+          ],
+          "orders": [
+            "ASC",
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_teacher",
+          "type": "key",
+          "columns": [
+            "teacher_id"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_assignment_generation",
+          "type": "key",
+          "columns": [
+            "assignment_id",
+            "generation"
+          ],
+          "orders": [
+            "ASC",
+            "DESC"
+          ]
+        },
+        {
+          "key": "by_session_generation",
+          "type": "key",
+          "columns": [
+            "session_id",
+            "generation"
+          ],
+          "orders": [
+            "ASC",
+            "DESC"
+          ]
+        },
+        {
+          "key": "unique_source",
+          "type": "unique",
+          "columns": [
+            "source_key"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        }
+      ]
+    },
+    {
+      "$id": "handover_rating",
+      "name": "handover_rating",
+      "enabled": true,
+      "rowSecurity": true,
+      "$permissions": [],
+      "columns": [
+        {
+          "key": "handover_summary_id",
+          "type": "varchar",
+          "size": 36,
+          "required": true
+        },
+        {
+          "key": "teacher_id",
+          "type": "varchar",
+          "size": 36,
+          "required": true
+        },
+        {
+          "key": "rating",
+          "type": "string",
+          "format": "enum",
+          "elements": [
+            "yes",
+            "partly",
+            "no"
+          ],
+          "required": true
+        },
+        {
+          "key": "created_at",
+          "type": "datetime",
+          "required": true
+        }
+      ],
+      "indexes": [
+        {
+          "key": "by_teacher",
+          "type": "key",
+          "columns": [
+            "teacher_id"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        },
+        {
+          "key": "unique_summary_teacher",
+          "type": "unique",
+          "columns": [
+            "handover_summary_id",
+            "teacher_id"
+          ],
+          "orders": [
+            "ASC",
+            "ASC"
+          ]
+        }
+      ]
+    }
+  ],
+  "meta": {
+    "session_log": {
+      "deletion": "soft",
+      "note": "Child data (sensitive): what was taught. child_id is denormalised from the session so a child's evidence (progress rebuild) is one indexed query. One per session: unique index on session_key = session_id (nulled on soft delete); a resubmission after an offline retry finds the existing log by session and updates it (idempotent submit, SR 7.6), edited_at marks the edit. note and homework are free text from the teacher. Written only by the core service on behalf of the session's teacher; read grants per row (parent of the child, the teacher, admins), never at table level."
+    },
+    "session_log_topic": {
+      "deletion": "soft",
+      "note": "Topics covered with mastery (not_yet, developing, secure). topic_id is a topic of the CHILD's catalogue version (SR 5.5; catalogue_rules.assert_topic_in_child_version), so later catalogue versions never rewrite history: a topic retired in a new version stays resolvable through its old row. log_topic_key '<log>:<topic>': a topic once per log."
+    },
+    "session_log_struggle": {
+      "deletion": "soft",
+      "note": "Struggle tags raised in a log, optionally tied to a topic. log_struggle_key '<log>:<tag>:<topic or ->'."
+    },
+    "topic_progress": {
+      "deletion": "hard",
+      "note": "Derived (SR 5.3), rebuildable from logs and assessments: current mastery per child and topic, updated in the same core-service step as a log submit (no Appwrite transaction is relied on; a rebuild job repairs a half-applied update). Raw unique (child_id, topic_id): the only soft-delete-free table of the domain, because a row is cheap to rebuild and nothing references it; the retention job removes a child's rows."
+    },
+    "school_upload": {
+      "deletion": "soft",
+      "note": "Child data (sensitive): school report or current topics, file in bucket school-reports (file_id is an Appwrite Storage id, not a row relation). Per-row read grants only; bucket has fileSecurity and no client permissions.",
+      "non_fk": {
+        "file_id": "Appwrite Storage file id in bucket school-reports"
+      }
+    },
+    "handover_summary": {
+      "deletion": "immutable",
+      "note": "Snapshot generated when an assignment or substitute offer is accepted (SR 7.6) and REGENERATED when older than the latest log (L04 #106): each generation is a new immutable row, none is ever edited. generation (>= 1) per assignment or session; source_key 'assignment:<id>:gen:<n>' or 'session:<id>:gen:<n>' is unique, so the first generation is idempotent and a duplicate of the same generation is rejected (409); the latest is the highest generation (indexes (assignment_id, generation DESC) and (session_id, generation DESC)); older generations stay readable. snapshot_at (SR: generated_at, renamed because the validator reserves names containing 'rate' for money) UTC; content is structured JSON text (child summary, last 5 sessions per subject, open struggles, homework, latest assessments, school documents). Child data: per-row read for the receiving teacher and admins."
+    },
+    "handover_rating": {
+      "deletion": "immutable",
+      "note": "A teacher's (teacher_id = the rating teacher; SR calls it rated_by_teacher_id, renamed because the validator reserves names containing 'rate' for money) rating of a handover, insert-only, unique (summary, teacher). rating is yes/partly/no as L06 #108 asks; SR 5.3 says a boolean `useful`, replaced now because the table is immutable and a later change would need a new column (deviation: yes = useful, no = not useful, partly in between). Attribution to the teachers who wrote the logs is computed from the logs when metrics are built, not stored per rating. The read receipt of L05 #107 is NOT here (L05 adds its own table)."
+    }
+  },
+  "relations": [
+    {
+      "from": "session_log.session_id",
+      "to": "session"
+    },
+    {
+      "from": "session_log.teacher_id",
+      "to": "teacher_profile"
+    },
+    {
+      "from": "session_log_topic.session_log_id",
+      "to": "session_log"
+    },
+    {
+      "from": "session_log_topic.topic_id",
+      "to": "topic"
+    },
+    {
+      "from": "session_log_struggle.session_log_id",
+      "to": "session_log"
+    },
+    {
+      "from": "session_log_struggle.struggle_tag_id",
+      "to": "struggle_tag"
+    },
+    {
+      "from": "session_log_struggle.topic_id",
+      "to": "topic"
+    },
+    {
+      "from": "topic_progress.child_id",
+      "to": "child"
+    },
+    {
+      "from": "topic_progress.topic_id",
+      "to": "topic"
+    },
+    {
+      "from": "topic_progress.last_session_id",
+      "to": "session"
+    },
+    {
+      "from": "school_upload.child_id",
+      "to": "child"
+    },
+    {
+      "from": "school_upload.uploaded_by_id",
+      "to": "user_profile"
+    },
+    {
+      "from": "handover_summary.child_id",
+      "to": "child"
+    },
+    {
+      "from": "handover_summary.teacher_id",
+      "to": "teacher_profile"
+    },
+    {
+      "from": "handover_summary.assignment_id",
+      "to": "assignment"
+    },
+    {
+      "from": "handover_summary.session_id",
+      "to": "session"
+    },
+    {
+      "from": "handover_rating.handover_summary_id",
+      "to": "handover_summary"
+    },
+    {
+      "from": "handover_rating.teacher_id",
+      "to": "teacher_profile"
+    },
+    {
+      "from": "session_log.child_id",
+      "to": "child"
+    }
+  ]
+}
