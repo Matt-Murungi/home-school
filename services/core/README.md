@@ -18,7 +18,7 @@ Endpoints: `GET /health` (also `/healthz`, liveness: version + git SHA), `GET /r
 
 `HS_ENV` = `dev` (default) | `staging` | `production`. In staging and production the service refuses to start unless `APPWRITE_ENDPOINT` (https, not localhost), `APPWRITE_PROJECT_ID`, `APPWRITE_API_KEY` (not a placeholder, at least 32 chars) and `APPWRITE_DATABASE_ID` are set, and `HS_DEBUG` is off in production. Errors name the variable, never the value. Optional: `LOG_LEVEL`, `APP_VERSION`, `GIT_SHA`. See `.env.example` (empty values only; never commit a real `.env`).
 
-## Test and lint
+## Test command
 
 `uv run pytest -q` and `uv run ruff check . && uv run ruff format --check .` (from this directory), or `make test` / `make lint` from the repo root. Tests are offline: fake repository, fake token verifier, mocked Appwrite SDK.
 
