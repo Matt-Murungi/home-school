@@ -209,20 +209,27 @@ def check_workflows(
                 continue
             job = cj[covered[pid]]
             matrix = "matrix" in _text(job.get("strategy", {}))
-            want_dir = "${{ matrix.path }}" if matrix else pkg["path"]
             for kind in ("test", "lint"):
-                for seg in [
-                    s.strip() for s in (pkg.get(kind) or "").split("&&") if s.strip()
-                ]:
-                    if not any(
-                        seg in st.get("run", "")
-                        and st.get("working-directory") == want_dir
-                        for st in steps(job)
-                    ):
-                        e(
-                            f"job {covered[pid]} lacks `{seg}` in working-directory {want_dir} "
-                            f"({kind} command of {pid} in packages.json)"
-                        )
+                if not _runs_manifest(job, kind, pid, matrix):
+                    e(
+                        f"job {covered[pid]} must run `python3 scripts/run_packages.py {kind} --only {pid}` "
+                        f"(commands come from packages.json, never copied into the workflow)"
+                    )
+        for jid, job in cj.items():
+            ids = {
+                x
+                for x in str((job.get("env") or {}).get("HS_PACKAGES", ""))
+                .replace(" ", "")
+                .split(",")
+                if x
+            }
+            used = {m for st in steps(job) for m in RUN_ONLY.findall(st.get("run", ""))}
+            if "matrix" in _text(job.get("strategy", {})):
+                continue
+            if ids and used != ids:
+                e(
+                    f"job {jid} runs run_packages.py for {sorted(used)} but claims HS_PACKAGES {sorted(ids)}"
+                )
         for pid in covered:
             if pid not in {p["id"] for p in manifest["packages"]} | OPTIONAL_PACKAGES:
                 e(f"ci.yml job claims unknown package {pid}")
@@ -302,6 +309,24 @@ def check_workflows(
 
 
 ALWAYS_ON = {"repo-checks"}
+
+
+RUN_ONLY = re.compile(r"run_packages\.py (?:test|lint) --only ([A-Za-z0-9_-]+)")
+
+
+def _runs_manifest(job: dict, kind: str, pid: str, matrix: bool) -> bool:
+    """The job has a step calling the manifest runner for exactly this package and kind."""
+    for st in steps(job):
+        run = st.get("run", "")
+        if matrix:
+            if (
+                f'run_packages.py {kind} --only "$PKG_ID"' in run
+                and (st.get("env") or {}).get("PKG_ID") == "${{ matrix.id }}"
+            ):
+                return True
+        elif re.search(rf"run_packages\.py {kind} --only {re.escape(pid)}(\s|$)", run):
+            return True
+    return False
 
 
 def check_deploy_order(name: str, wf: dict) -> list[str]:

@@ -25,8 +25,8 @@ No `pull_request_target`; top-level `permissions: contents: read`; actions pinne
 or environments in pull_request workflows (fork PRs get none); `timeout-minutes` on every job; checkout without
 persisted credentials; no untrusted `github.event.*`/`inputs.*` interpolated into shell; every deploy job/step behind
 `vars.DEPLOY_ENABLED == 'true'`; schema job has its own non-cancelling concurrency group; API steps gated on
-migration exit code and `promote == 'true'`; every implemented package in `packages.json` has a job whose commands
-match `packages.json` (or a recorded exemption: the two `spikes/`); Dependabot covers every lockfile.
+migration exit code and `promote == 'true'`; every implemented package in `packages.json` has a job that runs `python3 scripts/run_packages.py test|lint --only <id>`, so commands always come from
+`packages.json` and cannot drift (or a recorded exemption: the two `spikes/`); Dependabot covers every lockfile.
 
 actionlint 1.7.12 also runs in the `repo-checks` job (`uvx --from actionlint-py==1.7.12.25 actionlint`); it reported nothing on these
 files when run locally by the builder.

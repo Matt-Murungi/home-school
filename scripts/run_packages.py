@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 """Run every package's `test` or `lint` command from packages.json.
 
-usage: run_packages.py test|lint [--manifest FILE]
+usage: run_packages.py test|lint [--manifest FILE] [--only ID]
+--only ID runs just that package (CI: one job per package, commands always come from the manifest;
+an unknown or unimplemented id is an error, never a silent pass).
 env:   HS_SKIP=id,id   skip these package ids
        HS_STRICT=1     a missing tool is a failure (use in CI) instead of a SKIP
 Planned (not yet scaffolded) packages and packages whose tools are missing are
@@ -33,6 +35,14 @@ def main(argv):
     skip = {s for s in os.environ.get("HS_SKIP", "").split(",") if s}
     strict = os.environ.get("HS_STRICT") == "1"
     pkgs = json.loads(manifest.read_text())["packages"]
+    if "--only" in argv:
+        only = argv[argv.index("--only") + 1 : argv.index("--only") + 2]
+        pkgs = [p for p in pkgs if only and p["id"] == only[0]]
+        if not pkgs:
+            print(
+                f"FAIL --only: no package with id {only[0] if only else '(missing)'} in {manifest.name}"
+            )
+            return 2
     ran, skipped, failed = [], [], []
     for p in pkgs:
         name = p["path"]

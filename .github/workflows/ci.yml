@@ -19,6 +19,8 @@ concurrency:
 env:
   HS_STRICT: "1" # a missing tool (uv, flutter, node ...) fails the job instead of being skipped
 
+# Every package job runs its commands FROM packages.json via scripts/run_packages.py --only <id>, so the workflow
+# cannot drift from the manifest. Only tool setup lives here. HS_STRICT=1: a missing tool or dependency fails.
 jobs:
   changes:
     name: changes (path filter)
@@ -72,11 +74,6 @@ jobs:
     timeout-minutes: 30
     env:
       HS_PACKAGES: root-tests
-      # test_layout.Tooling runs `make test` and `make lint` inside these tests. Flutter is not installed on this
-      # job and apps/admin has no node_modules for its lint, so tool-missing is a skip HERE (and only here);
-      # every package is tested strictly by its own job below.
-      HS_STRICT: "0"
-      HS_SKIP: app-admin,app-parent,app-teacher,flutter-shared,spike-admin,spike-jobs
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -85,12 +82,10 @@ jobs:
         with:
           enable-cache: true
           cache-dependency-glob: services/core/uv.lock
-      - name: unit tests
-        working-directory: scripts
-        run: python3 -m unittest discover -s tests
-      - name: compile check
-        working-directory: scripts
-        run: python3 -m py_compile run_packages.py check_layout.py secret_scan.py
+      - name: test (command from packages.json)
+        run: python3 scripts/run_packages.py test --only root-tests
+      - name: lint (command from packages.json)
+        run: python3 scripts/run_packages.py lint --only root-tests
 
   docs:
     name: ADR lint
@@ -104,9 +99,10 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - name: test
-        working-directory: docs
-        run: python3 adr/check-adrs.py
+      - name: test (command from packages.json)
+        run: python3 scripts/run_packages.py test --only docs
+      - name: lint (command from packages.json)
+        run: python3 scripts/run_packages.py lint --only docs
 
   core:
     name: core service (uv, pytest, ruff)
@@ -124,18 +120,13 @@ jobs:
         with:
           enable-cache: true
           cache-dependency-glob: services/core/uv.lock
-      - name: pytest (offline; includes the job-tick function tests)
-        working-directory: services/core
-        run: uv run pytest -q
-      - name: ruff check
-        working-directory: services/core
-        run: uv run ruff check .
-      - name: ruff format
-        working-directory: services/core
-        run: uv run ruff format --check .
+      - name: test (command from packages.json)
+        run: python3 scripts/run_packages.py test --only core
+      - name: lint (command from packages.json)
+        run: python3 scripts/run_packages.py lint --only core
 
   appwrite:
-    name: appwrite (migration runner tests, schema check)
+    name: appwrite (migration runner and schema checks)
     needs: changes
     if: needs.changes.outputs.appwrite == 'true'
     runs-on: ubuntu-24.04
@@ -146,37 +137,30 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - name: unit tests
-        working-directory: appwrite
-        run: python3 -m unittest discover -s tests
-      - name: compile check and key manifest
-        working-directory: appwrite
-        run: python3 -m py_compile migrate.py appwrite_client.py fake_client.py check_keys.py && python3 check_keys.py
-      - name: schema is valid and generated files are fresh (M01 adds schema_build.py)
-        working-directory: appwrite
-        run: if [ -f schema_build.py ]; then python3 schema_build.py --check; else echo "schema_build.py not on this branch yet"; fi
+      - name: test (command from packages.json)
+        run: python3 scripts/run_packages.py test --only appwrite
+      - name: lint (command from packages.json)
+        run: python3 scripts/run_packages.py lint --only appwrite
 
   ops:
-    name: ops (monitoring config tests, F08)
+    name: ops (monitoring config, F08)
     needs: changes
     if: needs.changes.outputs.ops == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     env:
-      HS_PACKAGES: ops # registered in packages.json by F08; until then this job never triggers (no ops/ dir)
+      HS_PACKAGES: ops
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - name: tests
-        working-directory: ops
-        run: python3 -m unittest discover -s tests
-      - name: compile check and config check
-        working-directory: ops
-        run: python3 -m py_compile check_ops.py && python3 check_ops.py
+      - name: test (command from packages.json)
+        run: python3 scripts/run_packages.py test --only ops
+      - name: lint (command from packages.json)
+        run: python3 scripts/run_packages.py lint --only ops
 
   admin:
-    name: admin (npm ci, tsc, test, lint, build)
+    name: admin (npm ci, tsc, test, lint)
     needs: changes
     if: needs.changes.outputs.admin == 'true'
     runs-on: ubuntu-24.04
@@ -192,18 +176,10 @@ jobs:
           node-version: 22
           cache: npm
           cache-dependency-path: apps/admin/package-lock.json
-      - name: install
-        working-directory: apps/admin
-        run: npm ci
-      - name: typecheck
-        working-directory: apps/admin
-        run: npx tsc --noEmit
-      - name: unit tests
-        working-directory: apps/admin
-        run: npm test
-      - name: lint
-        working-directory: apps/admin
-        run: npm run lint
+      - name: test (command from packages.json)
+        run: python3 scripts/run_packages.py test --only app-admin
+      - name: lint (command from packages.json)
+        run: python3 scripts/run_packages.py lint --only app-admin
       - name: production build
         working-directory: apps/admin
         run: npm run build
@@ -230,18 +206,14 @@ jobs:
           flutter-version: 3.47.7 # keep in step with the local toolchain recorded in memory.md (F05)
           cache: true
           pub-cache-key: pub-${{ runner.os }}-${{ hashFiles('apps/*/pubspec.yaml', 'packages/*/pubspec.yaml') }}
-      - name: dependencies
-        working-directory: ${{ matrix.path }}
-        run: flutter pub get
-      - name: format
-        working-directory: ${{ matrix.path }}
-        run: dart format --set-exit-if-changed .
-      - name: analyze
-        working-directory: ${{ matrix.path }}
-        run: flutter analyze
-      - name: tests
-        working-directory: ${{ matrix.path }}
-        run: flutter test
+      - name: test (command from packages.json)
+        run: python3 scripts/run_packages.py test --only "$PKG_ID"
+        env:
+          PKG_ID: ${{ matrix.id }}
+      - name: lint (command from packages.json)
+        run: python3 scripts/run_packages.py lint --only "$PKG_ID"
+        env:
+          PKG_ID: ${{ matrix.id }}
 
   ci-ok:
     name: ci-ok

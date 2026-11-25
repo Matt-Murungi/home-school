@@ -80,7 +80,8 @@ jobs:
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
           FLY_APP: ${{ vars.FLY_APP }}
-        run: flyctl deploy --config fly.production.toml --app "$FLY_APP" --remote-only --build-arg "GIT_SHA=${GITHUB_SHA::7}"
+          RELEASE_SHA: ${{ inputs.sha }} # the verified sha, not GITHUB_SHA (that is the dispatch ref head)
+        run: flyctl deploy --config fly.production.toml --app "$FLY_APP" --remote-only --build-arg "GIT_SHA=${RELEASE_SHA::7}"
       - name: Smoke check /health on the deployed URL
         if: vars.DEPLOY_ENABLED == 'true' && steps.migrate.outcome == 'success' && steps.migrate.outputs.promote == 'true'
         env:

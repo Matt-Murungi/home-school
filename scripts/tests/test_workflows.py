@@ -156,25 +156,109 @@ class CriterionPathFilters(unittest.TestCase):
         (s.dir / "packages.json").write_text(json.dumps(m))
         self.assertTrue(any("newpkg" in p and "no CI job" in p for p in s.problems()))
 
-    def test_job_commands_match_packages_json(self):
+    def test_every_package_job_runs_the_manifest_runner_for_its_own_id(self):
+        """No command is copied into the workflow: jobs call run_packages.py --only <id> (F07-R1)."""
+        jobs = load("ci.yml")["jobs"]
+        for jid, job in jobs.items():
+            ids = [
+                x
+                for x in str((job.get("env") or {}).get("HS_PACKAGES", "")).split(",")
+                if x
+            ]
+            if not ids or "matrix" in json.dumps(job.get("strategy", {})):
+                continue
+            for kind in ("test", "lint"):
+                for i in ids:
+                    self.assertTrue(
+                        ci_lint._runs_manifest(job, kind, i, False), f"{jid} {kind} {i}"
+                    )
+
+    def test_flutter_matrix_ids_are_exactly_the_flutter_packages(self):
+        job = load("ci.yml")["jobs"]["flutter"]
+        self.assertEqual(
+            set(job["env"]["HS_PACKAGES"].split(",")), set(ci_changes.FLUTTER)
+        )
+        for kind in ("test", "lint"):
+            self.assertTrue(ci_lint._runs_manifest(job, kind, "x", True))
+
+    def test_no_package_command_is_copied_into_ci_yml(self):
+        text = (WF / "ci.yml").read_text()
+        for pkg in json.loads((ROOT / "packages.json").read_text())["packages"]:
+            if pkg["id"] in ci_lint.EXEMPT_PACKAGES:
+                continue
+            for kind in ("test", "lint"):
+                for seg in [x.strip() for x in (pkg.get(kind) or "").split("&&")]:
+                    if seg and seg not in ("npm ci",):
+                        self.assertNotIn(f"run: {seg}", text, f"{pkg['id']}: {seg}")
+
+    def test_manifest_command_change_needs_no_workflow_change(self):
+        """Drift-proofing: edit a command in a copy of packages.json, the lint stays clean."""
+        s = Scratch(self)
+        m = json.loads((s.dir / "packages.json").read_text())
+        for pkg in m["packages"]:
+            if pkg["id"] == "appwrite":
+                pkg["lint"] += " && python3 another_check.py"
+        (s.dir / "packages.json").write_text(json.dumps(m))
+        self.assertEqual(s.problems(), [])
+
+    def test_job_calling_the_wrong_package_id_is_reported(self):
         s = Scratch(self).edit(
             ".github/workflows/ci.yml",
-            "run: uv run pytest -q",
-            "run: uv run pytest -q -k nothing_matches_so_nothing_runs # x".replace(
-                "pytest -q", "pytest"
-            ),
+            "run: python3 scripts/run_packages.py test --only core",
+            "run: python3 scripts/run_packages.py test --only docs",
+        )
+        probs = s.problems()
+        self.assertTrue(any("test --only core" in p for p in probs), probs)
+        self.assertTrue(any("claims HS_PACKAGES" in p for p in probs), probs)
+
+    def test_job_skipping_lint_is_reported(self):
+        s = Scratch(self).edit(
+            ".github/workflows/ci.yml",
+            "run: python3 scripts/run_packages.py lint --only appwrite",
+            "run: echo skipped",
+        )
+        self.assertTrue(any("lint --only appwrite" in p for p in s.problems()))
+
+    def test_matrix_job_with_hardcoded_id_is_reported(self):
+        s = Scratch(self).edit(
+            ".github/workflows/ci.yml",
+            'run: python3 scripts/run_packages.py test --only "$PKG_ID"',
+            "run: python3 scripts/run_packages.py test --only app-parent",
         )
         self.assertTrue(
-            any("`uv run pytest -q`" in p for p in s.problems()), s.problems()
+            any("test --only app-parent" in p or "--only" in p for p in s.problems())
         )
 
-    def test_job_command_in_wrong_directory_is_reported(self):
-        s = Scratch(self).edit(
-            ".github/workflows/ci.yml",
-            "working-directory: apps/admin\n        run: npm test",
-            "working-directory: apps\n        run: npm test",
+    def test_run_packages_only_runs_one_package_and_rejects_unknown_ids(self):
+        r = subprocess.run(
+            [
+                sys.executable,
+                str(ROOT / "scripts/run_packages.py"),
+                "lint",
+                "--only",
+                "docs",
+            ],
+            capture_output=True,
+            text=True,
+            check=False,
         )
-        self.assertTrue(any("npm test" in p for p in s.problems()))
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("lint docs", r.stdout)
+        self.assertNotIn("services/core", r.stdout)
+        bad = subprocess.run(
+            [
+                sys.executable,
+                str(ROOT / "scripts/run_packages.py"),
+                "test",
+                "--only",
+                "nope",
+            ],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        self.assertEqual(bad.returncode, 2)
+        self.assertIn("no package with id nope", bad.stdout)
 
 
 class PathFilterBehaviour(unittest.TestCase):
@@ -387,7 +471,7 @@ class SecurityRules(unittest.TestCase):
     def test_secret_in_a_pull_request_workflow_is_reported(self):
         s = Scratch(self).edit(
             ".github/workflows/ci.yml",
-            "      - name: unit tests\n        working-directory: scripts",
+            "      - name: test (command from packages.json)\n        run: python3 scripts/run_packages.py test --only root-tests",
             "      - name: unit tests\n        env:\n          K: ${{ secrets.APPWRITE_API_KEY }}\n        working-directory: scripts",
         )
         self.assertTrue(any("secrets.APPWRITE_API_KEY" in p for p in s.problems()))
@@ -457,13 +541,13 @@ class CriterionPerformanceRules(unittest.TestCase):
     def test_hs_strict_is_on_for_the_workflow(self):
         self.assertEqual(load("ci.yml")["env"]["HS_STRICT"], "1")
 
-    def test_only_the_scripts_job_overrides_strict_and_says_why(self):
+    def test_no_job_overrides_strict(self):
         jobs = load("ci.yml")["jobs"]
         for jid, job in jobs.items():
-            if jid != "scripts":
-                self.assertNotIn("HS_STRICT", job.get("env") or {}, jid)
-        self.assertEqual(jobs["scripts"]["env"]["HS_STRICT"], "0")
-        self.assertIn("test_layout.Tooling", (WF / "ci.yml").read_text())
+            self.assertNotIn("HS_STRICT", job.get("env") or {}, jid)
+        self.assertNotIn(
+            "HS_STRICT", jobs["scripts"].get("env") or {}
+        )  # strict everywhere (main-health made it safe)
 
     def test_strict_override_in_another_job_is_reported(self):
         s = Scratch(self).edit(
@@ -563,6 +647,17 @@ class DeployWorkflows(unittest.TestCase):
             self.assertEqual(job["environment"], "production", jid)
             self.assertIn("vars.DEPLOY_ENABLED == 'true'", job["if"], jid)
             self.assertIn("github.ref == 'refs/heads/main'", job["if"], jid)
+
+    def test_production_deploys_the_verified_input_sha_not_the_dispatch_head(self):
+        text = (WF / "promote-production.yml").read_text()
+        self.assertNotIn("GITHUB_SHA", text.replace("not GITHUB_SHA", ""))
+        step = next(
+            st
+            for st in load("promote-production.yml")["jobs"]["release"]["steps"]
+            if "flyctl deploy" in st.get("run", "")
+        )
+        self.assertEqual(step["env"]["RELEASE_SHA"], "${{ inputs.sha }}")
+        self.assertIn("GIT_SHA=${RELEASE_SHA::7}", step["run"])
 
     def test_production_verifies_sha_is_on_main(self):
         text = (WF / "promote-production.yml").read_text()
