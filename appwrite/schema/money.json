@@ -335,6 +335,47 @@
           "key": "created_at",
           "type": "datetime",
           "required": true
+        },
+        {
+          "key": "plan_id",
+          "type": "varchar",
+          "size": 36,
+          "required": false
+        },
+        {
+          "key": "period_index",
+          "type": "integer",
+          "required": false,
+          "min": 0
+        },
+        {
+          "key": "plan_price_ugx",
+          "type": "integer",
+          "required": false,
+          "min": 0
+        },
+        {
+          "key": "discount_ugx",
+          "type": "integer",
+          "required": false,
+          "min": 0
+        },
+        {
+          "key": "credit_ugx",
+          "type": "integer",
+          "required": false,
+          "min": 0
+        },
+        {
+          "key": "credit_ids",
+          "type": "text",
+          "required": false
+        },
+        {
+          "key": "payment_ref",
+          "type": "varchar",
+          "size": 128,
+          "required": false
         }
       ],
       "indexes": [
@@ -371,6 +412,16 @@
           ],
           "orders": [
             "ASC",
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_plan",
+          "type": "key",
+          "columns": [
+            "plan_id"
+          ],
+          "orders": [
             "ASC"
           ]
         }
@@ -1440,7 +1491,10 @@
     },
     "invoice": {
       "deletion": "hard",
-      "note": "Created at period start. Unique (subscription, period start) makes the period job idempotent. parent_id is the payer (read grant). Voiding is a status, not a delete. Never soft-deleted (a soft delete would either hide a financial/idempotency record or free its unique value): the lifecycle is the status column; only the retention job hard-deletes it, after the retention period (DP-6, SR 5.5). Voiding is the status void. Retention: payment records are kept for the tax-law period (DP-6) even against a DP-5 deletion request; the conflict is Q4/Q16-17 in docs/legal/lawyer-brief.md (C04)."
+      "note": "Created at period start. Unique (subscription, period start) makes the period job idempotent. parent_id is the payer (read grant). Voiding is a status, not a delete. Never soft-deleted (a soft delete would either hide a financial/idempotency record or free its unique value): the lifecycle is the status column; only the retention job hard-deletes it, after the retention period (DP-6, SR 5.5). Voiding is the status void. Retention: payment records are kept for the tax-law period (DP-6) even against a DP-5 deletion request; the conflict is Q4/Q16-17 in docs/legal/lawyer-brief.md (C04). B03 (additive, optional): plan_id (plan priced; may differ from the subscription's after a plan change), period_index, plan_price_ugx, discount_ugx and credit_ugx (integer UGX; amount = plan_price_ugx - discount_ugx - credit_ugx, never below 0), credit_ids (credits consumed) and payment_ref (provider reference of the payment applied). Optional because rows created before B03 lack them; amount, period dates and status stay the source of truth for older rows.",
+      "non_fk": {
+        "credit_ids": "JSON text list of billing_credit ids applied to this invoice (an array, not a single foreign key)"
+      }
     },
     "payment": {
       "deletion": "hard",
@@ -1590,6 +1644,10 @@
     {
       "from": "feedback.child_id",
       "to": "child"
+    },
+    {
+      "from": "invoice.plan_id",
+      "to": "plan"
     }
   ]
 }

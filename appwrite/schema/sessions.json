@@ -152,6 +152,71 @@
           "key": "deleted_at",
           "type": "datetime",
           "required": false
+        },
+        {
+          "key": "version",
+          "type": "integer",
+          "required": false,
+          "min": 0,
+          "default": 0
+        },
+        {
+          "key": "anchor_date",
+          "type": "varchar",
+          "size": 10,
+          "required": false
+        },
+        {
+          "key": "period_index",
+          "type": "integer",
+          "required": false,
+          "min": 0,
+          "default": 0
+        },
+        {
+          "key": "cancel_at_period_end",
+          "type": "boolean",
+          "required": false,
+          "default": false
+        },
+        {
+          "key": "pending_plan_id",
+          "type": "varchar",
+          "size": 36,
+          "required": false
+        },
+        {
+          "key": "past_due_at",
+          "type": "datetime",
+          "required": false
+        },
+        {
+          "key": "first_payment_at",
+          "type": "datetime",
+          "required": false
+        },
+        {
+          "key": "last_payment_ref",
+          "type": "varchar",
+          "size": 128,
+          "required": false
+        },
+        {
+          "key": "assignment_id",
+          "type": "varchar",
+          "size": 36,
+          "required": false
+        },
+        {
+          "key": "is_trial",
+          "type": "boolean",
+          "required": false,
+          "default": false
+        },
+        {
+          "key": "created_at",
+          "type": "datetime",
+          "required": false
         }
       ],
       "indexes": [
@@ -193,6 +258,50 @@
           "columns": [
             "status",
             "period_end_at"
+          ],
+          "orders": [
+            "ASC",
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_pending_plan",
+          "type": "key",
+          "columns": [
+            "pending_plan_id"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_assignment",
+          "type": "key",
+          "columns": [
+            "assignment_id"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_status_cancelled",
+          "type": "key",
+          "columns": [
+            "status",
+            "cancelled_at"
+          ],
+          "orders": [
+            "ASC",
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_status_period_start",
+          "type": "key",
+          "columns": [
+            "status",
+            "period_start_at"
           ],
           "orders": [
             "ASC",
@@ -1095,7 +1204,7 @@
     },
     "subscription": {
       "deletion": "soft",
-      "note": "One per child and plan; parent_id denormalised for 'my subscriptions' lists. Status machine pending_payment/matching/active/paused/past_due/cancelled is enforced by the core service. period_* are UTC instants of the billing period. preferred_slots is JSON text [{weekday 1-7, start_minute, end_minute}] in Africa/Kampala wall-clock minutes (same convention as availability_slot). No unique (child) because a child may hold several subscriptions; duplicates are a core-service check."
+      "note": "One per child and plan; parent_id denormalised for 'my subscriptions' lists. Status machine pending_payment/matching/active/paused/past_due/cancelled is enforced by the core service. period_* are UTC instants of the billing period. preferred_slots is JSON text [{weekday 1-7, start_minute, end_minute}] in Africa/Kampala wall-clock minutes (same convention as availability_slot). No unique (child) because a child may hold several subscriptions; duplicates are a core-service check. B03 (additive, all optional): version (optimistic concurrency counter), anchor_date (Kampala date the first period started; renewals fall on its day-of-month), period_index, cancel_at_period_end (cancel at the end of the paid period), pending_plan_id (plan change applied from the next invoice), past_due_at, first_payment_at, last_payment_ref (makes a replayed payment confirmation a no-op), assignment_id and is_trial (copied from the current assignment). created_at is the subscription's own creation instant (the row's system $createdAt is not queryable as a plain column). The core service sets them; they are optional only because rows created before B03 lack them. period_start_at/period_end_at remain the current paid period."
     },
     "match_request": {
       "deletion": "soft",
@@ -1231,6 +1340,14 @@
     {
       "from": "dispute.resolved_by_id",
       "to": "user_profile"
+    },
+    {
+      "from": "subscription.pending_plan_id",
+      "to": "plan"
+    },
+    {
+      "from": "subscription.assignment_id",
+      "to": "assignment"
     }
   ]
 }

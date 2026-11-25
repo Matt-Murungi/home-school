@@ -48,6 +48,13 @@ erDiagram
     datetime due_at
     datetime paid_at
     datetime created_at
+    varchar plan_id FK
+    integer period_index
+    integer plan_price_ugx
+    integer discount_ugx
+    integer credit_ugx
+    text credit_ids
+    varchar payment_ref
   }
   payment {
     varchar invoice_id FK
@@ -177,6 +184,7 @@ erDiagram
   parent_profile ||--o{ feedback : "parent_id"
   teacher_profile ||--o{ feedback : "teacher_id"
   child |o--o{ feedback : "child_id"
+  plan |o--o{ invoice : "plan_id"
 ```
 
 ## Tables
@@ -184,7 +192,7 @@ erDiagram
 - `tier` (soft): Rank order and base_rate (integer UGX per confirmed session); criteria is JSON text read by the monthly tier job. Soft-deleted tiers keep their unique name until restored or retention. Soft delete (M02 rule): active_key = lower-case name while the tier is live, set to null on soft delete (soft_delete_patch), so a deleted tier name can be re-created.
 - `tier_history` (immutable): One row per tier change (TIR-4), approved by an admin; corrections are new rows. First assignment has no from_tier_id.
 - `bonus_rule` (soft): Configurable bonus per confirmed session (TIR-5); amount is integer UGX; conditions is JSON text.
-- `invoice` (hard): Created at period start. Unique (subscription, period start) makes the period job idempotent. parent_id is the payer (read grant). Voiding is a status, not a delete. Never soft-deleted (a soft delete would either hide a financial/idempotency record or free its unique value): the lifecycle is the status column; only the retention job hard-deletes it, after the retention period (DP-6, SR 5.5). Voiding is the status void. Retention: payment records are kept for the tax-law period (DP-6) even against a DP-5 deletion request; the conflict is Q4/Q16-17 in docs/legal/lawyer-brief.md (C04).
+- `invoice` (hard): Created at period start. Unique (subscription, period start) makes the period job idempotent. parent_id is the payer (read grant). Voiding is a status, not a delete. Never soft-deleted (a soft delete would either hide a financial/idempotency record or free its unique value): the lifecycle is the status column; only the retention job hard-deletes it, after the retention period (DP-6, SR 5.5). Voiding is the status void. Retention: payment records are kept for the tax-law period (DP-6) even against a DP-5 deletion request; the conflict is Q4/Q16-17 in docs/legal/lawyer-brief.md (C04). B03 (additive, optional): plan_id (plan priced; may differ from the subscription's after a plan change), period_index, plan_price_ugx, discount_ugx and credit_ugx (integer UGX; amount = plan_price_ugx - discount_ugx - credit_ugx, never below 0), credit_ids (credits consumed) and payment_ref (provider reference of the payment applied). Optional because rows created before B03 lack them; amount, period dates and status stay the source of truth for older rows.
 - `payment` (hard): idempotency_key UNIQUE (NFR-8): the core service claims the key by create (409 = already requested). provider_reference is unique per provider once known (NULLs allowed until then). raw_callback stores the verified provider callback verbatim (PAY-1..3, SR 7.8). Provider is free text on purpose: the owner has not chosen providers. Never soft-deleted (a soft delete would either hide a financial/idempotency record or free its unique value): the lifecycle is the status column; only the retention job hard-deletes it, after the retention period (DP-6, SR 5.5). idempotency_key and provider_reference stay claimed forever (NFR-8). Retention: payment records are kept for the tax-law period (DP-6) even against a DP-5 deletion request; the conflict is Q4/Q16-17 in docs/legal/lawyer-brief.md (C04).
 - `earning` (hard): Created when a session is confirmed (SR 5.4). dedupe_key (e.g. <session>:<type>[:<rule>]) is unique so confirmation retries cannot double-pay. adjustment amounts may be negative. batch_id is set when the weekly payout batch takes the earning. Never soft-deleted (a soft delete would either hide a financial/idempotency record or free its unique value): the lifecycle is the status column; only the retention job hard-deletes it, after the retention period (DP-6, SR 5.5). dedupe_key stays claimed (no double pay); cancel = status void.
 - `payout_batch` (soft): Weekly batch (SR 7.9). active_key = period start date while the batch is not cancelled, NULL after, unique: one live batch per period (M01 active_key pattern). SEC-11: approved_by plus a distinct second confirmation (confirmed_by/confirmed_at); the core service rejects approver == confirmer.

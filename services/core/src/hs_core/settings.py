@@ -46,6 +46,14 @@ NOTIFY_RANGES: dict[str, tuple[int, int]] = {
     "notify_lease_s": (30, 900),
     "notify_escalate_after_min": (1, 240),
 }
+# B03: allowed (min, max) of each billing setting; out-of-range values fail startup.
+BILLING_RANGES: dict[str, tuple[int, int]] = {
+    "billing_renewal_lead_days": (1, 30),
+    "billing_grace_days": (0, 30),
+    "billing_past_due_cancel_days": (1, 90),
+    "billing_max_pause_days": (1, 180),
+    "billing_roll_chunk_size": (1, 200),
+}
 
 
 _PLACEHOLDERS = {"changeme", "change-me", "secret", "password", "example", "test", "xxx"}
@@ -115,6 +123,12 @@ class Settings(BaseSettings):
     travel_within_zone_minutes: int = 10  # two homes in the same zone
     travel_element_cost_micro_usd: int = 10000  # USD 0.01 per element (estimate; owner to check)
     travel_warm_bands: str = "evening_peak,off_peak"  # bands the daily warming job refreshes
+    # Billing (B03). Owner decisions pending: see memory.md "Questions for the owner".
+    billing_renewal_lead_days: int = 5  # next period's invoice is created this long before renewal
+    billing_grace_days: int = 3  # SR 8 payment grace period (days after the due date)
+    billing_past_due_cancel_days: int = 14  # past_due this long -> cancelled
+    billing_max_pause_days: int = 30  # SUB-4 pause limit
+    billing_roll_chunk_size: int = 20  # subscriptions per billing-period-roll chunk
 
     def _travel_problems(self) -> list[str]:
         from .travel.bands import BANDS
@@ -189,6 +203,9 @@ class Settings(BaseSettings):
         if self.notify_quiet_start_hour == self.notify_quiet_end_hour:
             out.append("NOTIFY_QUIET_START_HOUR and NOTIFY_QUIET_END_HOUR must differ")
         for name, (lo, hi) in AUDIT_RANGES.items():
+            if not lo <= getattr(self, name) <= hi:
+                out.append(f"{name.upper()} must be between {lo} and {hi}")
+        for name, (lo, hi) in BILLING_RANGES.items():
             if not lo <= getattr(self, name) <= hi:
                 out.append(f"{name.upper()} must be between {lo} and {hi}")
         if self.hs_env == "dev":

@@ -12,6 +12,7 @@ from datetime import datetime, timedelta
 
 from ..audit.recover import audit_recover
 from ..auth_otp.jobs import otp_cleanup
+from ..billing.jobs import billing_period_roll, billing_reconcile, billing_redispatch
 from ..notifications.dispatch import notification_dispatch
 from ..permissions.jobs import address_revoke, permission_audit, permission_reconcile
 from ..travel.jobs import travel_cache_refresh
@@ -84,5 +85,32 @@ JOBS: list[JobSpec] = [
         max_attempts=3,
         catch_up=timedelta(hours=1),
         timeout=timedelta(seconds=15),
+    ),
+    # B03: next-period invoices, period advance and cancel-at-period-end, 03:00 Kampala, chunked.
+    JobSpec(
+        "billing-period-roll",
+        billing_period_roll,
+        schedule=Schedule(timedelta(days=1), anchor=datetime(2026, 1, 1, 3, tzinfo=KAMPALA)),
+        max_attempts=3,
+        catch_up=timedelta(days=2),
+        timeout=timedelta(seconds=12),
+    ),
+    # B03: finish committed transitions whose effects/events were not delivered (idempotent).
+    JobSpec(
+        "billing-redispatch",
+        billing_redispatch,
+        schedule=Schedule(timedelta(minutes=15)),
+        max_attempts=3,
+        catch_up=timedelta(hours=1),
+        timeout=timedelta(seconds=12),
+    ),
+    # B03: cancelled/paused subscriptions must not keep future sessions; 04:00 Kampala.
+    JobSpec(
+        "billing-reconcile",
+        billing_reconcile,
+        schedule=Schedule(timedelta(days=1), anchor=datetime(2026, 1, 1, 4, tzinfo=KAMPALA)),
+        max_attempts=3,
+        catch_up=timedelta(days=1),
+        timeout=timedelta(seconds=12),
     ),
 ]

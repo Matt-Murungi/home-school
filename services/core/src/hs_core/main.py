@@ -24,6 +24,8 @@ from .auth_otp.api import client_ip
 from .auth_otp.api import router as otp_router
 from .catalogue import build_catalogue_service
 from .catalogue.api import router as catalogue_router
+from .billing import jobs as billing_jobs
+from .billing.wiring import BillingAdapters, build_billing_service
 from .jobs.alerts import Alert, AlertSink, LogAlertSink
 from .jobs.api import router as jobs_router
 from .jobs.runner import Runner
@@ -61,6 +63,7 @@ def create_app(
     sms_sender=None,
     user_directory=None,
     trust_proxy_ip: bool | None = None,
+    billing_adapters: BillingAdapters | None = None,
 ) -> FastAPI:
     settings = settings or load_settings()
     app = FastAPI(
@@ -106,6 +109,11 @@ def create_app(
     app.state.permissions = wire_permissions(  # M05: binds the permission jobs
         raw_repository, app.state.runner, alert_sink, settings
     )
+    billing, billing_missing = build_billing_service(
+        settings, app.state.repository, billing_adapters
+    )
+    app.state.billing = billing
+    billing_jobs.bind(billing, strict=settings.hs_env != "dev", missing=tuple(billing_missing))
     app.state.reporter = reporter or build_reporter(settings)
     app.state.otp = otp_service or build_otp_service(
         settings, app.state.repository, sms_sender, user_directory

@@ -26,6 +26,17 @@ erDiagram
     datetime cancelled_at
     varchar cancel_reason
     datetime deleted_at
+    integer version
+    varchar anchor_date
+    integer period_index
+    boolean cancel_at_period_end
+    varchar pending_plan_id FK
+    datetime past_due_at
+    datetime first_payment_at
+    varchar last_payment_ref
+    varchar assignment_id FK
+    boolean is_trial
+    datetime created_at
   }
   match_request {
     varchar subscription_id FK
@@ -140,12 +151,14 @@ erDiagram
   session ||--o{ dispute : "session_id"
   user_profile ||--o{ dispute : "raised_by_id"
   user_profile |o--o{ dispute : "resolved_by_id"
+  plan |o--o{ subscription : "pending_plan_id"
+  assignment |o--o{ subscription : "assignment_id"
 ```
 
 ## Tables
 
 - `plan` (soft): price_ugx is integer UGX per billing period (SR 5.4/5.5), currency kept for future multi-currency. active_key = '<curriculum_id>:<sessions_per_week>' while active, null when inactive or soft-deleted: one active plan per curriculum and frequency; price changes = deactivate and add a new plan.
-- `subscription` (soft): One per child and plan; parent_id denormalised for 'my subscriptions' lists. Status machine pending_payment/matching/active/paused/past_due/cancelled is enforced by the core service. period_* are UTC instants of the billing period. preferred_slots is JSON text [{weekday 1-7, start_minute, end_minute}] in Africa/Kampala wall-clock minutes (same convention as availability_slot). No unique (child) because a child may hold several subscriptions; duplicates are a core-service check.
+- `subscription` (soft): One per child and plan; parent_id denormalised for 'my subscriptions' lists. Status machine pending_payment/matching/active/paused/past_due/cancelled is enforced by the core service. period_* are UTC instants of the billing period. preferred_slots is JSON text [{weekday 1-7, start_minute, end_minute}] in Africa/Kampala wall-clock minutes (same convention as availability_slot). No unique (child) because a child may hold several subscriptions; duplicates are a core-service check. B03 (additive, all optional): version (optimistic concurrency counter), anchor_date (Kampala date the first period started; renewals fall on its day-of-month), period_index, cancel_at_period_end (cancel at the end of the paid period), pending_plan_id (plan change applied from the next invoice), past_due_at, first_payment_at, last_payment_ref (makes a replayed payment confirmation a no-op), assignment_id and is_trial (copied from the current assignment). created_at is the subscription's own creation instant (the row's system $createdAt is not queryable as a plain column). The core service sets them; they are optional only because rows created before B03 lack them. period_start_at/period_end_at remain the current paid period.
 - `match_request` (soft): type new|rematch|substitute (SR 7.2/7.3); session_id is set for substitute requests. attempts counts offers made; after 5 failures status becomes admin_queue. Teachers already rematched away from a child are derived from assignments with end_reason rematch_requested.
 - `match_offer` (soft): Sequential offers (SR 7.2). rank is the position, rank_score is integer basis points 0-10000 (no floats), score_breakdown is JSON text {factor: basis points, weights_version} for transparency and tuning. active_key = '<match_request_id>:<teacher_id>' while response is pending, null once resolved or soft-deleted: unique index = one active offer per teacher per request, offers are idempotent.
 - `assignment` (soft): Current teacher-child pairing. start_at/end_at UTC; is_trial marks a trial pairing; end_reason set when it ends. active_key = '<child_id>:<subscription_id>' while end_at is null and not soft-deleted: one active assignment per child per subscription (a trial counts; converting ends the trial with end_reason trial_converted and creates the regular one).
