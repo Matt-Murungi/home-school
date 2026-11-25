@@ -34,6 +34,11 @@ Endpoints: `GET /health` (also `/healthz`, liveness: version + git SHA), `GET /r
 
 `src/hs_core/auth_otp/`: `POST /v1/auth/otp/request {phone, app}` and `POST /v1/auth/otp/verify {phone, code, app, device}`. The core service owns the code (Appwrite has no Africa's Talking provider): 6-digit CSPRNG code, only an HMAC(pepper, challenge, salt, code) is stored in `otp_challenge` (`appwrite/schema/auth.json`), 5 minute expiry, 5 tries per code, single use (deterministic-ID claim, 409 on the loser), caps per number and per IP (SEC-7), identical answers for known and unknown numbers, and a masked number only in logs (the F08 scrubber also masks codes). Codes are sent through the `SmsSender` interface (`sms.py`: fake, Africa's Talking adapter that is mock-tested only, unconfigured sender). A correct code finds or creates the Appwrite user, ensures the `user_profile` row and the `parent` or `teacher` label (the two self-service roles, bound to the challenge), and returns a custom token (`users.createToken`) for the app to exchange with `account.createSession`. `otp-cleanup` (hourly) deletes expired rows. Settings are the `OTP_*` and `AFRICASTALKING_*` variables in `.env.example`; `OTP_PEPPER` is required outside dev.
 
+## Session generation (S01, #93)
+
+`hs_core/scheduling/`: `SessionGenerator` creates concrete `session` rows from active assignments for a rolling horizon (`SESSION_GEN_HORIZON_DAYS`, default 28), Africa/Kampala wall clock stored as UTC, idempotent by `generation_key` (assignment + slot + Kampala date). Entry points for B03/B04: `regenerate(assignment_id, from_date)` and `cancel_future(assignment_id, from_date, reason)`. Nightly job `session-generate` (01:00 Kampala, chunked, error-isolated per assignment); admin `POST /admin/scheduling/generate-now` (opsadmin, reason required, audit interface `AuditSink` until M06). Per-teacher serialisation: row lease + re-check-after-insert (`leases.py`, `writer.py`). Public holidays are NOT skipped automatically (owner decision pending); a holiday calendar can only flag them for the admin.
+
+## Not done here
 
 ## Audit logging (M06, #41)
 

@@ -48,6 +48,15 @@ NOTIFY_RANGES: dict[str, tuple[int, int]] = {
 }
 
 
+# S01: allowed (min, max) of each session-generation setting; out-of-range values fail startup.
+SCHEDULING_RANGES: dict[str, tuple[int, int]] = {
+    "session_gen_horizon_days": (7, 90),
+    "session_gen_lease_ttl_s": (5, 120),
+    "session_gen_lock_wait_s": (0, 10),
+    "session_gen_chunk_budget_s": (1, 9),  # must stay under the job attempt timeout (10 s)
+}
+
+
 _PLACEHOLDERS = {"changeme", "change-me", "secret", "password", "example", "test", "xxx"}
 
 
@@ -137,6 +146,12 @@ class Settings(BaseSettings):
         if not bands or any(b not in BANDS for b in bands):
             out.append("TRAVEL_WARM_BANDS must list time bands: " + ", ".join(BANDS))
         return out
+    # S01 session generation (non-secret tuning). Horizon: owner preference pending (default 28
+    # days).
+    session_gen_horizon_days: int = 28
+    session_gen_lease_ttl_s: int = 30
+    session_gen_lock_wait_s: int = 3
+    session_gen_chunk_budget_s: int = 6
 
     # N01 notifications. Quiet hours are GLOBAL (SR 8: 21:00-07:00 Africa/Kampala).
     notify_quiet_start_hour: int = 21
@@ -183,6 +198,9 @@ class Settings(BaseSettings):
                 out.append(f"{name.upper()} must be between {lo} and {hi}")
         out += self._travel_problems()
         out += self._catalogue_problems()
+        for name, (lo, hi) in SCHEDULING_RANGES.items():
+            if not lo <= getattr(self, name) <= hi:
+                out.append(f"{name.upper()} must be between {lo} and {hi}")
         for name, (lo, hi) in NOTIFY_RANGES.items():
             if not lo <= getattr(self, name) <= hi:
                 out.append(f"{name.upper()} must be between {lo} and {hi}")

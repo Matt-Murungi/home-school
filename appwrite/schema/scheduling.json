@@ -1,0 +1,264 @@
+{
+  "domain": "scheduling",
+  "description": "Session generation support (S01 #93): per-teacher lease rows that serialise session writes, and admin-visible scheduling issues (conflicts, leave, availability).",
+  "tables": [
+    {
+      "$id": "teacher_schedule_lease",
+      "name": "teacher_schedule_lease",
+      "enabled": true,
+      "rowSecurity": true,
+      "$permissions": [],
+      "columns": [
+        {
+          "key": "teacher_id",
+          "type": "varchar",
+          "size": 36,
+          "required": true
+        },
+        {
+          "key": "generation",
+          "type": "integer",
+          "required": true,
+          "min": 1
+        },
+        {
+          "key": "holder",
+          "type": "varchar",
+          "size": 64,
+          "required": true
+        },
+        {
+          "key": "acquired_at",
+          "type": "datetime",
+          "required": true
+        },
+        {
+          "key": "expires_at",
+          "type": "datetime",
+          "required": true
+        },
+        {
+          "key": "released_at",
+          "type": "datetime",
+          "required": false
+        },
+        {
+          "key": "lease_key",
+          "type": "varchar",
+          "size": 60,
+          "required": true
+        }
+      ],
+      "indexes": [
+        {
+          "key": "by_teacher_generation",
+          "type": "key",
+          "columns": [
+            "teacher_id",
+            "generation"
+          ],
+          "orders": [
+            "ASC",
+            "ASC"
+          ]
+        },
+        {
+          "key": "unique_lease_key",
+          "type": "unique",
+          "columns": [
+            "lease_key"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        }
+      ]
+    },
+    {
+      "$id": "scheduling_issue",
+      "name": "scheduling_issue",
+      "enabled": true,
+      "rowSecurity": true,
+      "$permissions": [],
+      "columns": [
+        {
+          "key": "assignment_id",
+          "type": "varchar",
+          "size": 36,
+          "required": true
+        },
+        {
+          "key": "teacher_id",
+          "type": "varchar",
+          "size": 36,
+          "required": false
+        },
+        {
+          "key": "session_id",
+          "type": "varchar",
+          "size": 36,
+          "required": false
+        },
+        {
+          "key": "kind",
+          "type": "string",
+          "format": "enum",
+          "elements": [
+            "teacher_conflict",
+            "outside_availability",
+            "holiday",
+            "no_home_location",
+            "no_slots",
+            "slot_shortfall",
+            "invalid_slot",
+            "generation_error",
+            "teacher_inactive"
+          ],
+          "required": true
+        },
+        {
+          "key": "slot_ref",
+          "type": "varchar",
+          "size": 40,
+          "required": false
+        },
+        {
+          "key": "detail",
+          "type": "varchar",
+          "size": 500,
+          "required": false
+        },
+        {
+          "key": "status",
+          "type": "string",
+          "format": "enum",
+          "elements": [
+            "open",
+            "resolved"
+          ],
+          "required": true
+        },
+        {
+          "key": "issue_key",
+          "type": "varchar",
+          "size": 120,
+          "required": false
+        },
+        {
+          "key": "resolved_at",
+          "type": "datetime",
+          "required": false
+        },
+        {
+          "key": "resolved_by_id",
+          "type": "varchar",
+          "size": 36,
+          "required": false
+        },
+        {
+          "key": "deleted_at",
+          "type": "datetime",
+          "required": false
+        }
+      ],
+      "indexes": [
+        {
+          "key": "by_assignment",
+          "type": "key",
+          "columns": [
+            "assignment_id",
+            "status"
+          ],
+          "orders": [
+            "ASC",
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_status_kind",
+          "type": "key",
+          "columns": [
+            "status",
+            "kind"
+          ],
+          "orders": [
+            "ASC",
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_teacher",
+          "type": "key",
+          "columns": [
+            "teacher_id"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_session",
+          "type": "key",
+          "columns": [
+            "session_id"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_resolved_by",
+          "type": "key",
+          "columns": [
+            "resolved_by_id"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        },
+        {
+          "key": "unique_issue_key",
+          "type": "unique",
+          "columns": [
+            "issue_key"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        }
+      ]
+    }
+  ],
+  "meta": {
+    "teacher_schedule_lease": {
+      "deletion": "hard",
+      "note": "Row-based lease that serialises session creation and rescheduling per teacher (Appwrite has no advisory locks). One row per (teacher, generation); the row id and lease_key are derived from teacher and generation, so creating generation N+1 is an atomic claim (409 for the loser). A holder is valid only while its generation is the highest for the teacher and expires_at is in the future (fencing); a stalled holder finds a higher generation and stops. released_at is set on release. Holders delete rows older than the previous generation, so a teacher keeps one or two rows. Operational data, not business data: hard delete, no soft delete, no retention period."
+    },
+    "scheduling_issue": {
+      "deletion": "soft",
+      "note": "Things the generator will not decide alone (S01 #93): a teacher clash, a slot outside the teacher's availability, a public holiday, a missing home location, missing or invalid preferred slots, fewer preferred slots than the plan's sessions per week, an inactive teacher, or an unexpected error. issue_key = '<kind>:<assignment_id>:<slot_ref or *>' while open and not soft-deleted, so re-running the job never duplicates an open issue; resolving or soft-deleting nulls it. Surfaced in the admin queue (M06/W-tickets)."
+    }
+  },
+  "relations": [
+    {
+      "from": "teacher_schedule_lease.teacher_id",
+      "to": "teacher_profile"
+    },
+    {
+      "from": "scheduling_issue.assignment_id",
+      "to": "assignment"
+    },
+    {
+      "from": "scheduling_issue.teacher_id",
+      "to": "teacher_profile"
+    },
+    {
+      "from": "scheduling_issue.session_id",
+      "to": "session"
+    },
+    {
+      "from": "scheduling_issue.resolved_by_id",
+      "to": "user_profile"
+    }
+  ]
+}

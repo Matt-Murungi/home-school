@@ -35,6 +35,9 @@ from .notifications import dispatch as notification_dispatch_job
 from .observability import ErrorReporter, build_reporter, report_once
 from .permissions.wiring import wire_permissions
 from .repository import Repository, build_repository
+from .scheduling import job as scheduling_job
+from .scheduling.api import router as scheduling_router
+from .scheduling.generator import build_generator
 from .settings import Settings, load_settings
 from .travel import jobs as travel_jobs
 from .travel.factory import build_travel_service
@@ -53,6 +56,7 @@ def create_app(
     repository: Repository | None = None,
     verifier: TokenVerifier | None = None,
     runner: Runner | None = None,
+    scheduler=None,
     alert_sink: AlertSink | None = None,
     reporter: ErrorReporter | None = None,
     otp_service=None,
@@ -127,8 +131,13 @@ def create_app(
     )
     otp_jobs.bind(app.state.repository)
     notification_dispatch_job.bind(app.state.notifications)
+    app.state.scheduler = scheduler or build_generator(
+        settings, app.state.repository, alert=alert_sink
+    )
+    scheduling_job.bind(app.state.scheduler, budget_s=settings.session_gen_chunk_budget_s)
     errors.install(app)
     app.include_router(jobs_router)
+    app.include_router(scheduling_router)
     app.include_router(otp_router)
     app.include_router(audit_events_router)
     app.include_router(catalogue_router)

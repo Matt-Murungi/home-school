@@ -44,6 +44,11 @@ M01 tables that predate the rule and still need the derived-key treatment (follo
 
 `schema/sessions.json`; `session_rules.py` is the executable reference (SR 7.4 `ALLOWED_TRANSITIONS`, derived-key builders, overlap check-then-insert) that the core service (W01 #97) ports. Session status transitions and teacher overlap are enforced by the core service, not the schema (no exclusion constraints, ADR 0002/0012); the schema holds the backstop `unique_teacher_slot`. That unique `teacher_slot_key` only catches the same start: two overlapping sessions with different starts can both insert, so W01 (#97) / S01 (#93) must serialise writes per teacher or re-check after insert. Sessions with `scheduled_end_at <= scheduled_start_at` are rejected by the service (`session_rules.InvalidSession`).
 
+
+### Session generation (S01 #93)
+
+S01 closes the residual overlap risk above in the core service (`services/core/src/hs_core/scheduling/`, see its README section): every session create or reschedule runs under a per-teacher row lease (`teacher_schedule_lease`, `scheduling.json`; Appwrite has no advisory locks, so a lease generation is claimed by creating a row with a deterministic id and a loser gets 409) and re-checks after the insert, rolling the later-created overlapping session back (soft delete). `session` gains `slot_ref` (`<ISO weekday>-<start minute>:<Kampala date>`), the unique derived `generation_key` (`<assignment_id>:<slot_ref>`, kept on cancelled/void/no_show rows so they are never regenerated, nulled by soft delete, recomputed on restore), `is_trial` and `overridden`. `scheduling_issue` holds what the generator will not decide alone (teacher clash, outside availability, holiday, missing location or slots, errors). `session_rules.py` stays the readable reference; the core service ports it (`hs_core.scheduling.rules`) and a test proves equivalence, because `appwrite/` is not a core dependency.
+
 ## Catalogue, logs and assessments (M03)
 
 `schema/catalogue.json`, `records.json`, `assessments.json`; `catalogue_rules.py` is the executable reference the core service ports (K02-K04 curator tools, session-log and question-bank services).

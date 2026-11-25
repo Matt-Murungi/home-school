@@ -90,6 +90,10 @@ Which variable exists in which environment, what kind it is and where it lives. 
 | `OTP_PHONE_REQUESTS_PER_HOUR` | config | core-service | 5 | 5 | 5 | fly_env |
 | `OTP_RESEND_COOLDOWN_S` | config | core-service | 30 | 30 | 30 | fly_env |
 | `OTP_TTL_S` | config | core-service | 300 | 300 | 300 | fly_env |
+| `SESSION_GEN_CHUNK_BUDGET_S` | config | core-service | 6 | 6 | 6 | fly_env |
+| `SESSION_GEN_HORIZON_DAYS` | config | core-service | 28 | 28 | 28 | fly_env |
+| `SESSION_GEN_LEASE_TTL_S` | config | core-service | 30 | 30 | 30 | fly_env |
+| `SESSION_GEN_LOCK_WAIT_S` | config | core-service | 3 | 3 | 3 | fly_env |
 | `TRAVEL_CACHE_TTL_DAYS` | config | core-service | 7 | 7 | 7 | fly_env |
 | `TRAVEL_DAILY_ELEMENT_BUDGET` | config | core-service | 1000 | 1000 | 1000 | fly_env |
 | `TRAVEL_ELEMENT_COST_MICRO_USD` | config | core-service | 10000 | 10000 | 10000 | fly_env |

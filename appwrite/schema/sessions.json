@@ -636,6 +636,30 @@
           "required": false
         },
         {
+          "key": "slot_ref",
+          "type": "varchar",
+          "size": 40,
+          "required": false
+        },
+        {
+          "key": "generation_key",
+          "type": "varchar",
+          "size": 100,
+          "required": false
+        },
+        {
+          "key": "is_trial",
+          "type": "boolean",
+          "required": false,
+          "default": false
+        },
+        {
+          "key": "overridden",
+          "type": "boolean",
+          "required": false,
+          "default": false
+        },
+        {
           "key": "deleted_at",
           "type": "datetime",
           "required": false
@@ -723,6 +747,16 @@
           "type": "unique",
           "columns": [
             "teacher_slot_key"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        },
+        {
+          "key": "unique_generation_key",
+          "type": "unique",
+          "columns": [
+            "generation_key"
           ],
           "orders": [
             "ASC"
@@ -1111,7 +1145,7 @@
     },
     "session": {
       "deletion": "soft",
-      "note": "Status is an enum of exactly the SR 7.4 states; allowed transitions are enforced by the core service, not the schema (reference table: appwrite/session_rules.py ALLOWED_TRANSITIONS). Overlap rule: Appwrite has no exclusion constraint, so the core service checks the teacher's sessions for time overlap in the write path (session_rules.create_session) and the unique index on teacher_slot_key ('<teacher_id>|<UTC start>' while the session holds the slot, null for cancelled/no_show/void/soft-deleted) is the backstop for concurrent requests with the same start. Deviation from the ticket wording: derived key instead of raw (teacher_id, scheduled_start_at) so a cancelled session does not block re-booking the slot (soft-delete/unique convention). Substitute: a NEW session row for the same slot, is_substitute true, substitute_for_session_id = the session the teacher cancelled, assignment_id null. Indexes: by_teacher_day (teacher sessions by day), by_child_period (child sessions by period), by_status_changed (auto-confirmation job). Residual risk: the unique teacher_slot_key only catches the same start; two overlapping sessions with different starts can both insert, so the core service (W01 #97 / S01 #93) must serialise writes per teacher or re-check after insert."
+      "note": "Status is an enum of exactly the SR 7.4 states; allowed transitions are enforced by the core service, not the schema (reference table: appwrite/session_rules.py ALLOWED_TRANSITIONS). Overlap rule: Appwrite has no exclusion constraint, so the core service checks the teacher's sessions for time overlap in the write path (session_rules.create_session) and the unique index on teacher_slot_key ('<teacher_id>|<UTC start>' while the session holds the slot, null for cancelled/no_show/void/soft-deleted) is the backstop for concurrent requests with the same start. Deviation from the ticket wording: derived key instead of raw (teacher_id, scheduled_start_at) so a cancelled session does not block re-booking the slot (soft-delete/unique convention). Substitute: a NEW session row for the same slot, is_substitute true, substitute_for_session_id = the session the teacher cancelled, assignment_id null. Indexes: by_teacher_day (teacher sessions by day), by_child_period (child sessions by period), by_status_changed (auto-confirmation job). Residual risk: the unique teacher_slot_key only catches the same start; two overlapping sessions with different starts can both insert, so the core service (W01 #97 / S01 #93) must serialise writes per teacher or re-check after insert. S01 (#93) generation identity: slot_ref = '<ISO weekday>-<start minute>:<Africa/Kampala local date>' (never changes, even if the session is rescheduled); generation_key = '<assignment_id>:<slot_ref>', a derived unique key that stays set while the row exists (cancelled, no_show and void rows keep it, so the nightly job never recreates them) and is nulled only by soft delete (cancel_future, rollback after a lost overlap race), so the slot can be generated again. Restore recomputes it (hs_core.scheduling.rules.restore_session_patch). is_trial marks the first session of a trial pairing (MAT-6). overridden = a parent/teacher reschedule moved the session: the generator never prunes or moves it."
     },
     "session_checkin": {
       "deletion": "immutable",

@@ -5674,6 +5674,234 @@
       ]
     },
     {
+      "$id": "teacher_schedule_lease",
+      "databaseId": "main",
+      "name": "teacher_schedule_lease",
+      "enabled": true,
+      "rowSecurity": true,
+      "$permissions": [],
+      "columns": [
+        {
+          "key": "teacher_id",
+          "type": "varchar",
+          "size": 36,
+          "required": true
+        },
+        {
+          "key": "generation",
+          "type": "integer",
+          "required": true,
+          "min": 1
+        },
+        {
+          "key": "holder",
+          "type": "varchar",
+          "size": 64,
+          "required": true
+        },
+        {
+          "key": "acquired_at",
+          "type": "datetime",
+          "required": true
+        },
+        {
+          "key": "expires_at",
+          "type": "datetime",
+          "required": true
+        },
+        {
+          "key": "released_at",
+          "type": "datetime",
+          "required": false
+        },
+        {
+          "key": "lease_key",
+          "type": "varchar",
+          "size": 60,
+          "required": true
+        }
+      ],
+      "indexes": [
+        {
+          "key": "by_teacher_generation",
+          "type": "key",
+          "columns": [
+            "teacher_id",
+            "generation"
+          ],
+          "orders": [
+            "ASC",
+            "ASC"
+          ]
+        },
+        {
+          "key": "unique_lease_key",
+          "type": "unique",
+          "columns": [
+            "lease_key"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        }
+      ]
+    },
+    {
+      "$id": "scheduling_issue",
+      "databaseId": "main",
+      "name": "scheduling_issue",
+      "enabled": true,
+      "rowSecurity": true,
+      "$permissions": [],
+      "columns": [
+        {
+          "key": "assignment_id",
+          "type": "varchar",
+          "size": 36,
+          "required": true
+        },
+        {
+          "key": "teacher_id",
+          "type": "varchar",
+          "size": 36,
+          "required": false
+        },
+        {
+          "key": "session_id",
+          "type": "varchar",
+          "size": 36,
+          "required": false
+        },
+        {
+          "key": "kind",
+          "type": "string",
+          "format": "enum",
+          "elements": [
+            "teacher_conflict",
+            "outside_availability",
+            "holiday",
+            "no_home_location",
+            "no_slots",
+            "slot_shortfall",
+            "invalid_slot",
+            "generation_error",
+            "teacher_inactive"
+          ],
+          "required": true
+        },
+        {
+          "key": "slot_ref",
+          "type": "varchar",
+          "size": 40,
+          "required": false
+        },
+        {
+          "key": "detail",
+          "type": "varchar",
+          "size": 500,
+          "required": false
+        },
+        {
+          "key": "status",
+          "type": "string",
+          "format": "enum",
+          "elements": [
+            "open",
+            "resolved"
+          ],
+          "required": true
+        },
+        {
+          "key": "issue_key",
+          "type": "varchar",
+          "size": 120,
+          "required": false
+        },
+        {
+          "key": "resolved_at",
+          "type": "datetime",
+          "required": false
+        },
+        {
+          "key": "resolved_by_id",
+          "type": "varchar",
+          "size": 36,
+          "required": false
+        },
+        {
+          "key": "deleted_at",
+          "type": "datetime",
+          "required": false
+        }
+      ],
+      "indexes": [
+        {
+          "key": "by_assignment",
+          "type": "key",
+          "columns": [
+            "assignment_id",
+            "status"
+          ],
+          "orders": [
+            "ASC",
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_status_kind",
+          "type": "key",
+          "columns": [
+            "status",
+            "kind"
+          ],
+          "orders": [
+            "ASC",
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_teacher",
+          "type": "key",
+          "columns": [
+            "teacher_id"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_session",
+          "type": "key",
+          "columns": [
+            "session_id"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_resolved_by",
+          "type": "key",
+          "columns": [
+            "resolved_by_id"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        },
+        {
+          "key": "unique_issue_key",
+          "type": "unique",
+          "columns": [
+            "issue_key"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        }
+      ]
+    },
+    {
       "$id": "plan",
       "databaseId": "main",
       "name": "plan",
@@ -6313,6 +6541,30 @@
           "required": false
         },
         {
+          "key": "slot_ref",
+          "type": "varchar",
+          "size": 40,
+          "required": false
+        },
+        {
+          "key": "generation_key",
+          "type": "varchar",
+          "size": 100,
+          "required": false
+        },
+        {
+          "key": "is_trial",
+          "type": "boolean",
+          "required": false,
+          "default": false
+        },
+        {
+          "key": "overridden",
+          "type": "boolean",
+          "required": false,
+          "default": false
+        },
+        {
           "key": "deleted_at",
           "type": "datetime",
           "required": false
@@ -6400,6 +6652,16 @@
           "type": "unique",
           "columns": [
             "teacher_slot_key"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        },
+        {
+          "key": "unique_generation_key",
+          "type": "unique",
+          "columns": [
+            "generation_key"
           ],
           "orders": [
             "ASC"

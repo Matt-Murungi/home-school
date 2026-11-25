@@ -15,6 +15,7 @@ from ..auth_otp.jobs import otp_cleanup
 from ..notifications.dispatch import notification_dispatch
 from ..permissions.jobs import address_revoke, permission_audit, permission_reconcile
 from ..travel.jobs import travel_cache_refresh
+from ..scheduling.job import session_generate
 from .handlers import heartbeat
 from .model import KAMPALA, JobSpec, Schedule
 
@@ -84,5 +85,16 @@ JOBS: list[JobSpec] = [
         max_attempts=3,
         catch_up=timedelta(hours=1),
         timeout=timedelta(seconds=15),
+    ),
+    # S01: extend every active subscription's sessions to the horizon (default 28 days), 01:00
+    # Kampala.
+    # Chunked (one page of subscriptions per attempt, 6 s budget), idempotent per (assignment, slot,
+    # local date).
+    JobSpec(
+        "session-generate",
+        session_generate,
+        schedule=Schedule(timedelta(days=1), anchor=datetime(2026, 1, 1, 1, 0, tzinfo=KAMPALA)),
+        max_attempts=3,
+        catch_up=timedelta(days=1),
     ),
 ]
