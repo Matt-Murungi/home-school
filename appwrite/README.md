@@ -12,7 +12,7 @@ Appwrite project definition for the three Cloud projects (development, staging, 
 
 | File | What |
 |---|---|
-| `schema/*.json` | **Source of truth for tables**: one file per domain (`_base`, `core` (M01), later `catalogue`, `scheduling`, ...). A ticket edits only its own file. Format and rules in `schema_build.py`. |
+| `schema/*.json` | **Source of truth for tables**: one file per domain (`_base`, `core` (M01), `sessions` (M02), later `catalogue`, ...). A ticket edits only its own file. Format and rules in `schema_build.py`. |
 | `schema_build.py` | `--check` (default, also in `make lint`): validates every table (row security, no public/client-write permissions, field types and sizes, FK indexes, deletion policy per SR 5.5, UTC and integer-money naming rules) and fails if generated files are stale. `--write` regenerates them. |
 | `appwrite.config.json` | Appwrite CLI format. The `tables` array is **generated** from `schema/*.json` (never edit it by hand); database, bucket `teacher-docs` and functions (F04 `job-tick`) are hand-edited. |
 | `diff_live.py` | `python3 diff_live.py <snapshot.json> [--only a,b] [--alias repo=live]`: offline report of repo schema vs a read-only live structure snapshot (names and structure only). Snapshots are never committed. |
@@ -32,6 +32,16 @@ Appwrite project definition for the three Cloud projects (development, staging, 
 - `soft` tables set `deleted_at` (the row is hidden, not removed); the retention job later hard-deletes soft-deleted rows when the retention period ends. `history` tables (`role_assignment`) keep revoked rows with `revoked_at` until retention. `immutable` tables (`consent_record`, `policy_acceptance`) are never updated or soft-deleted; a child's consent rows are removed with the child under the retention policy, so they meet DP-6 without a delete path for anyone else.
 - **What is enforced today:** `consent_record` and `policy_acceptance` have no client write permission (row security, empty table permissions; checked by `schema_build.py`). **Not enforced yet:** the core service's own key can still update/delete them because the F03 `Repository` has no per-table guard. A consent/policy repository wrapper exposing only create/list/get (update/delete raise) is a follow-up for M05/M06, together with the permission audit.
 - Overlapping `availability_slot` rows are allowed by the schema; the core service validates and merges them.
+
+## Soft delete and unique values (convention for ALL domains, decided in M02)
+
+Appwrite unique indexes also see soft-deleted rows, so a soft-deleted row would block re-creating the same value. **Rule:** on a `soft` table every unique index is over derived, optional `*_key` columns (varchar, not required), e.g. `active_key = "<child_id>:<subscription_id>"` while the row is live. The core service sets every unique `*_key` column to `null` when it soft-deletes the row (`schema_build.soft_delete_patch(table, now)` builds that update) and whenever the row stops holding the value (offer answered, assignment ended, session cancelled). NULLs never collide in a unique index. `immutable`, `history` and `join` tables are never soft-deleted and may use natural unique columns. `schema_build.py --check` enforces it (`soft_unique_violations`): a unique index on a soft table over a non-`*_key` or required column fails. Tests: `appwrite/tests/test_sessions_schema.py::SoftDeleteUniqueRule`.
+
+M01 tables that predate the rule and still need the derived-key treatment (follow-up, listed in `schema_build.SOFT_UNIQUE_LEGACY`; `core.json` untouched): `user_profile` (`unique_phone`, `unique_email`), `parent_profile` (`unique_user`), `teacher_profile` (`unique_user`), `zone` (`unique_name`), `teacher_approval` (`unique_teacher_curriculum_level`). Until then a soft-deleted row must be restored or purged by the retention job before the value can be reused. `guardian_link`, `home_location` and `role_assignment` already follow the rule.
+
+## Sessions domain (M02)
+
+`schema/sessions.json`; `session_rules.py` is the executable reference (SR 7.4 `ALLOWED_TRANSITIONS`, derived-key builders, overlap check-then-insert) that the core service (W01 #97) ports. Session status transitions and teacher overlap are enforced by the core service, not the schema (no exclusion constraints, ADR 0002/0012); the schema holds the backstop `unique_teacher_slot`.
 
 ## CI sequence (wired by F07 #33; not run from here)
 

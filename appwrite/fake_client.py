@@ -1,8 +1,15 @@
 """In-memory stand-in for Appwrite, implementing `migrate.AppwriteClient` (tests only; no network)."""
 
+import itertools
+import threading
+
 from migrate import AppwriteClient, SchemaDrift, column_drift, index_drift, table_drift
 
 MIGRATION_TABLE = "schema_migration"
+
+
+class UniqueViolation(ValueError):
+    """What Appwrite answers (409) when a row would duplicate the values of a unique index."""
 
 
 class FakeAppwriteClient(AppwriteClient):
@@ -21,6 +28,10 @@ class FakeAppwriteClient(AppwriteClient):
         self.slept, self._clock = [], 0  # virtual clock: sleep() advances it, so timeouts are testable without waiting
         self._rows = []
         self.log = []
+        self.rows = {}  # table -> {row id: row}; only created through create_row/update_row
+        self.last_query_index = None
+        self._row_lock = threading.RLock()  # Appwrite checks unique indexes atomically per write
+        self._row_ids = itertools.count(1)
         self.specs = {}  # table -> {"rowSecurity", "$permissions", "columns": {key: spec}, "indexes": {key: spec}} for ensure_table
 
     def ensure_migration_table(self):
@@ -122,3 +133,71 @@ class FakeAppwriteClient(AppwriteClient):
         if columns_added or indexes_added:
             self.log.append(f"ensure_table:{name}")
         return {"created": created, "columns_added": columns_added, "indexes_added": indexes_added}
+
+    # --- rows (tests only): enough of Appwrite's row semantics to prove unique-index backstops ---------------------------
+    def _check_row(self, table, data):
+        have = self.specs[table]["columns"]
+        for k, v in data.items():
+            if k.startswith("$"):
+                continue
+            c = have.get(k)
+            if c is None:
+                raise ValueError(f"{table}.{k}: unknown column")
+            if v is None:
+                if c.get("required"):
+                    raise ValueError(f"{table}.{k}: required column cannot be null")
+                continue
+            if c.get("format") == "enum" and v not in c["elements"]:
+                raise ValueError(f"{table}.{k}: {v!r} is not one of {c['elements']}")
+            if c["type"] == "integer" and (isinstance(v, bool) or not isinstance(v, int)):
+                raise ValueError(f"{table}.{k}: integer expected")
+            if c["type"] == "boolean" and not isinstance(v, bool):
+                raise ValueError(f"{table}.{k}: boolean expected")
+            if c["type"] == "varchar" and (not isinstance(v, str) or len(v) > c["size"]):
+                raise ValueError(f"{table}.{k}: string of at most {c['size']} characters expected")
+
+    def _check_unique(self, table, row, ignore_id=None):
+        for i in self.specs[table]["indexes"].values():
+            if i["type"] != "unique":
+                continue
+            key = tuple(row.get(c) for c in i["columns"])
+            if any(v is None for v in key):  # MariaDB/Appwrite: NULLs never collide
+                continue
+            for other in self.rows[table].values():
+                if other["$id"] != ignore_id and tuple(other.get(c) for c in i["columns"]) == key:
+                    raise UniqueViolation(f"{table}.{i['key']}: a row with these values already exists")
+
+    def create_row(self, table, data, row_id=None):
+        with self._row_lock:
+            self._check_row(table, data)
+            missing = [k for k, c in self.specs[table]["columns"].items() if c.get("required") and data.get(k) is None]
+            if missing:
+                raise ValueError(f"{table}: required columns missing: {missing}")
+            row = dict(data)
+            row["$id"] = row_id or f"r{next(self._row_ids)}"
+            rows = self.rows.setdefault(table, {})
+            if row["$id"] in rows:
+                raise UniqueViolation(f"{table}: row id {row['$id']} already exists")
+            self._check_unique(table, row)
+            rows[row["$id"]] = row
+            return dict(row)
+
+    def update_row(self, table, row_id, patch):
+        with self._row_lock:
+            self._check_row(table, patch)
+            row = {**self.rows[table][row_id], **patch}
+            self._check_unique(table, row, ignore_id=row_id)
+            self.rows[table][row_id] = row
+            return dict(row)
+
+    def get_row(self, table, row_id):
+        return dict(self.rows[table][row_id])
+
+    def list_rows(self, table, **equals):
+        """Equality filters; like Appwrite, a query needs an index whose first column is filtered."""
+        with self._row_lock:
+            idx = next((i for i in self.specs[table]["indexes"].values() if i["columns"][0] in equals), None)
+            if equals and idx is None:
+                raise ValueError(f"{table}: no index for query on {sorted(equals)}")
+            self.last_query_index = idx["key"] if idx else None
+            return [dict(r) for r in self.rows.get(table, {}).values() if all(r.get(k) == v for k, v in equals.items())]
