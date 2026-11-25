@@ -147,6 +147,23 @@ class Settings(BaseSettings):
     notify_retry_base_s: int = 60
     notify_lease_s: int = 120
     notify_escalate_after_min: int = 15
+    # K01 catalogue read API. Published versions never change: a year, immutable.
+    catalogue_immutable_max_age_s: int = 31536000
+    catalogue_current_max_age_s: int = 60  # pointers: current version, curricula, version lists
+    catalogue_bundle_max_bytes: int = 1048576  # hard cap of one tree/bundle response (uncompressed)
+    catalogue_cache_entries: int = 32  # in-process LRU of rendered published content
+
+    def _catalogue_problems(self) -> list[str]:
+        return [
+            f"{name.upper()} must be a positive number"
+            for name in (
+                "catalogue_immutable_max_age_s",
+                "catalogue_current_max_age_s",
+                "catalogue_bundle_max_bytes",
+                "catalogue_cache_entries",
+            )
+            if getattr(self, name) <= 0
+        ]
 
     # M06 audit log. Owner question 12: the safeguarding lead reads the whole audit log (default
     # on, as the ADR 0012 deviation); off = opsadmin and superadmin only.
@@ -165,6 +182,7 @@ class Settings(BaseSettings):
             if not lo <= getattr(self, name) <= hi:
                 out.append(f"{name.upper()} must be between {lo} and {hi}")
         out += self._travel_problems()
+        out += self._catalogue_problems()
         for name, (lo, hi) in NOTIFY_RANGES.items():
             if not lo <= getattr(self, name) <= hi:
                 out.append(f"{name.upper()} must be between {lo} and {hi}")
