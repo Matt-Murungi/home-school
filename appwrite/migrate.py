@@ -62,6 +62,85 @@ class AppwriteClient(ABC):
     @abstractmethod
     def index_statuses(self, table: str) -> dict[str, str]: ...
 
+    # Injectable clock for waits (tests replace them; the real adapter sleeps for real).
+    sleep = staticmethod(time.sleep)
+    now = staticmethod(time.monotonic)
+    wait_timeout = WAIT_TIMEOUT_S
+    wait_poll = POLL_S
+
+    def _poll(self) -> None:
+        """Hook called once per status poll by `wait_columns_available` (the fake advances its clock here)."""
+
+    def wait_columns_available(self, table: str, keys) -> None:
+        """Block until every named column of `table` is `available`. Appwrite processes columns asynchronously and rejects
+        an index over a column that is still `processing`. Fails fast on `failed`/`stuck`, and after `wait_timeout`."""
+        start, keys = self.now(), list(keys)
+        while True:
+            self._poll()
+            statuses = self.column_statuses(table)
+            failed = [f"{table}.{k} ({statuses[k]})" for k in keys if statuses.get(k) in ("failed", "stuck")]
+            if failed:
+                raise MigrationError(f"column failed: {', '.join(failed)}", 1)
+            pending = [f"{table}.{k} ({statuses.get(k, 'missing')})" for k in keys if statuses.get(k) != "available"]
+            if not pending:
+                return
+            if self.now() - start >= self.wait_timeout:
+                raise MigrationError(f"timed out after {self.wait_timeout}s waiting for: {', '.join(pending)}", 1)
+            self.sleep(self.wait_poll)
+
+    def ensure_table(self, spec: dict) -> dict:
+        """Create the table described by `spec` (Appwrite CLI table format, see schema_build.py) if missing, and any
+        missing columns and indexes. Convergent: never alters or drops. Waits for every column to be `available` before
+        creating indexes (timeout; fails fast on a failed column). Drift raises `SchemaDrift`: a column whose type, size,
+        required, array, enum elements, default (and min/max/format when the spec sets them) differ; an index whose type,
+        columns or orders differ; a table whose rowSecurity or table-level permissions differ. Returns
+        {"created": bool, "columns_added": [...], "indexes_added": [...]}. Used by schema migrations (M01+). Not abstract
+        so existing test doubles keep working."""
+        raise NotImplementedError(f"{type(self).__name__} does not implement ensure_table")
+
+
+class SchemaDrift(ValueError):
+    """An existing table, column or index differs from the spec; `ensure_table` never alters, so a human decides."""
+
+
+def _norm(value):
+    return None if value in (None, "") else value
+
+
+def column_drift(spec: dict, have: dict) -> list[str]:
+    """Differences between a spec column and an existing one (REST responses normalised by the caller). Empty = same."""
+    diffs = []
+    for k in ("type", "required", "array", "default"):
+        a, b = _norm(spec.get(k)), _norm(have.get(k))
+        if k in ("required", "array"):
+            a, b = bool(spec.get(k)), bool(have.get(k))
+        if a != b:
+            diffs.append(f"{k}: {b!r} -> {a!r}")
+    for k in ("size", "elements", "format", "min", "max"):  # only when the spec states them (Appwrite fills defaults)
+        if k in spec and _norm(spec[k]) != _norm(have.get(k)):
+            diffs.append(f"{k}: {have.get(k)!r} -> {spec[k]!r}")
+    return diffs
+
+
+def index_drift(spec: dict, have: dict) -> list[str]:
+    diffs = []
+    if spec["type"] != have.get("type"):
+        diffs.append(f"type: {have.get('type')!r} -> {spec['type']!r}")
+    if list(spec["columns"]) != list(have.get("columns", [])):
+        diffs.append(f"columns: {have.get('columns')!r} -> {spec['columns']!r}")
+    if have.get("orders") and [o.upper() for o in spec["orders"]] != [o.upper() for o in have["orders"]]:
+        diffs.append(f"orders: {have['orders']!r} -> {spec['orders']!r}")
+    return diffs
+
+
+def table_drift(spec: dict, have: dict) -> list[str]:
+    diffs = []
+    if bool(spec["rowSecurity"]) != bool(have.get("rowSecurity")):
+        diffs.append(f"rowSecurity: {have.get('rowSecurity')!r} -> {spec['rowSecurity']!r}")
+    if sorted(spec["$permissions"]) != sorted(have.get("$permissions", [])):
+        diffs.append("table permissions differ")
+    return diffs
+
 
 @dataclass
 class Migration:

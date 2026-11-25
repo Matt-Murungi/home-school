@@ -1,8 +1,14 @@
 {
-  "_comment": "Skeleton in Appwrite CLI format (appwrite push). Project id is injected per environment by CI (environments.json), never committed. Rules from ADR 0012: row security on, empty table-level permissions, no client create/update/delete. `sample_item` is a stand-in so CI can apply a sample schema change; M01-M04 replace it with the real tables (SR 5). Bucket `teacher-docs` follows ADR 0012 (owner + opsadmin only, set per file by the core service).",
+  "_comment": "The `tables` array is GENERATED from appwrite/schema/*.json by schema_build.py (edit the schema files, then run `python3 appwrite/schema_build.py --write`; tests fail when stale). Other sections are hand-edited. Project id is injected per environment by CI (environments.json), never committed. Rules from ADR 0012: row security on, empty table-level permissions, no client create/update/delete. Bucket `teacher-docs` follows ADR 0012 (owner + opsadmin only, set per file by the core service).",
   "projectId": "<set-by-ci>",
   "projectName": "<set-by-ci>",
-  "tablesDB": [{ "$id": "main", "name": "main", "enabled": true }],
+  "tablesDB": [
+    {
+      "$id": "main",
+      "name": "main",
+      "enabled": true
+    }
+  ],
   "tables": [
     {
       "$id": "schema_migration",
@@ -12,12 +18,41 @@
       "rowSecurity": true,
       "$permissions": [],
       "columns": [
-        { "key": "version", "type": "integer", "required": true },
-        { "key": "name", "type": "varchar", "size": 128, "required": true },
-        { "key": "checksum", "type": "varchar", "size": 64, "required": true },
-        { "key": "applied_at", "type": "datetime", "required": false }
+        {
+          "key": "version",
+          "type": "integer",
+          "required": true
+        },
+        {
+          "key": "name",
+          "type": "varchar",
+          "size": 128,
+          "required": true
+        },
+        {
+          "key": "checksum",
+          "type": "varchar",
+          "size": 64,
+          "required": true
+        },
+        {
+          "key": "applied_at",
+          "type": "datetime",
+          "required": false
+        }
       ],
-      "indexes": [{ "key": "unique_version", "type": "unique", "columns": ["version"], "orders": ["ASC"] }]
+      "indexes": [
+        {
+          "key": "unique_version",
+          "type": "unique",
+          "columns": [
+            "version"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        }
+      ]
     },
     {
       "$id": "sample_item",
@@ -27,11 +62,1263 @@
       "rowSecurity": true,
       "$permissions": [],
       "columns": [
-        { "key": "title", "type": "varchar", "size": 255, "required": true },
-        { "key": "status", "type": "varchar", "size": 32, "required": true, "default": "draft" },
-        { "key": "created_at", "type": "datetime", "required": true }
+        {
+          "key": "title",
+          "type": "varchar",
+          "size": 255,
+          "required": true
+        },
+        {
+          "key": "status",
+          "type": "varchar",
+          "size": 32,
+          "required": false,
+          "default": "draft"
+        },
+        {
+          "key": "created_at",
+          "type": "datetime",
+          "required": true
+        }
       ],
-      "indexes": [{ "key": "by_status_created", "type": "key", "columns": ["status", "created_at"], "orders": ["ASC", "DESC"] }]
+      "indexes": [
+        {
+          "key": "by_status_created",
+          "type": "key",
+          "columns": [
+            "status",
+            "created_at"
+          ],
+          "orders": [
+            "ASC",
+            "DESC"
+          ]
+        }
+      ]
+    },
+    {
+      "$id": "user_profile",
+      "databaseId": "main",
+      "name": "user_profile",
+      "enabled": true,
+      "rowSecurity": true,
+      "$permissions": [],
+      "columns": [
+        {
+          "key": "phone",
+          "type": "varchar",
+          "size": 16,
+          "required": false
+        },
+        {
+          "key": "email",
+          "type": "varchar",
+          "size": 254,
+          "required": false
+        },
+        {
+          "key": "email_verified_at",
+          "type": "datetime",
+          "required": false
+        },
+        {
+          "key": "name",
+          "type": "varchar",
+          "size": 120,
+          "required": false
+        },
+        {
+          "key": "status",
+          "type": "string",
+          "format": "enum",
+          "elements": [
+            "active",
+            "suspended",
+            "deactivated"
+          ],
+          "required": false,
+          "default": "active"
+        },
+        {
+          "key": "deleted_at",
+          "type": "datetime",
+          "required": false
+        }
+      ],
+      "indexes": [
+        {
+          "key": "unique_phone",
+          "type": "unique",
+          "columns": [
+            "phone"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        },
+        {
+          "key": "unique_email",
+          "type": "unique",
+          "columns": [
+            "email"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_status",
+          "type": "key",
+          "columns": [
+            "status"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        }
+      ]
+    },
+    {
+      "$id": "role_assignment",
+      "databaseId": "main",
+      "name": "role_assignment",
+      "enabled": true,
+      "rowSecurity": true,
+      "$permissions": [],
+      "columns": [
+        {
+          "key": "user_id",
+          "type": "varchar",
+          "size": 36,
+          "required": true
+        },
+        {
+          "key": "role",
+          "type": "string",
+          "format": "enum",
+          "elements": [
+            "parent",
+            "guardian",
+            "teacher",
+            "opsadmin",
+            "curator",
+            "safeguardinglead",
+            "superadmin"
+          ],
+          "required": true
+        },
+        {
+          "key": "granted_by_id",
+          "type": "varchar",
+          "size": 36,
+          "required": false
+        },
+        {
+          "key": "granted_at",
+          "type": "datetime",
+          "required": true
+        },
+        {
+          "key": "revoked_at",
+          "type": "datetime",
+          "required": false
+        },
+        {
+          "key": "revoke_reason",
+          "type": "varchar",
+          "size": 200,
+          "required": false
+        },
+        {
+          "key": "active_key",
+          "type": "varchar",
+          "size": 80,
+          "required": false
+        }
+      ],
+      "indexes": [
+        {
+          "key": "by_user",
+          "type": "key",
+          "columns": [
+            "user_id"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        },
+        {
+          "key": "unique_active_role",
+          "type": "unique",
+          "columns": [
+            "active_key"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_role",
+          "type": "key",
+          "columns": [
+            "role",
+            "revoked_at"
+          ],
+          "orders": [
+            "ASC",
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_granted_by",
+          "type": "key",
+          "columns": [
+            "granted_by_id"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        }
+      ]
+    },
+    {
+      "$id": "parent_profile",
+      "databaseId": "main",
+      "name": "parent_profile",
+      "enabled": true,
+      "rowSecurity": true,
+      "$permissions": [],
+      "columns": [
+        {
+          "key": "user_id",
+          "type": "varchar",
+          "size": 36,
+          "required": true
+        },
+        {
+          "key": "preferred_contact",
+          "type": "string",
+          "format": "enum",
+          "elements": [
+            "push",
+            "email",
+            "sms"
+          ],
+          "required": false,
+          "default": "push"
+        },
+        {
+          "key": "deleted_at",
+          "type": "datetime",
+          "required": false
+        }
+      ],
+      "indexes": [
+        {
+          "key": "unique_user",
+          "type": "unique",
+          "columns": [
+            "user_id"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        }
+      ]
+    },
+    {
+      "$id": "guardian_link",
+      "databaseId": "main",
+      "name": "guardian_link",
+      "enabled": true,
+      "rowSecurity": true,
+      "$permissions": [],
+      "columns": [
+        {
+          "key": "parent_id",
+          "type": "varchar",
+          "size": 36,
+          "required": true
+        },
+        {
+          "key": "user_id",
+          "type": "varchar",
+          "size": 36,
+          "required": true
+        },
+        {
+          "key": "status",
+          "type": "string",
+          "format": "enum",
+          "elements": [
+            "invited",
+            "active",
+            "revoked"
+          ],
+          "required": false,
+          "default": "invited"
+        },
+        {
+          "key": "grants",
+          "type": "varchar",
+          "size": 40,
+          "required": false,
+          "array": true
+        },
+        {
+          "key": "active_key",
+          "type": "varchar",
+          "size": 80,
+          "required": false
+        },
+        {
+          "key": "accepted_at",
+          "type": "datetime",
+          "required": false
+        },
+        {
+          "key": "revoked_at",
+          "type": "datetime",
+          "required": false
+        },
+        {
+          "key": "deleted_at",
+          "type": "datetime",
+          "required": false
+        }
+      ],
+      "indexes": [
+        {
+          "key": "by_parent",
+          "type": "key",
+          "columns": [
+            "parent_id"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_user",
+          "type": "key",
+          "columns": [
+            "user_id"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        },
+        {
+          "key": "unique_active_link",
+          "type": "unique",
+          "columns": [
+            "active_key"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        }
+      ]
+    },
+    {
+      "$id": "zone",
+      "databaseId": "main",
+      "name": "zone",
+      "enabled": true,
+      "rowSecurity": true,
+      "$permissions": [],
+      "columns": [
+        {
+          "key": "name",
+          "type": "varchar",
+          "size": 80,
+          "required": true
+        },
+        {
+          "key": "centroid_lat_e6",
+          "type": "integer",
+          "required": true,
+          "min": -90000000,
+          "max": 90000000
+        },
+        {
+          "key": "centroid_lng_e6",
+          "type": "integer",
+          "required": true,
+          "min": -180000000,
+          "max": 180000000
+        },
+        {
+          "key": "polygon_geojson",
+          "type": "text",
+          "required": false
+        },
+        {
+          "key": "is_cluster",
+          "type": "boolean",
+          "required": false,
+          "default": false
+        },
+        {
+          "key": "hard_to_fill",
+          "type": "boolean",
+          "required": false,
+          "default": false
+        },
+        {
+          "key": "deleted_at",
+          "type": "datetime",
+          "required": false
+        }
+      ],
+      "indexes": [
+        {
+          "key": "unique_name",
+          "type": "unique",
+          "columns": [
+            "name"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        }
+      ]
+    },
+    {
+      "$id": "home_location",
+      "databaseId": "main",
+      "name": "home_location",
+      "enabled": true,
+      "rowSecurity": true,
+      "$permissions": [],
+      "columns": [
+        {
+          "key": "parent_id",
+          "type": "varchar",
+          "size": 36,
+          "required": true
+        },
+        {
+          "key": "label",
+          "type": "varchar",
+          "size": 60,
+          "required": false
+        },
+        {
+          "key": "lat_e6",
+          "type": "integer",
+          "required": false,
+          "min": -90000000,
+          "max": 90000000
+        },
+        {
+          "key": "lng_e6",
+          "type": "integer",
+          "required": false,
+          "min": -180000000,
+          "max": 180000000
+        },
+        {
+          "key": "directions",
+          "type": "varchar",
+          "size": 2000,
+          "required": false
+        },
+        {
+          "key": "zone_id",
+          "type": "varchar",
+          "size": 36,
+          "required": false
+        },
+        {
+          "key": "is_default",
+          "type": "boolean",
+          "required": false,
+          "default": false
+        },
+        {
+          "key": "default_key",
+          "type": "varchar",
+          "size": 36,
+          "required": false
+        },
+        {
+          "key": "deleted_at",
+          "type": "datetime",
+          "required": false
+        }
+      ],
+      "indexes": [
+        {
+          "key": "by_parent",
+          "type": "key",
+          "columns": [
+            "parent_id"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_zone",
+          "type": "key",
+          "columns": [
+            "zone_id"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        },
+        {
+          "key": "unique_default",
+          "type": "unique",
+          "columns": [
+            "default_key"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        }
+      ]
+    },
+    {
+      "$id": "child",
+      "databaseId": "main",
+      "name": "child",
+      "enabled": true,
+      "rowSecurity": true,
+      "$permissions": [],
+      "columns": [
+        {
+          "key": "parent_id",
+          "type": "varchar",
+          "size": 36,
+          "required": true
+        },
+        {
+          "key": "name",
+          "type": "varchar",
+          "size": 120,
+          "required": true
+        },
+        {
+          "key": "date_of_birth",
+          "type": "varchar",
+          "size": 10,
+          "required": true
+        },
+        {
+          "key": "school",
+          "type": "varchar",
+          "size": 120,
+          "required": false
+        },
+        {
+          "key": "class_level",
+          "type": "varchar",
+          "size": 40,
+          "required": false
+        },
+        {
+          "key": "curriculum_id",
+          "type": "varchar",
+          "size": 36,
+          "required": false
+        },
+        {
+          "key": "catalogue_version_id",
+          "type": "varchar",
+          "size": 36,
+          "required": false
+        },
+        {
+          "key": "areas_of_concern",
+          "type": "varchar",
+          "size": 36,
+          "required": false,
+          "array": true
+        },
+        {
+          "key": "deleted_at",
+          "type": "datetime",
+          "required": false
+        }
+      ],
+      "indexes": [
+        {
+          "key": "by_parent",
+          "type": "key",
+          "columns": [
+            "parent_id"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_curriculum",
+          "type": "key",
+          "columns": [
+            "curriculum_id"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_catalogue_version",
+          "type": "key",
+          "columns": [
+            "catalogue_version_id"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        }
+      ]
+    },
+    {
+      "$id": "consent_record",
+      "databaseId": "main",
+      "name": "consent_record",
+      "enabled": true,
+      "rowSecurity": true,
+      "$permissions": [],
+      "columns": [
+        {
+          "key": "parent_id",
+          "type": "varchar",
+          "size": 36,
+          "required": true
+        },
+        {
+          "key": "child_id",
+          "type": "varchar",
+          "size": 36,
+          "required": true
+        },
+        {
+          "key": "accepted_by_id",
+          "type": "varchar",
+          "size": 36,
+          "required": true
+        },
+        {
+          "key": "document",
+          "type": "varchar",
+          "size": 60,
+          "required": true
+        },
+        {
+          "key": "version",
+          "type": "integer",
+          "required": true,
+          "min": 1
+        },
+        {
+          "key": "decision",
+          "type": "string",
+          "format": "enum",
+          "elements": [
+            "granted",
+            "withdrawn"
+          ],
+          "required": false,
+          "default": "granted"
+        },
+        {
+          "key": "app",
+          "type": "string",
+          "format": "enum",
+          "elements": [
+            "parent_app",
+            "teacher_app",
+            "admin_web"
+          ],
+          "required": false
+        },
+        {
+          "key": "accepted_at",
+          "type": "datetime",
+          "required": true
+        }
+      ],
+      "indexes": [
+        {
+          "key": "by_child_document",
+          "type": "key",
+          "columns": [
+            "child_id",
+            "document",
+            "accepted_at"
+          ],
+          "orders": [
+            "ASC",
+            "ASC",
+            "DESC"
+          ]
+        },
+        {
+          "key": "by_parent",
+          "type": "key",
+          "columns": [
+            "parent_id"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_accepted_by",
+          "type": "key",
+          "columns": [
+            "accepted_by_id"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        }
+      ]
+    },
+    {
+      "$id": "policy_acceptance",
+      "databaseId": "main",
+      "name": "policy_acceptance",
+      "enabled": true,
+      "rowSecurity": true,
+      "$permissions": [],
+      "columns": [
+        {
+          "key": "user_id",
+          "type": "varchar",
+          "size": 36,
+          "required": true
+        },
+        {
+          "key": "policy",
+          "type": "varchar",
+          "size": 60,
+          "required": true
+        },
+        {
+          "key": "version",
+          "type": "integer",
+          "required": true,
+          "min": 1
+        },
+        {
+          "key": "app",
+          "type": "string",
+          "format": "enum",
+          "elements": [
+            "parent_app",
+            "teacher_app",
+            "admin_web"
+          ],
+          "required": false
+        },
+        {
+          "key": "accepted_at",
+          "type": "datetime",
+          "required": true
+        }
+      ],
+      "indexes": [
+        {
+          "key": "unique_user_policy_version",
+          "type": "unique",
+          "columns": [
+            "user_id",
+            "policy",
+            "version"
+          ],
+          "orders": [
+            "ASC",
+            "ASC",
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_user",
+          "type": "key",
+          "columns": [
+            "user_id"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        }
+      ]
+    },
+    {
+      "$id": "teacher_profile",
+      "databaseId": "main",
+      "name": "teacher_profile",
+      "enabled": true,
+      "rowSecurity": true,
+      "$permissions": [],
+      "columns": [
+        {
+          "key": "user_id",
+          "type": "varchar",
+          "size": 36,
+          "required": true
+        },
+        {
+          "key": "tier_id",
+          "type": "varchar",
+          "size": 36,
+          "required": false
+        },
+        {
+          "key": "founding_flag",
+          "type": "boolean",
+          "required": false,
+          "default": false
+        },
+        {
+          "key": "gender",
+          "type": "string",
+          "format": "enum",
+          "elements": [
+            "female",
+            "male"
+          ],
+          "required": false
+        },
+        {
+          "key": "bio",
+          "type": "text",
+          "required": false
+        },
+        {
+          "key": "photo_file_id",
+          "type": "varchar",
+          "size": 36,
+          "required": false
+        },
+        {
+          "key": "status",
+          "type": "string",
+          "format": "enum",
+          "elements": [
+            "pending",
+            "active",
+            "suspended",
+            "deactivated"
+          ],
+          "required": false,
+          "default": "pending"
+        },
+        {
+          "key": "travel_radius_km",
+          "type": "integer",
+          "required": false,
+          "min": 0,
+          "max": 200
+        },
+        {
+          "key": "deleted_at",
+          "type": "datetime",
+          "required": false
+        }
+      ],
+      "indexes": [
+        {
+          "key": "unique_user",
+          "type": "unique",
+          "columns": [
+            "user_id"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_status",
+          "type": "key",
+          "columns": [
+            "status"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_tier",
+          "type": "key",
+          "columns": [
+            "tier_id"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        }
+      ]
+    },
+    {
+      "$id": "teacher_zone",
+      "databaseId": "main",
+      "name": "teacher_zone",
+      "enabled": true,
+      "rowSecurity": true,
+      "$permissions": [],
+      "columns": [
+        {
+          "key": "teacher_id",
+          "type": "varchar",
+          "size": 36,
+          "required": true
+        },
+        {
+          "key": "zone_id",
+          "type": "varchar",
+          "size": 36,
+          "required": true
+        }
+      ],
+      "indexes": [
+        {
+          "key": "unique_teacher_zone",
+          "type": "unique",
+          "columns": [
+            "teacher_id",
+            "zone_id"
+          ],
+          "orders": [
+            "ASC",
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_zone",
+          "type": "key",
+          "columns": [
+            "zone_id"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        }
+      ]
+    },
+    {
+      "$id": "teacher_document",
+      "databaseId": "main",
+      "name": "teacher_document",
+      "enabled": true,
+      "rowSecurity": true,
+      "$permissions": [],
+      "columns": [
+        {
+          "key": "teacher_id",
+          "type": "varchar",
+          "size": 36,
+          "required": true
+        },
+        {
+          "key": "type",
+          "type": "string",
+          "format": "enum",
+          "elements": [
+            "national_id",
+            "registration_certificate",
+            "academic_certificate",
+            "police_clearance",
+            "cv",
+            "other"
+          ],
+          "required": true
+        },
+        {
+          "key": "file_id",
+          "type": "varchar",
+          "size": 36,
+          "required": true
+        },
+        {
+          "key": "expiry_date",
+          "type": "varchar",
+          "size": 10,
+          "required": false
+        },
+        {
+          "key": "verification_status",
+          "type": "string",
+          "format": "enum",
+          "elements": [
+            "pending",
+            "verified",
+            "rejected"
+          ],
+          "required": false,
+          "default": "pending"
+        },
+        {
+          "key": "verified_by_id",
+          "type": "varchar",
+          "size": 36,
+          "required": false
+        },
+        {
+          "key": "verified_at",
+          "type": "datetime",
+          "required": false
+        },
+        {
+          "key": "notes",
+          "type": "text",
+          "required": false
+        },
+        {
+          "key": "deleted_at",
+          "type": "datetime",
+          "required": false
+        }
+      ],
+      "indexes": [
+        {
+          "key": "by_teacher_type",
+          "type": "key",
+          "columns": [
+            "teacher_id",
+            "type"
+          ],
+          "orders": [
+            "ASC",
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_status",
+          "type": "key",
+          "columns": [
+            "verification_status"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_expiry",
+          "type": "key",
+          "columns": [
+            "expiry_date"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_verified_by",
+          "type": "key",
+          "columns": [
+            "verified_by_id"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        }
+      ]
+    },
+    {
+      "$id": "teacher_approval",
+      "databaseId": "main",
+      "name": "teacher_approval",
+      "enabled": true,
+      "rowSecurity": true,
+      "$permissions": [],
+      "columns": [
+        {
+          "key": "teacher_id",
+          "type": "varchar",
+          "size": 36,
+          "required": true
+        },
+        {
+          "key": "curriculum_id",
+          "type": "varchar",
+          "size": 36,
+          "required": true
+        },
+        {
+          "key": "level_id",
+          "type": "varchar",
+          "size": 36,
+          "required": true
+        },
+        {
+          "key": "approved_by_id",
+          "type": "varchar",
+          "size": 36,
+          "required": false
+        },
+        {
+          "key": "approved_at",
+          "type": "datetime",
+          "required": false
+        },
+        {
+          "key": "deleted_at",
+          "type": "datetime",
+          "required": false
+        }
+      ],
+      "indexes": [
+        {
+          "key": "unique_teacher_curriculum_level",
+          "type": "unique",
+          "columns": [
+            "teacher_id",
+            "curriculum_id",
+            "level_id"
+          ],
+          "orders": [
+            "ASC",
+            "ASC",
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_curriculum_level",
+          "type": "key",
+          "columns": [
+            "curriculum_id",
+            "level_id"
+          ],
+          "orders": [
+            "ASC",
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_level",
+          "type": "key",
+          "columns": [
+            "level_id"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_approved_by",
+          "type": "key",
+          "columns": [
+            "approved_by_id"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        }
+      ]
+    },
+    {
+      "$id": "availability_slot",
+      "databaseId": "main",
+      "name": "availability_slot",
+      "enabled": true,
+      "rowSecurity": true,
+      "$permissions": [],
+      "columns": [
+        {
+          "key": "teacher_id",
+          "type": "varchar",
+          "size": 36,
+          "required": true
+        },
+        {
+          "key": "weekday",
+          "type": "integer",
+          "required": true,
+          "min": 1,
+          "max": 7
+        },
+        {
+          "key": "start_minute",
+          "type": "integer",
+          "required": true,
+          "min": 0,
+          "max": 1440
+        },
+        {
+          "key": "end_minute",
+          "type": "integer",
+          "required": true,
+          "min": 0,
+          "max": 1440
+        },
+        {
+          "key": "deleted_at",
+          "type": "datetime",
+          "required": false
+        }
+      ],
+      "indexes": [
+        {
+          "key": "by_teacher_weekday",
+          "type": "key",
+          "columns": [
+            "teacher_id",
+            "weekday"
+          ],
+          "orders": [
+            "ASC",
+            "ASC"
+          ]
+        }
+      ]
+    },
+    {
+      "$id": "availability_exception",
+      "databaseId": "main",
+      "name": "availability_exception",
+      "enabled": true,
+      "rowSecurity": true,
+      "$permissions": [],
+      "columns": [
+        {
+          "key": "teacher_id",
+          "type": "varchar",
+          "size": 36,
+          "required": true
+        },
+        {
+          "key": "starts_at",
+          "type": "datetime",
+          "required": true
+        },
+        {
+          "key": "ends_at",
+          "type": "datetime",
+          "required": true
+        },
+        {
+          "key": "reason",
+          "type": "varchar",
+          "size": 200,
+          "required": false
+        },
+        {
+          "key": "deleted_at",
+          "type": "datetime",
+          "required": false
+        }
+      ],
+      "indexes": [
+        {
+          "key": "by_teacher_start",
+          "type": "key",
+          "columns": [
+            "teacher_id",
+            "starts_at"
+          ],
+          "orders": [
+            "ASC",
+            "ASC"
+          ]
+        }
+      ]
     }
   ],
   "buckets": [
@@ -42,7 +1329,12 @@
       "fileSecurity": true,
       "$permissions": [],
       "maximumFileSize": 10485760,
-      "allowedFileExtensions": ["pdf", "jpg", "jpeg", "png"],
+      "allowedFileExtensions": [
+        "pdf",
+        "jpg",
+        "jpeg",
+        "png"
+      ],
       "compression": "none",
       "encryption": true,
       "antivirus": true
