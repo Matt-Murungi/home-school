@@ -109,6 +109,23 @@ jobs:
       - name: lint (command from packages.json)
         run: python3 scripts/run_packages.py lint --only docs
 
+  legal:
+    name: legal docs (processor register validator)
+    needs: changes
+    if: needs.changes.outputs.docs == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    env:
+      HS_PACKAGES: legal-docs
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: test (command from packages.json)
+        run: python3 scripts/run_packages.py test --only legal-docs
+      - name: lint (command from packages.json)
+        run: python3 scripts/run_packages.py lint --only legal-docs
+
   core:
     name: core service (uv, pytest, ruff)
     needs: changes
@@ -245,7 +262,7 @@ jobs:
     name: ci-ok
     # The single required check. Jobs skipped by the path filter count as fine; failed or cancelled do not.
     if: always()
-    needs: [changes, repo-checks, scripts, docs, core, momo, appwrite, ops, admin, flutter]
+    needs: [changes, repo-checks, scripts, docs, legal, core, momo, appwrite, ops, admin, flutter]
     runs-on: ubuntu-24.04
     timeout-minutes: 2
     steps:
