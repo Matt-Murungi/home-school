@@ -48,6 +48,10 @@ REASON_REQUIRED = frozenset(
         "tier.override",
         "payment.refund",
         "user.suspend",
+        # A03: a change of a STAFF role needs a reason; parent/guardian/teacher changes do not
+        # (sign-up grants them by itself).
+        "role.grant_staff",
+        "role.revoke_staff",
         "payout.approve",
         "ledger.manual_adjustment",
         "setting.update",

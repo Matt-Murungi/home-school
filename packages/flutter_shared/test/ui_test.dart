@@ -4,13 +4,25 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:home_school_shared/home_school_shared.dart';
 
-Widget app(AppSpec spec, {double textScale = 1, String initial = '/'}) =>
-    ProviderScope(
-      child: MediaQuery(
-        data: MediaQueryData(textScaler: TextScaler.linear(textScale)),
-        child: HsApp(router: buildAppRouter(spec, initialLocation: initial)),
+/// A03: protected routes need a session, so tests that open a tab are
+/// signed in as [roles] (default: the app's own role).
+Widget app(
+  AppSpec spec, {
+  double textScale = 1,
+  String initial = '/',
+  List<String>? roles,
+}) => ProviderScope(
+  overrides: [
+    if (roles != null || initial != '/')
+      authServiceProvider.overrideWithValue(
+        FakeAuthService()..signInAs(roles ?? [spec.id.wire]),
       ),
-    );
+  ],
+  child: MediaQuery(
+    data: MediaQueryData(textScaler: TextScaler.linear(textScale)),
+    child: HsApp(router: buildAppRouter(spec, initialLocation: initial)),
+  ),
+);
 
 void main() {
   testWidgets('parent boots to themed welcome screen', (t) async {

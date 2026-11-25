@@ -131,5 +131,19 @@
   "otpHelp": "Need help?",
   "otpHelpTitle": "No SMS arriving?",
   "otpHelpBody": "Check that your phone has signal and that the number is right. SMS can be delayed on busy networks. If nothing arrives after you resend the code, use a different number or contact support.",
-  "otpClose": "Close"
+  "otpClose": "Close",
+  "startLoading": "Loading",
+  "wrongAppTitleParent": "This is the parent app",
+  "wrongAppTitleTeacher": "This is the teacher app",
+  "wrongAppToParent": "Your account is a parent account. Please open the Home School parent app instead.",
+  "wrongAppToTeacher": "Your account is a teacher account. Please open the Home School teacher app instead.",
+  "wrongAppToAdmin": "Your account is a staff account. Staff sign in to the admin dashboard on the web, not in this app.",
+  "noAccessTitle": "No access with this account",
+  "noAccessBody": "This account can't use this app. Please contact support if you think this is a mistake.",
+  "signOut": "Sign out",
+  "suspendedTitle": "Your account is suspended",
+  "suspendedBody": "You can't use the app while your account is suspended. Please contact support to find out more.",
+  "suspendedBack": "Back",
+  "otpStaffAccount": "Staff accounts sign in to the admin dashboard on the web, not in this app.",
+  "otpRoleRevoked": "This account can't use this app. Please contact support."
 }

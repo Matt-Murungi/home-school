@@ -428,6 +428,90 @@ abstract class HsStrings {
   /// In en, this message translates to:
   /// **'Close'**
   String get otpClose;
+
+  /// No description provided for @startLoading.
+  ///
+  /// In en, this message translates to:
+  /// **'Loading'**
+  String get startLoading;
+
+  /// No description provided for @wrongAppTitleParent.
+  ///
+  /// In en, this message translates to:
+  /// **'This is the parent app'**
+  String get wrongAppTitleParent;
+
+  /// No description provided for @wrongAppTitleTeacher.
+  ///
+  /// In en, this message translates to:
+  /// **'This is the teacher app'**
+  String get wrongAppTitleTeacher;
+
+  /// No description provided for @wrongAppToParent.
+  ///
+  /// In en, this message translates to:
+  /// **'Your account is a parent account. Please open the Home School parent app instead.'**
+  String get wrongAppToParent;
+
+  /// No description provided for @wrongAppToTeacher.
+  ///
+  /// In en, this message translates to:
+  /// **'Your account is a teacher account. Please open the Home School teacher app instead.'**
+  String get wrongAppToTeacher;
+
+  /// No description provided for @wrongAppToAdmin.
+  ///
+  /// In en, this message translates to:
+  /// **'Your account is a staff account. Staff sign in to the admin dashboard on the web, not in this app.'**
+  String get wrongAppToAdmin;
+
+  /// No description provided for @noAccessTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'No access with this account'**
+  String get noAccessTitle;
+
+  /// No description provided for @noAccessBody.
+  ///
+  /// In en, this message translates to:
+  /// **'This account can\'t use this app. Please contact support if you think this is a mistake.'**
+  String get noAccessBody;
+
+  /// No description provided for @signOut.
+  ///
+  /// In en, this message translates to:
+  /// **'Sign out'**
+  String get signOut;
+
+  /// No description provided for @suspendedTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Your account is suspended'**
+  String get suspendedTitle;
+
+  /// No description provided for @suspendedBody.
+  ///
+  /// In en, this message translates to:
+  /// **'You can\'t use the app while your account is suspended. Please contact support to find out more.'**
+  String get suspendedBody;
+
+  /// No description provided for @suspendedBack.
+  ///
+  /// In en, this message translates to:
+  /// **'Back'**
+  String get suspendedBack;
+
+  /// No description provided for @otpStaffAccount.
+  ///
+  /// In en, this message translates to:
+  /// **'Staff accounts sign in to the admin dashboard on the web, not in this app.'**
+  String get otpStaffAccount;
+
+  /// No description provided for @otpRoleRevoked.
+  ///
+  /// In en, this message translates to:
+  /// **'This account can\'t use this app. Please contact support.'**
+  String get otpRoleRevoked;
 }
 
 class _HsStringsDelegate extends LocalizationsDelegate<HsStrings> {

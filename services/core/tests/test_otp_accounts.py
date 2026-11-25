@@ -62,13 +62,6 @@ def test_client_claim_alone_never_grants_a_privileged_label():
     assert not e.users.users
 
 
-def test_existing_staff_labels_are_kept_and_not_extended():
-    e = Env()
-    e.users.add(PHONE, labels=["opsadmin"])
-    res = sign_in(e, app="parent")
-    assert sorted(e.users.get(res.user_id).labels) == ["opsadmin", "parent"]
-
-
 def test_suspended_account_gets_no_token_even_with_the_right_code():
     e = Env()
     uid = e.users.add(PHONE, labels=["parent"], active=False)

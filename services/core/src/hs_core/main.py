@@ -18,7 +18,7 @@ from .audit.admin_events import RateLimiter
 from .audit.admin_events import router as audit_events_router
 from .audit.context import server_request_key_var
 from .auth import AppwriteJwtVerifier, Principal, TokenVerifier, current_principal, require_roles
-from .auth_otp import build_otp_service
+from .auth_otp import build_otp_service, build_user_directory
 from .auth_otp import jobs as otp_jobs
 from .auth_otp.api import client_ip
 from .auth_otp.api import router as otp_router
@@ -35,6 +35,10 @@ from .notifications import dispatch as notification_dispatch_job
 from .observability import ErrorReporter, build_reporter, report_once
 from .permissions.wiring import wire_permissions
 from .repository import Repository, build_repository
+from .roles import reconcile as role_reconcile_job
+from .roles.api import ActorLimiter
+from .roles.api import router as roles_router
+from .roles.factory import build_role_service, reconcile_policy
 from .settings import Settings, load_settings
 from .travel import jobs as travel_jobs
 from .travel.factory import build_travel_service
@@ -60,6 +64,7 @@ def create_app(
     catalogue_service=None,
     sms_sender=None,
     user_directory=None,
+    role_service=None,
     trust_proxy_ip: bool | None = None,
 ) -> FastAPI:
     settings = settings or load_settings()
@@ -107,8 +112,18 @@ def create_app(
         raw_repository, app.state.runner, alert_sink, settings
     )
     app.state.reporter = reporter or build_reporter(settings)
+    # One user directory serves the phone sign-in and the role service (same labels, A03).
+    app.state.user_directory = user_directory or build_user_directory(settings)
+    app.state.roles = role_service or build_role_service(
+        app.state.repository, app.state.user_directory, permissions=app.state.permissions
+    )
+    app.state.role_limiter = ActorLimiter(settings.role_changes_per_hour, app.state.roles.clock)
     app.state.otp = otp_service or build_otp_service(
-        settings, app.state.repository, sms_sender, user_directory
+        settings,
+        app.state.repository,
+        sms_sender,
+        app.state.user_directory,
+        roles=app.state.roles,
     )
     app.state.notifications = notification_service or build_notification_service(
         settings, app.state.repository, alert_sink, audit=TemplateAuditAdapter(app.state.audit)
@@ -126,12 +141,15 @@ def create_app(
         settings.hs_env != "dev" if trust_proxy_ip is None else trust_proxy_ip
     )
     otp_jobs.bind(app.state.repository)
+    _policy = reconcile_policy(settings)
+    role_reconcile_job.bind(lambda: (app.state.roles, alert_sink or LogAlertSink(), _policy))
     notification_dispatch_job.bind(app.state.notifications)
     errors.install(app)
     app.include_router(jobs_router)
     app.include_router(otp_router)
     app.include_router(audit_events_router)
     app.include_router(catalogue_router)
+    app.include_router(roles_router)
 
     @app.middleware("http")
     async def request_context(request: Request, call_next):

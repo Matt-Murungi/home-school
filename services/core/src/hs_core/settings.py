@@ -165,6 +165,13 @@ class Settings(BaseSettings):
             if getattr(self, name) <= 0
         ]
 
+    # Roles (A03): `role-reconcile` leaves rows younger than this alone (a grant in flight writes
+    # its row before its label); a staff label with no history row is only reported unless set.
+    role_reconcile_grace_s: int = 300
+    role_reconcile_remove_unrecorded_staff: bool = False
+    # Role-change endpoints: grants + revokes one actor may make per hour (per instance).
+    role_changes_per_hour: int = 60
+
     # M06 audit log. Owner question 12: the safeguarding lead reads the whole audit log (default
     # on, as the ADR 0012 deviation); off = opsadmin and superadmin only.
     audit_lead_blanket_read: bool = True
@@ -181,6 +188,10 @@ class Settings(BaseSettings):
         for name, (lo, hi) in OTP_RANGES.items():
             if not lo <= getattr(self, name) <= hi:
                 out.append(f"{name.upper()} must be between {lo} and {hi}")
+        if not 1 <= self.role_changes_per_hour <= 10000:
+            out.append("ROLE_CHANGES_PER_HOUR must be between 1 and 10000")
+        if not 30 <= self.role_reconcile_grace_s <= 86400:
+            out.append("ROLE_RECONCILE_GRACE_S must be between 30 and 86400")
         out += self._travel_problems()
         out += self._catalogue_problems()
         for name, (lo, hi) in NOTIFY_RANGES.items():

@@ -5,6 +5,7 @@ import 'auth_service.dart';
 import 'otp_api.dart';
 import 'otp_models.dart';
 import 'phone.dart';
+import 'roles.dart';
 import 'session_store.dart';
 
 /// The few Appwrite `Account` calls the adapter needs, so tests can fake them.
@@ -14,6 +15,18 @@ abstract interface class SessionGateway {
   Future<GatewaySession> extend(String sessionId);
   Future<void> deleteCurrent();
   void useSessionSecret(String secret);
+
+  /// The signed-in Appwrite account's role labels and status (A03). Throws
+  /// when offline or when the account cannot be read.
+  Future<GatewayAccount> account();
+}
+
+class GatewayAccount {
+  const GatewayAccount({required this.labels, this.active = true});
+  final List<String> labels;
+
+  /// Appwrite `status`: false = blocked.
+  final bool active;
 }
 
 class GatewaySession {
@@ -67,6 +80,12 @@ class SdkSessionGateway implements SessionGateway {
 
   @override
   void useSessionSecret(String secret) => _client.setSession(secret);
+
+  @override
+  Future<GatewayAccount> account() async {
+    final u = await _account.get();
+    return GatewayAccount(labels: List<String>.of(u.labels), active: u.status);
+  }
 }
 
 /// Appwrite Flutter SDK adapter. Compiled but never exercised against a live
@@ -91,6 +110,9 @@ class AppwriteAuthService implements AuthService {
   final SessionGateway _gateway;
   final SessionVault _vault;
   final DateTime Function() _now;
+
+  /// Bumped by [signOut]: a refresh that started before it must not save anything.
+  int _generation = 0;
 
   /// Sessions closer to expiry than this are extended on start and resume.
   final Duration refreshWindow;
@@ -121,6 +143,7 @@ class AppwriteAuthService implements AuthService {
 
   @override
   Future<void> signOut() async {
+    _generation++;
     await _vault.clear();
     try {
       await _gateway.deleteCurrent();
@@ -150,12 +173,35 @@ class AppwriteAuthService implements AuthService {
       if (e.code == 429) throw const OtpException(OtpFailure.rateLimited);
       throw const OtpException(OtpFailure.serverUnavailable);
     }
-    return _persist(s, maskPhone(phoneE164), isNew: token.isNewUser);
+    // The core service has just granted this app's role (and refused staff),
+    // so that is the best label guess if the account cannot be read right now.
+    final acct = await _readAccount(fallback: [_otp.role.name]);
+    return _persist(s, maskPhone(phoneE164), acct, isNew: token.isNewUser);
+  }
+
+  /// Fresh labels and status, or [fallback] / the cached values when offline.
+  Future<_Account> _readAccount({
+    required List<String> fallback,
+    StoredSession? stored,
+  }) async {
+    try {
+      final a = await _gateway.account();
+      return _Account(
+        cleanLabels(a.labels).toList(),
+        a.active ? AccountStatus.active : AccountStatus.suspended,
+      );
+    } on Exception {
+      return _Account(
+        cleanLabels(stored?.labels ?? fallback).toList(),
+        accountStatusFrom(stored?.status),
+      );
+    }
   }
 
   Future<AuthSession> _persist(
     GatewaySession s,
-    String? phoneMasked, {
+    String? phoneMasked,
+    _Account acct, {
     bool isNew = false,
   }) async {
     await _vault.save(
@@ -165,6 +211,8 @@ class AppwriteAuthService implements AuthService {
         expiresAt: s.expiresAt,
         phoneMasked: phoneMasked,
         secret: s.secret,
+        labels: acct.labels,
+        status: acct.status.name,
       ),
     );
     return AuthSession(
@@ -172,11 +220,14 @@ class AppwriteAuthService implements AuthService {
       phoneMasked: phoneMasked,
       expiresAt: s.expiresAt,
       isNewUser: isNew,
+      labels: acct.labels,
+      status: acct.status,
     );
   }
 
   @override
   Future<AuthSession?> refreshSession() async {
+    final gen = _generation;
     final stored = await _vault.load();
     if (stored == null) return null;
     if (!stored.expiresAt.isAfter(_now())) {
@@ -191,27 +242,42 @@ class AppwriteAuthService implements AuthService {
         await _vault.clear(); // revoked or expired server-side
         return null;
       }
+      if (gen != _generation) return null;
       if (s.expiresAt.difference(_now()) < refreshWindow) {
         s = await _gateway.extend(s.id);
       }
-      return await _persist(s, stored.phoneMasked);
+      final acct = await _readAccount(
+        fallback: [_otp.role.name],
+        stored: stored,
+      );
+      // Signed out while this refresh was in flight: save nothing.
+      if (gen != _generation) return null;
+      return await _persist(s, stored.phoneMasked, acct);
     } on AppwriteException catch (e) {
       if (e.code == 401) {
         await _vault.clear();
         return null;
       }
       // Offline or a server hiccup: keep the stored session, stay signed in.
-      return AuthSession(
-        userId: stored.userId,
-        phoneMasked: stored.phoneMasked,
-        expiresAt: stored.expiresAt,
-      );
+      return _cached(stored);
     } on Exception {
-      return AuthSession(
-        userId: stored.userId,
-        phoneMasked: stored.phoneMasked,
-        expiresAt: stored.expiresAt,
-      );
+      return _cached(stored);
     }
   }
+
+  /// The stored session with its cached roles: an offline start routes to
+  /// the same experience as the last online one.
+  AuthSession _cached(StoredSession stored) => AuthSession(
+    userId: stored.userId,
+    phoneMasked: stored.phoneMasked,
+    expiresAt: stored.expiresAt,
+    labels: cleanLabels(stored.labels ?? [_otp.role.name]).toList(),
+    status: accountStatusFrom(stored.status),
+  );
+}
+
+class _Account {
+  const _Account(this.labels, this.status);
+  final List<String> labels;
+  final AccountStatus status;
 }

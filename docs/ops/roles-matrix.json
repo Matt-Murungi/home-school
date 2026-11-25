@@ -1,0 +1,256 @@
+{
+  "_note": "Shared role fixture (A03, #45). Read by services/core tests (Python) and apps/admin tests (TypeScript). Change a row here and BOTH sides must change: admin routes mirror apps/admin/src/lib/nav.ts + roles.ts (F06/H09); label cases mirror hs_core.roles.model. Labels are alphanumeric (ADR 0012).",
+  "roles": [
+    "parent",
+    "guardian",
+    "teacher",
+    "opsadmin",
+    "curator",
+    "safeguardinglead",
+    "superadmin"
+  ],
+  "staff_roles": [
+    "opsadmin",
+    "curator",
+    "safeguardinglead",
+    "superadmin"
+  ],
+  "apps": {
+    "parent": [
+      "parent",
+      "guardian"
+    ],
+    "teacher": [
+      "teacher"
+    ],
+    "admin": [
+      "opsadmin",
+      "curator",
+      "safeguardinglead",
+      "superadmin"
+    ]
+  },
+  "admin_routes": [
+    {
+      "href": "/",
+      "roles": [
+        "opsadmin",
+        "curator",
+        "safeguardinglead",
+        "superadmin"
+      ]
+    },
+    {
+      "href": "/queues",
+      "roles": [
+        "opsadmin",
+        "safeguardinglead"
+      ]
+    },
+    {
+      "href": "/teachers",
+      "roles": [
+        "opsadmin",
+        "safeguardinglead"
+      ]
+    },
+    {
+      "href": "/families",
+      "roles": [
+        "opsadmin",
+        "safeguardinglead"
+      ]
+    },
+    {
+      "href": "/matching",
+      "roles": [
+        "opsadmin"
+      ]
+    },
+    {
+      "href": "/sessions",
+      "roles": [
+        "opsadmin",
+        "safeguardinglead"
+      ]
+    },
+    {
+      "href": "/payments",
+      "roles": [
+        "opsadmin"
+      ]
+    },
+    {
+      "href": "/payouts",
+      "roles": [
+        "opsadmin"
+      ]
+    },
+    {
+      "href": "/safeguarding",
+      "roles": [
+        "safeguardinglead"
+      ]
+    },
+    {
+      "href": "/curriculum",
+      "roles": [
+        "opsadmin",
+        "curator"
+      ]
+    },
+    {
+      "href": "/question-bank",
+      "roles": [
+        "opsadmin",
+        "curator"
+      ]
+    },
+    {
+      "href": "/reports",
+      "roles": [
+        "opsadmin"
+      ]
+    },
+    {
+      "href": "/settings",
+      "roles": [
+        "superadmin"
+      ]
+    },
+    {
+      "href": "/audit-log",
+      "roles": [
+        "opsadmin",
+        "safeguardinglead"
+      ]
+    },
+    {
+      "href": "/api/search",
+      "roles": [
+        "opsadmin",
+        "curator",
+        "safeguardinglead"
+      ]
+    }
+  ],
+  "admin_path_cases": [
+    {
+      "path": "/payments/123",
+      "roles": [
+        "opsadmin"
+      ],
+      "admits": true
+    },
+    {
+      "path": "/payments/123",
+      "roles": [
+        "curator"
+      ],
+      "admits": false
+    },
+    {
+      "path": "/paymentsx",
+      "roles": [
+        "opsadmin"
+      ],
+      "admits": false
+    },
+    {
+      "path": "/unknown",
+      "roles": [
+        "opsadmin",
+        "curator",
+        "safeguardinglead",
+        "superadmin"
+      ],
+      "admits": false
+    },
+    {
+      "path": "/api/search",
+      "roles": [
+        "superadmin"
+      ],
+      "admits": false
+    },
+    {
+      "path": "/settings",
+      "roles": [
+        "opsadmin",
+        "curator",
+        "safeguardinglead"
+      ],
+      "admits": false
+    },
+    {
+      "path": "/",
+      "roles": [],
+      "admits": false
+    }
+  ],
+  "label_cases": [
+    {
+      "labels": [
+        "parent"
+      ],
+      "roles": [
+        "parent"
+      ]
+    },
+    {
+      "labels": [
+        "teacher",
+        "parent"
+      ],
+      "roles": [
+        "parent",
+        "teacher"
+      ]
+    },
+    {
+      "labels": [
+        "ops_admin",
+        "OpsAdmin",
+        "OPSADMIN",
+        " opsadmin",
+        "opsadmin ",
+        "safeguarding_lead",
+        "super_admin"
+      ],
+      "roles": []
+    },
+    {
+      "labels": [
+        "opsadmin",
+        "opsadmin"
+      ],
+      "roles": [
+        "opsadmin"
+      ]
+    },
+    {
+      "labels": [
+        "admin",
+        "root",
+        "owner",
+        "staff",
+        "sysadmin"
+      ],
+      "roles": []
+    },
+    {
+      "labels": [
+        "superadmin",
+        "teacher"
+      ],
+      "roles": [
+        "superadmin",
+        "teacher"
+      ]
+    },
+    {
+      "labels": [],
+      "roles": []
+    }
+  ]
+}

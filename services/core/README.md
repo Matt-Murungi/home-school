@@ -34,6 +34,11 @@ Endpoints: `GET /health` (also `/healthz`, liveness: version + git SHA), `GET /r
 
 `src/hs_core/auth_otp/`: `POST /v1/auth/otp/request {phone, app}` and `POST /v1/auth/otp/verify {phone, code, app, device}`. The core service owns the code (Appwrite has no Africa's Talking provider): 6-digit CSPRNG code, only an HMAC(pepper, challenge, salt, code) is stored in `otp_challenge` (`appwrite/schema/auth.json`), 5 minute expiry, 5 tries per code, single use (deterministic-ID claim, 409 on the loser), caps per number and per IP (SEC-7), identical answers for known and unknown numbers, and a masked number only in logs (the F08 scrubber also masks codes). Codes are sent through the `SmsSender` interface (`sms.py`: fake, Africa's Talking adapter that is mock-tested only, unconfigured sender). A correct code finds or creates the Appwrite user, ensures the `user_profile` row and the `parent` or `teacher` label (the two self-service roles, bound to the challenge), and returns a custom token (`users.createToken`) for the app to exchange with `account.createSession`. `otp-cleanup` (hourly) deletes expired rows. Settings are the `OTP_*` and `AFRICASTALKING_*` variables in `.env.example`; `OTP_PEPPER` is required outside dev.
 
+## Roles and app routing (A03, #45)
+
+`src/hs_core/roles/`: `model.py` (pure `roles_for`, `app_admits`, `admin_admits`, `app_decision`; alphanumeric labels only), `service.py` (`RoleService.grant_role/revoke_role`: the only code that sets or removes a role label; audited `role_assignment` write (M06, one audit row), label, `role_changed` event; idempotent; who may grant what), `directory.py` (the Appwrite users protocol), `reconcile.py` (`role-reconcile`, hourly: label vs history drift), `api.py` (`GET /v1/me/access?app=`, `POST /v1/admin/roles/{id}/grant|revoke`), `labels.py` (M05 `LabelDirectory` over Appwrite, not wired by default). The phone sign-in refuses any staff label (owner question 27 default). Shared fixture `docs/ops/roles-matrix.json` is read by the core, admin and Flutter tests. Design, failure ordering, repair policy and unverified assumptions: `docs/ops/roles.md`. Settings: `ROLE_RECONCILE_*`.
+
+## Row and file permissions (M05, ADR 0012)
 
 ## Audit logging (M06, #41)
 

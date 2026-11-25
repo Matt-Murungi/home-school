@@ -14,6 +14,7 @@ from ..audit.recover import audit_recover
 from ..auth_otp.jobs import otp_cleanup
 from ..notifications.dispatch import notification_dispatch
 from ..permissions.jobs import address_revoke, permission_audit, permission_reconcile
+from ..roles.reconcile import role_reconcile
 from ..travel.jobs import travel_cache_refresh
 from .handlers import heartbeat
 from .model import KAMPALA, JobSpec, Schedule
@@ -84,5 +85,14 @@ JOBS: list[JobSpec] = [
         max_attempts=3,
         catch_up=timedelta(hours=1),
         timeout=timedelta(seconds=15),
+    ),
+    # A03 (#45): finds and repairs drift between Appwrite role labels and `role_assignment`.
+    # Recomputes from state, so a missed period adds nothing. Chunked by (phase, cursor).
+    JobSpec(
+        "role-reconcile",
+        role_reconcile,
+        schedule=Schedule(timedelta(hours=1)),
+        max_attempts=3,
+        catch_up=timedelta(hours=2),
     ),
 ]

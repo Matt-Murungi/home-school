@@ -1,5 +1,6 @@
-import 'phone.dart';
 import 'otp_models.dart';
+import 'phone.dart';
+import 'roles.dart';
 
 class AuthSession {
   const AuthSession({
@@ -8,6 +9,8 @@ class AuthSession {
     this.phoneMasked,
     this.expiresAt,
     this.isNewUser = false,
+    this.labels = const [],
+    this.status = AccountStatus.active,
   });
   final String userId;
   final String email;
@@ -16,6 +19,22 @@ class AuthSession {
   final String? phoneMasked;
   final DateTime? expiresAt;
   final bool isNewUser;
+
+  /// Appwrite role labels as last fetched (cached for an offline start).
+  /// For showing the right experience only: the server never trusts this.
+  final List<String> labels;
+  final AccountStatus status;
+
+  AuthSession copyWith({List<String>? labels, AccountStatus? status}) =>
+      AuthSession(
+        userId: userId,
+        email: email,
+        phoneMasked: phoneMasked,
+        expiresAt: expiresAt,
+        isNewUser: isNewUser,
+        labels: labels ?? this.labels,
+        status: status ?? this.status,
+      );
 }
 
 class AuthException implements Exception {
@@ -73,6 +92,26 @@ class FakeAuthService implements AuthService {
   int refreshCalls = 0;
   DateTime? sessionExpiresAt;
 
+  /// Labels the fake account holds (A03). Phone sign-in gives [signUpLabels];
+  /// tests change [labels] to simulate a role change on the server.
+  List<String> signUpLabels = const ['parent'];
+  List<String>? labels;
+  AccountStatus status = AccountStatus.active;
+
+  /// Starts the fake already signed in with [roles] (a restored session).
+  void signInAs(
+    List<String> roles, {
+    AccountStatus accountStatus = AccountStatus.active,
+  }) {
+    labels = roles;
+    status = accountStatus;
+    _session = AuthSession(
+      userId: 'fake-user',
+      labels: roles,
+      status: accountStatus,
+    );
+  }
+
   @override
   Future<AuthSession?> currentSession() async => _session;
 
@@ -123,8 +162,10 @@ class FakeAuthService implements AuthService {
       );
     }
     sessionExpiresAt = DateTime.utc(2027, 1, 1);
+    labels = signUpLabels;
     return _session = AuthSession(
       userId: 'fake-phone-$phoneE164',
+      labels: signUpLabels,
       phoneMasked: maskPhone(phoneE164),
       expiresAt: sessionExpiresAt,
       isNewUser: true,
@@ -134,6 +175,9 @@ class FakeAuthService implements AuthService {
   @override
   Future<AuthSession?> refreshSession() async {
     refreshCalls++;
-    return _session;
+    final s = _session;
+    if (s == null) return null;
+    // The server's labels and status win over what was cached.
+    return _session = s.copyWith(labels: labels, status: status);
   }
 }

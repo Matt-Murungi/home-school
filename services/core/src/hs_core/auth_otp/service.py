@@ -26,7 +26,10 @@ from .accounts import (
     SELF_SERVICE_ROLES,
     AccountBlocked,
     AccountConflict,
+    AccountRoleRevoked,
     AccountService,
+    AccountStaff,
+    AccountSuspended,
     AccountUnavailable,
     UserDirectory,
 )
@@ -80,13 +83,19 @@ class OtpService:
         policy: OtpPolicy | None = None,
         clock: Callable[[], datetime] | None = None,
         code_factory: Callable[[], str] = generate_code,
+        roles=None,
     ) -> None:
         self.policy = policy or OtpPolicy()
         self.clock = clock or (lambda: datetime.now(UTC))
         self.sms = sms
         self.store = OtpStore(repo)
         self.accounts = AccountService(
-            users, repo, self.clock, self.policy.dormant_days, self.policy.token_ttl_s
+            users,
+            repo,
+            self.clock,
+            self.policy.dormant_days,
+            self.policy.token_ttl_s,
+            roles,
         )
         self._pepper = pepper.encode()
         self._code_factory = code_factory
@@ -283,6 +292,27 @@ class OtpService:
         except AccountBlocked:
             raise OtpError(
                 "account_blocked", "This account cannot sign in. Contact support.", 403
+            ) from None
+        except AccountStaff:
+            # Q27 default (A03): staff sign in to the admin dashboard with MFA (SEC-4), not here.
+            # Reached only after the code was proven, so it reveals nothing to someone who does
+            # not control the number. Deliberately a clear 403: staff accounts are internal.
+            log.warning("staff account refused on the mobile flow", extra={"phone": masked})
+            raise OtpError(
+                "staff_account",
+                "Staff accounts sign in to the admin dashboard, not the app.",
+                403,
+            ) from None
+        except AccountSuspended:
+            raise OtpError(
+                "account_suspended",
+                "Your account is suspended. Contact support.",
+                403,
+                suspended=True,
+            ) from None
+        except AccountRoleRevoked:
+            raise OtpError(
+                "role_revoked", "This account can't use this app. Contact support.", 403
             ) from None
         except AccountConflict:
             log.error(

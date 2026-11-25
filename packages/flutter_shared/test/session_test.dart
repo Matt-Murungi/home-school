@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:appwrite/appwrite.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:home_school_shared/home_school_shared.dart';
@@ -13,6 +15,12 @@ class FakeGateway implements SessionGateway {
   AppwriteException? currentError;
   String? usedSecret;
   Object? currentThrows;
+  List<String> labels = const ['parent'];
+  bool active = true;
+  Object? accountThrows;
+  int accountCalls = 0;
+  Completer<void>? currentGate; // holds `current()` until released
+  Completer<void>? accountGate; // holds `account()` until released
 
   @override
   Future<GatewaySession> createSession(String userId, String secret) async {
@@ -27,6 +35,12 @@ class FakeGateway implements SessionGateway {
 
   @override
   Future<GatewaySession?> current() async {
+    final g = currentGate;
+    final snapshot = server;
+    if (g != null) {
+      await g.future;
+      return snapshot;
+    }
     if (currentThrows != null) throw currentThrows!;
     if (currentError != null) throw currentError!;
     return server;
@@ -51,6 +65,14 @@ class FakeGateway implements SessionGateway {
 
   @override
   void useSessionSecret(String secret) => usedSecret = secret;
+
+  @override
+  Future<GatewayAccount> account() async {
+    accountCalls++;
+    if (accountGate != null) await accountGate!.future;
+    if (accountThrows != null) throw accountThrows!;
+    return GatewayAccount(labels: labels, active: active);
+  }
 }
 
 void main() {
@@ -252,6 +274,158 @@ void main() {
       expect(await SessionVault(store).load(), isNull);
       expect(store.values, isEmpty);
     });
+  });
+
+  group('roles ride on the session (A03)', () {
+    test('sign-in stores the account labels and status', () async {
+      gateway.labels = ['parent', 'teacher', 'beta_tester'];
+      final s = await build().verifyOtp(_phone, '123456');
+      expect(s.labels, ['parent', 'teacher'], reason: 'unknown labels dropped');
+      expect(s.status, AccountStatus.active);
+      expect(
+        store.values['hs.session.v1'],
+        contains('"labels":["parent","teacher"]'),
+      );
+    });
+
+    test('refresh picks up a role change made on the server', () async {
+      final svc = build();
+      await svc.verifyOtp(_phone, '123456');
+      gateway.labels = ['teacher'];
+      expect((await svc.refreshSession())!.labels, ['teacher']);
+      gateway.labels = [];
+      expect((await svc.refreshSession())!.labels, isEmpty);
+    });
+
+    test('variant and non-list labels grant nothing', () async {
+      gateway.labels = ['OpsAdmin', 'ops_admin', 'Parent', ' parent'];
+      final s = await build().verifyOtp(_phone, '123456');
+      expect(s.labels, isEmpty);
+    });
+
+    test('a blocked Appwrite account reads as suspended', () async {
+      final svc = build();
+      await svc.verifyOtp(_phone, '123456');
+      gateway.active = false;
+      expect((await svc.refreshSession())!.status, AccountStatus.suspended);
+    });
+
+    test(
+      'offline start: the cached roles route to the same experience',
+      () async {
+        gateway.labels = ['teacher', 'parent'];
+        await build().verifyOtp(_phone, '123456');
+        gateway.accountThrows = Exception('offline');
+        final restored = await build().refreshSession();
+        expect(restored!.labels, ['teacher', 'parent']);
+        gateway.currentThrows = Exception('offline');
+        final cached = await build().refreshSession();
+        expect(cached!.userId, 'u1');
+        expect(cached.labels, ['teacher', 'parent']);
+        expect(cached.status, AccountStatus.active);
+      },
+    );
+
+    test(
+      'offline at sign-in: the role the server just granted is assumed',
+      () async {
+        gateway.accountThrows = Exception('offline');
+        final s = await build().verifyOtp(_phone, '123456');
+        expect(s.labels, ['parent']);
+      },
+    );
+
+    test('a session stored by an older version (no labels) falls back to the app role', () async {
+      await SessionVault(store).save(
+        StoredSession(
+          userId: 'u1',
+          sessionId: 'sess1',
+          expiresAt: _t0.add(const Duration(days: 30)),
+        ),
+      );
+      gateway.accountThrows = Exception('offline');
+      gateway.currentThrows = Exception('offline');
+      final s = await build().refreshSession();
+      expect(s!.labels, ['parent']);
+    });
+
+    test('the cached suspended status survives an offline start', () async {
+      await SessionVault(store).save(
+        StoredSession(
+          userId: 'u1',
+          sessionId: 'sess1',
+          expiresAt: _t0.add(const Duration(days: 30)),
+          labels: const ['teacher'],
+          status: 'suspended',
+        ),
+      );
+      gateway.currentThrows = Exception('offline');
+      final s = await build().refreshSession();
+      expect(s!.status, AccountStatus.suspended);
+    });
+
+    test(
+      'a refresh in flight during sign-out cannot re-save the dead session',
+      () async {
+        final svc = build();
+        await svc.verifyOtp(_phone, '123456');
+        gateway.currentGate = Completer<void>();
+        final pending = svc.refreshSession();
+        await Future<void>.delayed(Duration.zero);
+        await svc.signOut();
+        expect(store.values, isEmpty);
+        gateway.currentGate!.complete();
+        expect(await pending, isNull);
+        expect(
+          store.values,
+          isEmpty,
+          reason: 'secret and cached labels must stay gone',
+        );
+      },
+    );
+
+    test(
+      'a refresh that is reading the account during sign-out saves nothing',
+      () async {
+        final svc = build();
+        await svc.verifyOtp(_phone, '123456');
+        gateway.accountGate = Completer<void>();
+        final pending = svc.refreshSession();
+        await Future<void>.delayed(Duration.zero);
+        await svc.signOut();
+        gateway.accountGate!.complete();
+        expect(await pending, isNull);
+        expect(store.values, isEmpty);
+      },
+    );
+
+    test('a revoked server session clears roles with the session', () async {
+      final svc = build();
+      await svc.verifyOtp(_phone, '123456');
+      gateway.server = null;
+      expect(await svc.refreshSession(), isNull);
+      expect(store.values, isEmpty);
+    });
+
+    test(
+      'the staff, suspended and revoked sign-in errors map from the core codes',
+      () async {
+        for (final e in {
+          'staff_account': OtpFailure.staffAccount,
+          'account_suspended': OtpFailure.suspended,
+          'role_revoked': OtpFailure.roleRevoked,
+        }.entries) {
+          api.stub('POST', '/v1/auth/otp/verify', {
+            'error': {'code': e.key},
+          }, status: 403);
+          await expectLater(
+            build().verifyOtp(_phone, '123456'),
+            throwsA(isA<OtpException>().having((x) => x.failure, 'f', e.value)),
+          );
+          expect(store.values, isEmpty);
+        }
+      },
+    );
   });
 
   test('the app uses secure storage, not shared preferences', () {

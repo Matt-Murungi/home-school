@@ -27,13 +27,9 @@ Future<void> main() async {
       platform: Platform.operatingSystem,
     ),
   );
-  // Restore (and extend if close to expiry) the securely stored session.
-  AuthSession? session;
-  try {
-    session = await auth.refreshSession();
-  } on Object {
-    session = null;
-  }
+  // The guarded router restores (and extends) the stored session behind a splash
+  // screen and picks the screen from the account's roles (A03): no protected
+  // screen is built before the role is known, so no start location is chosen here.
   final db = await openAppDatabase();
   runApp(
     ProviderScope(
@@ -42,7 +38,7 @@ Future<void> main() async {
         authServiceProvider.overrideWithValue(auth),
         offlineQueueProvider.overrideWithValue(OfflineQueue(db)),
       ],
-      child: ParentApp(initialLocation: session == null ? '/' : '/home'),
+      child: const ParentApp(),
     ),
   );
 }
