@@ -7,6 +7,7 @@ env:   HS_SKIP=id,id   skip these package ids
 Planned (not yet scaffolded) packages and packages whose tools are missing are
 skipped with an explicit message; they are never reported as passing.
 """
+
 import json
 import os
 import shutil
@@ -38,7 +39,9 @@ def main(argv):
             skipped.append(name)
             continue
         if p["status"] != "implemented":
-            print(f"SKIP {name}: not implemented yet (planned for {p.get('ticket', '?')})")
+            print(
+                f"SKIP {name}: not implemented yet (planned for {p.get('ticket', '?')})"
+            )
             skipped.append(name)
             continue
         if not cmd:
@@ -47,14 +50,16 @@ def main(argv):
             continue
         missing = [t for t in p.get("requires", []) if shutil.which(t) is None]
         if missing:
-            print(f"SKIP {name}: tool missing: {', '.join(missing)} (install it to run {kind} here)")
+            print(
+                f"SKIP {name}: tool missing: {', '.join(missing)} (install it to run {kind} here)"
+            )
             skipped.append(name)
             if strict:
                 failed.append(name)
             continue
         print(f"==> {kind} {name}: {cmd}", flush=True)
         cwd = (base / name) if (base / name).is_dir() else ROOT / name
-        r = subprocess.run(cmd, shell=True, cwd=cwd)
+        r = subprocess.run(cmd, shell=True, cwd=cwd, check=False)
         (ran if r.returncode == 0 else failed).append(name)
         if r.returncode != 0:
             print(f"FAIL {name} (exit {r.returncode})")

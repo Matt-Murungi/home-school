@@ -6,6 +6,7 @@
 - every registered package directory must have a README.md
 usage: check_layout.py [--root DIR]
 """
+
 import json
 import sys
 from pathlib import Path
@@ -20,7 +21,12 @@ def check(root: Path):
     manifest = json.loads((root / "packages.json").read_text())
     registered = {p["path"] for p in manifest["packages"]}
     for d in sorted(root.iterdir()):
-        if d.is_dir() and not d.name.startswith(".") and d.name not in IGNORE and d.name not in ALLOWED_TOP:
+        if (
+            d.is_dir()
+            and not d.name.startswith(".")
+            and d.name not in IGNORE
+            and d.name not in ALLOWED_TOP
+        ):
             errors.append(
                 f"{d.name}/ is outside the layout. Allowed top-level dirs: {', '.join(sorted(ALLOWED_TOP))}. "
                 "Put new code in apps/, packages/ or services/ and register it in packages.json."
@@ -42,7 +48,9 @@ def check(root: Path):
         if not d.is_dir():
             errors.append(f"{rel} is in packages.json but the directory is missing.")
         elif not (d / "README.md").is_file():
-            errors.append(f"{rel}/README.md is missing (purpose and test command required).")
+            errors.append(
+                f"{rel}/README.md is missing (purpose and test command required)."
+            )
     return errors
 
 

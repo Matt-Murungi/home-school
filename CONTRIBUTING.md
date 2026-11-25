@@ -10,7 +10,7 @@ Applies to humans and AI agents. Agents also read `CLAUDE.md` and `memory.md` (t
 4. Use adapters with fakes for external services (Appwrite, MoMo, FCM, email, SMS, Maps, Sentry). No real calls in tests.
 5. Run `make test` and `make lint` before pushing.
 6. Commit messages start with the backlog ID (`F01: ...`). Agents end them with `Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>`.
-7. Open a PR titled `F01 · short title`. The body links the issue with `Closes #27` (this is the issue-link convention) and uses the PR template.
+7. Humans open a PR titled `F01 · short title`; agent builders push the branch and hand off to the reviewer, who opens the PR (CLAUDE.md rule 9). The PR body links the issue with `Closes #27` (this is the issue-link convention) and uses the PR template.
 
 ## Layout
 

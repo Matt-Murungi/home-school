@@ -15,23 +15,24 @@ repos:
     hooks:
       - id: gitleaks
         args: [--config=.gitleaks.toml]
+  # spikes/ are throwaway and keep their own tooling; docs/ python is checked by `make lint` (ADR lint).
   - repo: local
     hooks:
       - id: dart-format
         name: dart format (apps/*, packages/flutter_shared)
         entry: dart format --set-exit-if-changed
         language: system
-        files: \.dart$
+        files: ^(apps|packages)/.*\.dart$
       - id: ruff-check
-        name: ruff check (services/core)
+        name: ruff check (services/core, scripts)
         entry: uvx ruff check
         language: system
-        files: \.py$
+        files: ^(services/core|scripts)/.*\.py$
       - id: ruff-format
-        name: ruff format (services/core)
+        name: ruff format (services/core, scripts)
         entry: uvx ruff format --check
         language: system
-        files: \.py$
+        files: ^(services/core|scripts)/.*\.py$
       - id: prettier
         name: prettier (apps/admin)
         entry: npx --no-install prettier --check

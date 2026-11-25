@@ -3,6 +3,7 @@
 Run: python3 -m unittest discover -s scripts/tests -v   (or `make test`)
 Stdlib only, offline.
 """
+
 import json
 import os
 import shutil
@@ -11,18 +12,33 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from typing import ClassVar
 
 ROOT = Path(__file__).resolve().parents[2]
 PACKAGES = [
-    "apps/parent", "apps/teacher", "apps/admin", "packages/flutter_shared",
-    "services/core", "appwrite", "docs", "scripts",
+    "apps/parent",
+    "apps/teacher",
+    "apps/admin",
+    "packages/flutter_shared",
+    "services/core",
+    "appwrite",
+    "docs",
+    "scripts",
 ]
 
 
 def run(cmd, cwd=ROOT, env=None, timeout=600):
     e = dict(os.environ)
     e.update(env or {})
-    return subprocess.run(cmd, cwd=cwd, env=e, capture_output=True, text=True, timeout=timeout)
+    return subprocess.run(
+        cmd,
+        check=False,
+        cwd=cwd,
+        env=e,
+        capture_output=True,
+        text=True,
+        timeout=timeout,
+    )
 
 
 def read(rel):
@@ -33,7 +49,9 @@ class Layout(unittest.TestCase):
     def test_directories_exist_with_readme(self):
         for p in PACKAGES:
             self.assertTrue((ROOT / p).is_dir(), p)
-            self.assertTrue((ROOT / p / "README.md").is_file(), f"{p}/README.md missing")
+            self.assertTrue(
+                (ROOT / p / "README.md").is_file(), f"{p}/README.md missing"
+            )
 
     def test_docs_subfolders(self):
         self.assertTrue((ROOT / "docs/adr").is_dir())
@@ -46,7 +64,8 @@ class Layout(unittest.TestCase):
             self.assertIn("## Test command", text, p)
             body = text.split("## Test command", 1)[1]
             self.assertTrue(
-                "make test" in body or "`" in body, f"{p}: no test command in code ticks"
+                "make test" in body or "`" in body,
+                f"{p}: no test command in code ticks",
             )
 
     def test_manifest_covers_every_package(self):
@@ -59,7 +78,10 @@ class Layout(unittest.TestCase):
             if x["status"] == "implemented":
                 self.assertTrue(x.get("test"), x["path"])
             else:
-                self.assertTrue(x.get("ticket"), f"{x['path']}: planned needs the ticket that scaffolds it")
+                self.assertTrue(
+                    x.get("ticket"),
+                    f"{x['path']}: planned needs the ticket that scaffolds it",
+                )
 
     def test_spikes_kept(self):
         self.assertTrue((ROOT / "spikes/admin-appwrite").is_dir())
@@ -67,14 +89,31 @@ class Layout(unittest.TestCase):
 
     def test_root_readme_lists_layout(self):
         t = read("README.md")
-        for p in ("apps/parent", "apps/teacher", "apps/admin", "packages/flutter_shared",
-                  "services/core", "appwrite/", "docs/", "scripts/", "make test"):
+        for p in (
+            "apps/parent",
+            "apps/teacher",
+            "apps/admin",
+            "packages/flutter_shared",
+            "services/core",
+            "appwrite/",
+            "docs/",
+            "scripts/",
+            "make test",
+        ):
             self.assertIn(p, t)
 
     def test_root_files(self):
-        for f in (".editorconfig", ".gitignore", ".pre-commit-config.yaml", ".gitleaks.toml",
-                  "Makefile", "CONTRIBUTING.md", "CLAUDE.md", ".github/CODEOWNERS",
-                  ".github/pull_request_template.md"):
+        for f in (
+            ".editorconfig",
+            ".gitignore",
+            ".pre-commit-config.yaml",
+            ".gitleaks.toml",
+            "Makefile",
+            "CONTRIBUTING.md",
+            "CLAUDE.md",
+            ".github/CODEOWNERS",
+            ".github/pull_request_template.md",
+        ):
             self.assertTrue((ROOT / f).is_file(), f)
 
     def test_codeowners_owner(self):
@@ -87,12 +126,19 @@ class Layout(unittest.TestCase):
 
     def test_precommit_has_each_language(self):
         t = read(".pre-commit-config.yaml")
-        for needle in ("dart format", "ruff", "prettier", "eslint", "gitleaks", "make lint"):
+        for needle in (
+            "dart format",
+            "ruff",
+            "prettier",
+            "eslint",
+            "gitleaks",
+            "make lint",
+        ):
             self.assertIn(needle, t)
 
 
 class Docs(unittest.TestCase):
-    RULES = [
+    RULES: ClassVar[list[str]] = [
         "home tutoring, not homeschooling",
         "memory.md",
         "read-only",
@@ -100,7 +146,9 @@ class Docs(unittest.TestCase):
         "UTC",
         "Africa/Kampala",
         "5,000",
-        "0002", "0004", "0012",
+        "0002",
+        "0004",
+        "0012",
         "tests first",
         "adapter",
         "fake",
@@ -139,23 +187,56 @@ class Tooling(unittest.TestCase):
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
 
     def test_planned_packages_skip_clearly(self):
-        r = run([sys.executable, "scripts/run_packages.py", "test"], env={"HS_SKIP": "root-tests,spike-admin,spike-jobs"})
+        r = run(
+            [sys.executable, "scripts/run_packages.py", "test"],
+            env={"HS_SKIP": "root-tests,spike-admin,spike-jobs"},
+        )
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
-        self.assertIn("SKIP apps/parent: not implemented yet (planned for F05)", r.stdout)
+        self.assertIn(
+            "SKIP apps/parent: not implemented yet (planned for F05)", r.stdout
+        )
 
     def test_missing_tool_degrades_with_message(self):
         # empty PATH apart from python: required tool missing -> clear SKIP, exit 0
         d = tempfile.mkdtemp()
         try:
             man = Path(d, "m.json")
-            man.write_text(json.dumps({"packages": [{
-                "id": "x", "path": "x", "status": "implemented",
-                "requires": ["definitely-not-a-tool"], "test": "false"}]}))
-            r = run([sys.executable, "scripts/run_packages.py", "test", "--manifest", str(man)])
+            man.write_text(
+                json.dumps(
+                    {
+                        "packages": [
+                            {
+                                "id": "x",
+                                "path": "x",
+                                "status": "implemented",
+                                "requires": ["definitely-not-a-tool"],
+                                "test": "false",
+                            }
+                        ]
+                    }
+                )
+            )
+            r = run(
+                [
+                    sys.executable,
+                    "scripts/run_packages.py",
+                    "test",
+                    "--manifest",
+                    str(man),
+                ]
+            )
             self.assertEqual(r.returncode, 0, r.stdout)
             self.assertIn("tool missing: definitely-not-a-tool", r.stdout)
-            r = run([sys.executable, "scripts/run_packages.py", "test", "--manifest", str(man)],
-                    env={"HS_STRICT": "1"})
+            r = run(
+                [
+                    sys.executable,
+                    "scripts/run_packages.py",
+                    "test",
+                    "--manifest",
+                    str(man),
+                ],
+                env={"HS_STRICT": "1"},
+            )
             self.assertNotEqual(r.returncode, 0)
         finally:
             shutil.rmtree(d)
@@ -164,9 +245,29 @@ class Tooling(unittest.TestCase):
         d = tempfile.mkdtemp()
         try:
             man = Path(d, "m.json")
-            man.write_text(json.dumps({"packages": [{
-                "id": "x", "path": ".", "status": "implemented", "test": "false"}]}))
-            r = run([sys.executable, "scripts/run_packages.py", "test", "--manifest", str(man)])
+            man.write_text(
+                json.dumps(
+                    {
+                        "packages": [
+                            {
+                                "id": "x",
+                                "path": ".",
+                                "status": "implemented",
+                                "test": "false",
+                            }
+                        ]
+                    }
+                )
+            )
+            r = run(
+                [
+                    sys.executable,
+                    "scripts/run_packages.py",
+                    "test",
+                    "--manifest",
+                    str(man),
+                ]
+            )
             self.assertNotEqual(r.returncode, 0)
         finally:
             shutil.rmtree(d)
@@ -176,7 +277,15 @@ class LayoutGuard(unittest.TestCase):
     """Edge case: an agent adds a package outside the layout -> lint fails clearly."""
 
     def make_tree(self, d):
-        for p in ("apps", "packages", "services", "appwrite", "docs", "scripts", "spikes"):
+        for p in (
+            "apps",
+            "packages",
+            "services",
+            "appwrite",
+            "docs",
+            "scripts",
+            "spikes",
+        ):
             Path(d, p).mkdir()
         Path(d, "packages.json").write_text(read("packages.json"))
         for x in json.loads(read("packages.json"))["packages"]:
@@ -233,7 +342,9 @@ class SecretScan(unittest.TestCase):
             fake_gh = "ghp_" + "a1B2c3D4e5F6g7H8i9J0k1L2m3N4o5P6q7R8"
             Path(d, "a.py").write_text(f'KEY = "{fake_aws}"\n')
             Path(d, "b.txt").write_text(f"token {fake_gh}\n")
-            Path(d, "c.env").write_text("APPWRITE_API_KEY=" + "standard_" + "0123456789abcdef" * 4 + "\n")
+            Path(d, "c.env").write_text(
+                "APPWRITE_API_KEY=" + "standard_" + "0123456789abcdef" * 4 + "\n"
+            )
             Path(d, "d.pem").write_text("-----BEGIN RSA PRIVATE" + " KEY-----\nabc\n")
             r = self.scan(d)
             self.assertEqual(r.returncode, 1, r.stdout)
@@ -247,7 +358,9 @@ class SecretScan(unittest.TestCase):
     def test_clean_dir_and_placeholders_pass(self):
         d = tempfile.mkdtemp()
         try:
-            Path(d, "x.env.example").write_text("APPWRITE_API_KEY=\nAPPWRITE_PROJECT_ID=your-project-id\n")
+            Path(d, "x.env.example").write_text(
+                "APPWRITE_API_KEY=\nAPPWRITE_PROJECT_ID=your-project-id\n"
+            )
             Path(d, "ok.py").write_text("print('hello')\n")
             self.assertEqual(self.scan(d).returncode, 0)
         finally:
