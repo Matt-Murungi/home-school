@@ -94,6 +94,7 @@ Which variable exists in which environment, what kind it is and where it lives. 
 | `TEACHER_APP_MIN_WEEKLY_HOURS` | config | core-service | 6 | 6 | 6 | fly_env |
 | `TEACHER_APP_REAPPLY_COOLDOWN_DAYS` | config | core-service | 90 | 90 | 90 | fly_env |
 | `TEACHER_APP_SUBMITS_PER_HOUR` | config | core-service | 10 | 10 | 10 | fly_env |
+| `TEACHER_APP_SUBMIT_TAKEOVER_MINUTES` | config | core-service | 10 | 10 | 10 | fly_env |
 | `TRAVEL_CACHE_TTL_DAYS` | config | core-service | 7 | 7 | 7 | fly_env |
 | `TRAVEL_DAILY_ELEMENT_BUDGET` | config | core-service | 1000 | 1000 | 1000 | fly_env |
 | `TRAVEL_ELEMENT_COST_MICRO_USD` | config | core-service | 10000 | 10000 | 10000 | fly_env |

@@ -61,6 +61,14 @@ class FakeAuditSink:
             self.entries.append(entry)
 
 
+def build_audit_sink(repo: Repository) -> AuditSink:
+    """THE swap point for M06 (#41, not merged yet). `RepositoryAuditSink` writes `audit_log`
+    directly with `create`. When M06 merges, return a sink that goes through M06's
+    `AuditedRepository` (actor, roles, request id and per-entity PII rules) instead; nothing
+    else in this package changes because the service only knows the `AuditSink` protocol."""
+    return RepositoryAuditSink(repo)
+
+
 class RepositoryAuditSink:
     """Append-only: one `create` with an id derived from the dedupe key (a retry is a 409)."""
 
@@ -117,6 +125,45 @@ class FakeNotifier:
                 return
             self._seen.add(notice.dedupe_key)
             self.sent.append(notice)
+
+
+# Notice templates of this ticket -> (N01 event key, recipient role). N01's catalogue
+# (`hs_core/notifications/catalog.py`) has NO `application_submitted` event yet (PRD matrix gap:
+# neither a teacher confirmation nor an ops-queue event exist). Until N01 adds them the adapter
+# records the gap instead of inventing events in someone else's catalogue; adding the keys there
+# and nothing else here turns the notifications on.
+EVENT_FOR_NOTICE: dict[str, tuple[str, str]] = {
+    "application_submitted_teacher": ("application_submitted_teacher", "teacher"),
+    "application_submitted_ops": ("application_submitted_admin", "admin"),
+}
+
+
+class NotificationServiceNotifier:
+    """`Notifier` over N01's `NotificationService`. Never calls a channel itself: the service
+    queues and its dispatch job sends (fakes in tests, N02 adapters later)."""
+
+    def __init__(self, service: Any, events: Any | None = None) -> None:
+        from ..notifications import catalog
+
+        self._service = service
+        self._events = events if events is not None else catalog.EVENTS
+        self.gaps: list[str] = []
+
+    def send(self, notice: Notice) -> None:
+        from ..notifications.service import Recipient
+
+        key, role = EVENT_FOR_NOTICE.get(notice.template, (None, None))
+        if key is None or key not in self._events:
+            self.gaps.append(notice.template)
+            log.warning("notification event missing", extra={"template": notice.template})
+            return
+        if notice.user_id is None:  # the ops queue has no single recipient to address yet
+            self.gaps.append(notice.template)
+            log.warning("no recipient for ops notice", extra={"template": notice.template})
+            return
+        self._service.send(
+            key, Recipient(notice.user_id, role), dict(notice.data), notice.dedupe_key
+        )
 
 
 class LogNotifier:

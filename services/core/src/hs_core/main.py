@@ -130,7 +130,7 @@ def create_app(
         settings.hs_env != "dev" if trust_proxy_ip is None else trust_proxy_ip
     )
     app.state.teacher_application = teacher_application or build_application_service(
-        settings, app.state.repository
+        settings, app.state.repository, notifications=app.state.notifications
     )
     otp_jobs.bind(app.state.repository)
     notification_dispatch_job.bind(app.state.notifications)

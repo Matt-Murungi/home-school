@@ -1,7 +1,7 @@
 import 'dart:convert';
 
 /// Chosen photo. [localPath] never leaves the device; the server only gets
-/// [state], [fileId] (after V02 uploads it) and [crop].
+/// [state] and [crop] (V02 will add the uploaded file reference).
 class PhotoChoice {
   const PhotoChoice({
     required this.state,
@@ -10,15 +10,17 @@ class PhotoChoice {
     this.crop,
   });
 
-  /// `chosen` (on this phone, upload is V02) or `uploaded`.
+  /// Always `chosen` (on this phone): V02 uploads the photo and owns file ids.
   final String state;
   final String? localPath;
   final String? fileId;
   final CropRect? crop;
 
+  /// The server never gets a file id from the app (it could name someone
+  /// else's file); [fileId] is only read back so the rules can flag it.
   Map<String, Object?> toJson({bool forServer = false}) => {
     'state': state,
-    if (fileId != null) 'file_id': fileId,
+    if (!forServer && fileId != null) 'file_id': fileId,
     if (crop != null) 'crop': crop!.toJson(),
     if (!forServer && localPath != null) 'local_path': localPath,
   };

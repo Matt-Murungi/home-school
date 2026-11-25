@@ -249,5 +249,6 @@
         "type": "int"
       }
     }
-  }
+  },
+  "submitInProgress": "We are still finishing your earlier submission. This can take a few minutes; we will keep trying and you do not need to do anything."
 }

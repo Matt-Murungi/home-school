@@ -1101,6 +1101,12 @@ abstract class TeacherStrings {
   /// In en, this message translates to:
   /// **'Offer at least {hours} hours a week.'**
   String errTooFewHours(int hours);
+
+  /// No description provided for @submitInProgress.
+  ///
+  /// In en, this message translates to:
+  /// **'We are still finishing your earlier submission. This can take a few minutes; we will keep trying and you do not need to do anything.'**
+  String get submitInProgress;
 }
 
 class _TeacherStringsDelegate extends LocalizationsDelegate<TeacherStrings> {

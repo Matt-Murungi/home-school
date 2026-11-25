@@ -496,6 +496,40 @@ void main() {
       expect(phone.api.submitCount, 1);
     });
 
+    test('server still finishing an earlier submit (409): explained, kept, retried with the same key', () async {
+      final (c, n) = await ready();
+      phone.api.nextFailure = const Failure.rejected('submit_in_progress');
+      await n.submit();
+      expect(
+        c.read(applicationControllerProvider).submit,
+        SubmitPhase.inProgress,
+      );
+      expect(phone.api.submitCount, 0);
+      await waitFor(
+        () => c.read(applicationControllerProvider).status == 'submitted',
+      );
+      expect(phone.api.submitCount, 1);
+      expect(phone.api.submitKey, phone.keys.first); // the same key all along
+    });
+
+    test('a draft save refused with submit_in_progress is shown as in progress and retried', () async {
+      final (c, n) = await ready();
+      final seen = <SubmitPhase>[];
+      c.listen(applicationControllerProvider, (_, s) => seen.add(s.submit));
+      phone.api.nextFailure = const Failure.rejected('submit_in_progress');
+      n.update(
+        (d) => d.copyWith(
+          qualifications: d.qualifications.copyWith(
+            institution: 'Gulu University',
+          ),
+        ),
+      );
+      await waitFor(() => !c.read(applicationControllerProvider).dirty);
+      expect(seen, contains(SubmitPhase.inProgress));
+      expect(c.read(applicationControllerProvider).submit, SubmitPhase.idle);
+      expect(phone.api.content.qualifications.institution, 'Gulu University');
+    });
+
     test('a submitted application cannot be edited from the phone', () async {
       final (c, n) = await ready();
       await n.submit();

@@ -63,7 +63,8 @@ def test_teacher_sees_only_their_own_application_and_ids_come_from_the_token(env
 def test_row_is_readable_only_by_its_owner(env):
     env.ready()
     row = env.repo.get("teacher_application", "teacher_one")
-    assert row["$permissions"] == ['read("user:teacher_one")']
+    # M05 (#40): owner and ops admin read, nobody writes
+    assert row["$permissions"] == ['read("label:opsadmin")', 'read("user:teacher_one")']
 
 
 # -- draft: save, resume, conflict ---------------------------------------------------------------

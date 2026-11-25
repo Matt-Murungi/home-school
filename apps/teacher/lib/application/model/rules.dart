@@ -172,12 +172,10 @@ void _personal(Personal p, RuleContext ctx, bool final_, List<String> out) {
   final photo = p.photo;
   if (photo == null) {
     if (final_) out.add('personal.photo:required');
-  } else if (photo.state == 'uploaded' && (photo.fileId ?? '').isEmpty) {
-    out.add('personal.photo:invalid');
-  } else if (photo.crop != null &&
-      (photo.crop!.x + photo.crop!.size > 1.0001 ||
-          photo.crop!.y + photo.crop!.size > 1.0001)) {
-    out.add('personal.photo:invalid');
+  } else if (photo.state != 'chosen' || (photo.fileId ?? '').isNotEmpty) {
+    // V01 uploads nothing and the app never sends a file id; the server refuses one too
+    // (it could name someone else's file) until V02 verifies ownership.
+    out.add('personal.photo:file_not_allowed');
   }
 }
 

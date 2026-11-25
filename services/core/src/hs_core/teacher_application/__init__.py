@@ -9,14 +9,22 @@ from .ports import (
     FakeCatalogue,
     FakeNotifier,
     FakeZones,
-    LogNotifier,
-    RepositoryAuditSink,
+    NotificationServiceNotifier,
     RepositoryCatalogue,
     RepositoryZones,
+    build_audit_sink,
 )
 from .service import ApplicationPolicy, ApplicationService
 
 __all__ = ["ApplicationPolicy", "ApplicationService", "build_application_service"]
+
+
+def notifier_for(notifications: Any):
+    from .ports import LogNotifier
+
+    return (
+        NotificationServiceNotifier(notifications) if notifications is not None else LogNotifier()
+    )
 
 
 def build_application_service(
@@ -28,8 +36,8 @@ def build_application_service(
         repo=repo,
         catalogue=overrides.get("catalogue") or RepositoryCatalogue(repo),
         zones=overrides.get("zones") or RepositoryZones(repo),
-        audit=overrides.get("audit") or RepositoryAuditSink(repo),
-        notifier=overrides.get("notifier") or LogNotifier(),
+        audit=overrides.get("audit") or build_audit_sink(repo),
+        notifier=overrides.get("notifier") or notifier_for(overrides.get("notifications")),
         policy=ApplicationPolicy.from_settings(settings),
     )
 

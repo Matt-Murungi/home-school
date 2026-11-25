@@ -13,18 +13,34 @@ class HttpApiClient implements ApiClient {
     this.timeout = const Duration(seconds: 15),
     HttpClient? client,
     this.bearerToken,
+    this.invalidateToken,
   }) : _client = client ?? HttpClient();
 
   /// Returns the current Appwrite JWT for calls that need a signed-in user
   /// (null or a throw = send the request without a token; the server answers
   /// 401). Never log the value.
   final Future<String?> Function()? bearerToken;
+
+  /// Called when the server answers 401 to a request that carried a token: drop
+  /// the cached token; the request is then retried once with a fresh one.
+  final void Function()? invalidateToken;
   final String baseUrl;
   final Duration timeout;
   final HttpClient _client;
 
   @override
   Future<ApiResponse> send(ApiRequest request) async {
+    final first = await _send(request);
+    if (first.statusCode == 401 &&
+        invalidateToken != null &&
+        bearerToken != null) {
+      invalidateToken!();
+      return _send(request);
+    }
+    return first;
+  }
+
+  Future<ApiResponse> _send(ApiRequest request) async {
     final uri = Uri.parse('$baseUrl${request.path}');
     final req = await _client.openUrl(request.method, uri).timeout(timeout);
     req.headers

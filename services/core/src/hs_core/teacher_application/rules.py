@@ -149,12 +149,13 @@ def _personal(p: dict, ctx: Context, final: bool, out: list[str]) -> None:
     if photo is None:
         if final:
             out.append("personal.photo:required")
-    elif photo.get("state") == "uploaded" and not photo.get("file_id"):
-        out.append("personal.photo:invalid")
-    elif photo.get("crop") and photo["crop"]["x"] + photo["crop"]["size"] > 1.0001:
-        out.append("personal.photo:invalid")
-    elif photo.get("crop") and photo["crop"]["y"] + photo["crop"]["size"] > 1.0001:
-        out.append("personal.photo:invalid")
+    elif photo.get("state") != "chosen" or photo.get("file_id"):
+        # V01 uploads nothing. A file id from the client could name someone else's file, so it
+        # is refused until V02 uploads the photo itself and verifies who owns the file.
+        out.append("personal.photo:file_not_allowed")
+    # The crop (fractions in 0..1, side as a fraction of the shorter edge) is bounded by the
+    # wire model; x + size is not a valid check because x and y are fractions of the width and
+    # height while size is of the shorter edge.
 
 
 def _qualifications(q: dict, final: bool, out: list[str]) -> None:

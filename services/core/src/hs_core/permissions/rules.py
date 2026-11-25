@@ -286,6 +286,36 @@ _SPECS: list[Spec] = [
         ),
     ),
     Spec("teacher_approval", A(teacher="own", ops="read"), OPS, own_teacher()),
+    # ---- teacher application (V01). `teacher_id` is the applicant's USER id (row id = user id),
+    # so `own("teacher_id")` applies: owner while the account is not deleted (a suspended or
+    # label-less teacher still sees their own application), plus ops admin. Nobody else, in
+    # particular no safeguarding lead and no parent. Appwrite permissions are row level, so the
+    # private columns (date of birth, current school, referee contacts) are safe only because the
+    # row audience is owner + ops; they are never copied into rows with a wider audience
+    # (teacher_profile gets gender and radius only, the audit entry carries counts).
+    Spec(
+        "teacher_application",
+        A(
+            teacher="own application, also while suspended; nothing once the account is deleted",
+            ops="read",
+        ),
+        OPS,
+        own("teacher_id"),
+        note="Holds date of birth and current school (private to owner and ops admin).",
+    ),
+    Spec(
+        "teacher_referee",
+        A(teacher="own referees (read only)", ops="read (contacts the referees in V04)"),
+        OPS,
+        own("teacher_id"),
+        note="Third-party contact details: owner and ops admin only.",
+    ),
+    Spec(
+        "teacher_application_subject",
+        A(teacher="own", ops="read"),
+        OPS,
+        own("teacher_id"),
+    ),
     Spec("availability_slot", A(teacher="own", ops="read"), OPS, own_teacher()),
     Spec("availability_exception", A(teacher="own", ops="read"), OPS, own_teacher()),
     # ---- sessions (M02)
@@ -575,6 +605,7 @@ SERVICE_ONLY_TABLES: dict[str, str] = {
     "schema_migration": "migration runner bookkeeping",
     "sample_item": "CI sample table",
     "access_window": "permission service bookkeeping (when time-limited access lapses)",
+    "teacher_application_claim": "V01 submit/revision claims and rate-limit slots, server only",
 }
 # Tables owned by tickets that are not on main yet. Decided now so their merge does not leave a
 # table without a decision; `test_decisions_cover_every_table` allows these to be absent.

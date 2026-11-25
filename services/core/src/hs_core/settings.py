@@ -32,6 +32,7 @@ OTP_RANGES: dict[str, tuple[int, int]] = {
     "teacher_app_reapply_cooldown_days": (0, 730),
     "teacher_app_draft_saves_per_hour": (10, 2000),
     "teacher_app_submits_per_hour": (1, 60),
+    "teacher_app_submit_takeover_minutes": (1, 120),
 }
 # M06 audit: allowed (min, max) of the audit-recover tuning settings.
 AUDIT_RANGES: dict[str, tuple[int, int]] = {
@@ -114,6 +115,9 @@ class Settings(BaseSettings):
     teacher_app_reapply_cooldown_days: int = 90
     teacher_app_draft_saves_per_hour: int = 240
     teacher_app_submits_per_hour: int = 10
+    teacher_app_submit_takeover_minutes: int = (
+        10  # a lost-key submit claim older than this can be taken over
+    )
     # Travel time (X01). No key = straight-line estimates only (flagged estimated).
     google_maps_server_key: SecretStr = SecretStr("")
     travel_daily_element_budget: int = 1000  # provider elements (origin x destination) per day

@@ -28,6 +28,7 @@ from appwrite.query import Query
 from ..auth import Principal
 from ..errors import AppError
 from ..jobs.idempotency import row_id
+from ..permissions.strings import canonical, read_label, read_user
 from ..repository import Conflict, NotFound, Repository
 from .models import Content, DraftBody, SubmitBody
 from .ports import AuditEntry, AuditSink, CatalogueReader, Notice, Notifier, ZoneReader
@@ -53,6 +54,8 @@ class ApplicationPolicy:
     draft_saves_per_hour: int = 240
     submits_per_hour: int = 10
     reads_per_hour: int = 600
+    submit_takeover_minutes: int = 10
+    revision_stale_seconds: int = 60
 
     @classmethod
     def from_settings(cls, s) -> ApplicationPolicy:
@@ -61,6 +64,7 @@ class ApplicationPolicy:
             reapply_cooldown_days=s.teacher_app_reapply_cooldown_days,
             draft_saves_per_hour=s.teacher_app_draft_saves_per_hour,
             submits_per_hour=s.teacher_app_submits_per_hour,
+            submit_takeover_minutes=s.teacher_app_submit_takeover_minutes,
         )
 
 
@@ -82,11 +86,19 @@ class ApplicationService:
         notifier: Notifier,
         policy: ApplicationPolicy | None = None,
         clock: Callable[[], datetime] = lambda: datetime.now(UTC),
+        permissions=None,
     ) -> None:
+        self.permissions = permissions  # M05 PermissionService (optional): reconciles after writes
         self.repo, self.catalogue, self.zones = repo, catalogue, zones
         self.audit, self.notifier = audit, notifier
         self.policy = policy or ApplicationPolicy()
         self.clock = clock
+
+    @staticmethod
+    def _perms(uid: str) -> list[str]:
+        """What M05's `desired_permissions` gives these rows: the owner and ops admin read.
+        Nobody gets write (clients never write; the core service uses the API key)."""
+        return list(canonical({read_user(uid), read_label("opsadmin")}))
 
     # -- guards ----------------------------------------------------------------------------
     @staticmethod
@@ -241,7 +253,7 @@ class ApplicationService:
                     APP,
                     tid,
                     {"teacher_id": tid, **self._columns(content, blob, body.step, 1, 0, "draft")},
-                    [f'read("user:{tid}")'],
+                    self._perms(tid),
                 )
             except Conflict:
                 raise self._conflict(self._row(tid)) from None
@@ -268,26 +280,46 @@ class ApplicationService:
         return {**self._view(self._row(tid)), "issues": issues}
 
     def _claim_revision(self, tid: str, rev: int, now: datetime, row: dict | None = None) -> None:
+        """Take revision `rev` (one winner per number). A claim left behind by a crash between
+        the claim and the row update would block that number forever, so a claim older than
+        `revision_stale_seconds` while the row has not reached `rev` may be retaken, itself
+        claimed with a derived id so that only one retaker wins."""
+        data = {
+            "kind": "revision",
+            "teacher_id": tid,
+            "created_at": iso(now),
+            "expires_at": iso(now + timedelta(days=1)),
+        }
+        rid = row_id("approvrev", tid, rev)
         try:
-            self.repo.create(
-                CLAIM,
-                row_id("approvrev", tid, rev),
-                {
-                    "kind": "revision",
-                    "teacher_id": tid,
-                    "created_at": iso(now),
-                    "expires_at": iso(now + timedelta(days=1)),
-                },
-            )
+            self.repo.create(CLAIM, rid, data)
+            return
         except Conflict:
-            raise self._conflict(self._row(tid)) from None
+            pass
+        try:
+            existing = self.repo.get(CLAIM, rid)
+            current = (self._row(tid) or {}).get("revision", 0)
+            stale = now - parse(existing["created_at"]) > timedelta(
+                seconds=self.policy.revision_stale_seconds
+            )
+            if stale and current < rev:
+                retake = row_id("approvrev-retake", tid, rev, existing["created_at"])
+                self.repo.create(CLAIM, retake, data)
+                return
+        except (Conflict, NotFound):
+            pass
+        raise self._conflict(self._row(tid))
 
     def _submit_claim_exists(self, tid: str, attempt: int) -> bool:
+        """A FRESH submit claim: edits wait. Past the takeover window the claim is abandoned
+        (its owner crashed) and the teacher may edit again; the next submit takes it over."""
         try:
-            self.repo.get(CLAIM, row_id("appsubmit", tid, attempt))
-            return True
+            c = self.repo.get(CLAIM, row_id("appsubmit", tid, attempt))
         except NotFound:
             return False
+        return self.clock() - parse(c["created_at"]) < timedelta(
+            minutes=self.policy.submit_takeover_minutes
+        )
 
     def _conflict(self, row: dict | None) -> AppError:
         return AppError(
@@ -351,82 +383,95 @@ class ApplicationService:
         self._require_teacher(p)
         tid = p.user_id
         self._limit(tid, "submit", self.policy.submits_per_hour)
-        row = self._row(tid)
-        if row is None:
-            raise AppError(
-                422,
-                "incomplete",
-                "The application is not complete",
-                extra={"issues": ["application:required"]},
+        for _ in range(3):  # a draft save that slips in mid-submit makes us start over
+            row = self._row(tid)
+            if row is None:
+                raise AppError(
+                    422,
+                    "incomplete",
+                    "The application is not complete",
+                    extra={"issues": ["application:required"]},
+                )
+            status = row.get("status") or "draft"
+            if status in LOCKED:
+                if row.get("submit_key") == key:
+                    return {**self._submitted_view(row), "replayed": True}
+                raise AppError(409, "already_submitted", "This application was already submitted")
+            if status == "not_approved":
+                raise AppError(
+                    409,
+                    "reapply_not_allowed",
+                    "Re-apply first",
+                    extra={"reopen_at": self._view(row)["reopen_at"]},
+                )
+            if body.base_revision != row.get("revision", 0):
+                raise self._conflict(row)
+            content = json.loads(row.get("content_json") or "{}")
+            issues = validate_content(content, self._ctx(tid), final=True)
+            if body.declaration is not True:
+                issues.append("declaration:required")
+            if issues:
+                raise AppError(
+                    422,
+                    "incomplete",
+                    "The application is not complete",
+                    extra={"issues": sorted(set(issues))},
+                )
+            attempt = row.get("attempt", 0) + 1
+            self._claim_submit(tid, attempt, key)
+            now = self.clock()
+            self._materialise(tid, content, attempt, now)
+            self.audit.record(
+                AuditEntry(
+                    "teacher_application.submitted",
+                    tid,
+                    tuple(p.roles),
+                    APP,
+                    tid,
+                    f"app-submit:{tid}:{attempt}",
+                    {
+                        "attempt": attempt,
+                        "curricula": len(content.get("curricula") or []),
+                        "zones": len(content.get("zone_ids") or []),
+                        "referees": 2,
+                    },
+                )
             )
-        status = row.get("status") or "draft"
-        if status in LOCKED:
-            if row.get("submit_key") == key:
-                return {**self._submitted_view(row), "replayed": True}
-            raise AppError(409, "already_submitted", "This application was already submitted")
-        if status == "not_approved":
-            raise AppError(
-                409,
-                "reapply_not_allowed",
-                "Re-apply first",
-                extra={"reopen_at": self._view(row)["reopen_at"]},
+            self.notifier.send(
+                Notice("application_submitted_teacher", tid, f"app-submit-t:{tid}:{attempt}")
             )
-        if body.base_revision != row.get("revision", 0):
-            raise self._conflict(row)
-        content = json.loads(row.get("content_json") or "{}")
-        issues = validate_content(content, self._ctx(tid), final=True)
-        if body.declaration is not True:
-            issues.append("declaration:required")
-        if issues:
-            raise AppError(
-                422,
-                "incomplete",
-                "The application is not complete",
-                extra={"issues": sorted(set(issues))},
+            self.notifier.send(
+                Notice(
+                    "application_submitted_ops",
+                    None,
+                    f"app-submit-o:{tid}:{attempt}",
+                    {"teacher_id": tid, "attempt": attempt},
+                )
             )
-        attempt = row.get("attempt", 0) + 1
-        self._claim_submit(tid, attempt, key)
-        now = self.clock()
-        self._materialise(tid, row, content, attempt, now)
-        self.audit.record(
-            AuditEntry(
-                "teacher_application.submitted",
-                tid,
-                tuple(p.roles),
+            # The revision slot is the commit point shared with draft saves: if a save took it
+            # while we worked, what we wrote is stale, so read again and redo (all steps are
+            # idempotent). If we take it, a late save from the old revision is a conflict.
+            nxt = row.get("revision", 0) + 1
+            try:
+                self._claim_revision(tid, nxt, now)
+            except AppError as e:
+                if e.code != "draft_conflict":
+                    raise
+                body = SubmitBody(base_revision=self._row(tid).get("revision", 0), declaration=True)
+                continue
+            self.repo.update(
                 APP,
                 tid,
-                f"app-submit:{tid}:{attempt}",
                 {
+                    "status": "submitted",
                     "attempt": attempt,
-                    "curricula": len(content.get("curricula") or []),
-                    "zones": len(content.get("zone_ids") or []),
-                    "referees": 2,
+                    "submit_key": key,
+                    "submitted_at": iso(now),
+                    "revision": nxt,
                 },
             )
-        )
-        self.notifier.send(
-            Notice("application_submitted_teacher", tid, f"app-submit-t:{tid}:{attempt}")
-        )
-        self.notifier.send(
-            Notice(
-                "application_submitted_ops",
-                None,
-                f"app-submit-o:{tid}:{attempt}",
-                {"teacher_id": tid, "attempt": attempt},
-            )
-        )
-        self.repo.update(
-            APP,
-            tid,
-            {
-                "status": "submitted",
-                "attempt": attempt,
-                "submit_key": key,
-                "submitted_at": iso(now),
-                "revision": row.get("revision", 0) + 1,
-            },
-        )
-        return {**self._submitted_view(self._row(tid)), "replayed": False}
+            return {**self._submitted_view(self._row(tid)), "replayed": False}
+        raise AppError(409, "submit_in_progress", "Your draft keeps changing, try again")
 
     def _submitted_view(self, row: dict) -> dict:
         return {
@@ -437,6 +482,12 @@ class ApplicationService:
         }
 
     def _claim_submit(self, tid: str, attempt: int, key: str) -> None:
+        """One submit claim per (teacher, attempt). The same key resumes. Another key is refused
+        while the claim is fresh (`submit_in_progress`: the earlier request may still be working)
+        and may TAKE OVER once it is older than the takeover window: a crash mid-submit followed
+        by a reinstall (the idempotency key is lost) must not lock the teacher out. The takeover
+        is itself claimed with a derived id, so one request wins; it finishes with the existing
+        rows (every step is idempotent), never creating duplicates."""
         rid = row_id("appsubmit", tid, attempt)
         now = self.clock()
         try:
@@ -451,49 +502,83 @@ class ApplicationService:
                     "expires_at": iso(now + timedelta(days=3650)),
                 },
             )
+            return
         except Conflict:
             existing = self.repo.get(CLAIM, rid)
-            if existing.get("submit_key") != key:
-                raise AppError(
-                    409, "already_submitted", "This application was already submitted"
-                ) from None
-            # same key: a concurrent or crashed earlier try; every step below is idempotent
+        if existing.get("submit_key") == key:
+            return  # same key: a concurrent or crashed earlier try; the steps are idempotent
+        age = now - parse(existing["created_at"])
+        if age < timedelta(minutes=self.policy.submit_takeover_minutes):
+            raise AppError(
+                409,
+                "submit_in_progress",
+                "Your application is being submitted, try again in a few minutes",
+                {"Retry-After": "60"},
+                {"retry_after_s": 60},
+            )
+        try:  # one winner among simultaneous takeovers
+            self.repo.create(
+                CLAIM,
+                row_id("appsubmit-takeover", tid, attempt, existing["created_at"]),
+                {
+                    "kind": "submit",
+                    "teacher_id": tid,
+                    "submit_key": key,
+                    "created_at": iso(now),
+                    "expires_at": iso(now + timedelta(days=3650)),
+                },
+            )
+        except Conflict:
+            raise AppError(
+                409, "submit_in_progress", "Your application is being submitted"
+            ) from None
+        self.repo.update(CLAIM, rid, {"submit_key": key, "created_at": iso(now)})
+        log.warning("submit claim taken over", extra={"attempt": attempt})
 
-    def _materialise(self, tid: str, row: dict, content: dict, attempt: int, now: datetime) -> None:
+    def _profile_id(self, uid: str) -> str | None:
+        rows = self.repo.list("teacher_profile", [Query.equal("user_id", [uid]), Query.limit(2)])
+        return rows[0]["$id"] if rows else None
+
+    def _materialise(self, uid: str, content: dict, attempt: int, now: datetime) -> None:
         personal = content["personal"]
-        photo = personal.get("photo") or {}
+        # The photo stays on the phone until V02 uploads and verifies it: no file id is accepted
+        # (rules refuse one), so nothing user-supplied is copied into teacher_profile.
         profile = {
             "gender": personal["gender"],
             "travel_radius_km": content["travel_radius_km"],
-            "photo_file_id": photo.get("file_id"),
         }
-        try:
-            existing = self.repo.get("teacher_profile", tid)
-            if existing.get("status") in (None, "pending"):
-                self.repo.update("teacher_profile", tid, {**profile, "status": "pending"})
-        except NotFound:
+        pid = self._profile_id(uid)
+        if pid is None:
+            pid = uid
             try:
                 self.repo.create(
                     "teacher_profile",
-                    tid,
-                    {"user_id": tid, "status": "pending", **profile},
-                    [f'read("user:{tid}")'],
+                    pid,
+                    {"user_id": uid, "status": "pending", **profile},
+                    self._perms(uid),
                 )
             except Conflict:
                 pass
+        else:
+            existing = self.repo.get("teacher_profile", pid)
+            if existing.get("status") in (None, "pending"):
+                self.repo.update("teacher_profile", pid, {**profile, "status": "pending"})
+        # M01/M05 rows reference the teacher PROFILE id (equal to the user id unless an admin
+        # created the profile first).
+        tid = pid
         for zid in content["zone_ids"]:
             self._create_once(
                 "teacher_zone",
                 row_id("tz", tid, zid),
                 {"teacher_id": tid, "zone_id": zid},
-                [f'read("user:{tid}")'],
+                self._perms(uid),
             )
-        self._replace_availability(tid, content["availability"], attempt, now)
-        self._replace_referees(tid, content["referees"], attempt, now)
-        self._replace_subjects(tid, content["curricula"], attempt)
+        self._replace_availability(tid, content["availability"], attempt, now, uid)
+        self._replace_referees(uid, content["referees"], attempt, now)
+        self._replace_subjects(uid, content["curricula"], attempt)
         for c in content["curricula"]:
             for lid in c["level_ids"]:
-                self._request_approval(tid, c["curriculum_id"], lid)
+                self._request_approval(tid, c["curriculum_id"], lid, uid)
 
     def _create_once(self, table: str, rid: str, data: dict, perms: list[str]) -> None:
         try:
@@ -502,7 +587,7 @@ class ApplicationService:
             pass
 
     def _replace_availability(
-        self, tid: str, slots: list[dict], attempt: int, now: datetime
+        self, tid: str, slots: list[dict], attempt: int, now: datetime, uid: str
     ) -> None:
         keep = {row_id("av", tid, attempt, i) for i in range(len(slots))}
         for old in self.repo.list(
@@ -515,7 +600,7 @@ class ApplicationService:
                 "availability_slot",
                 row_id("av", tid, attempt, i),
                 {"teacher_id": tid, **{k: s[k] for k in ("weekday", "start_minute", "end_minute")}},
-                [f'read("user:{tid}")'],
+                self._perms(uid),
             )
 
     def _replace_referees(self, tid: str, refs: list[dict], attempt: int, now: datetime) -> None:
@@ -538,7 +623,7 @@ class ApplicationService:
                     "years_known": r["years_known"],
                     "consent_at": iso(now),
                 },
-                [f'read("user:{tid}")'],
+                self._perms(tid),
             )
 
     def _replace_subjects(self, tid: str, curricula: list[dict], attempt: int) -> None:
@@ -559,10 +644,10 @@ class ApplicationService:
                             "subject_id": sid,
                             "attempt": attempt,
                         },
-                        [f'read("user:{tid}")'],
+                        self._perms(tid),
                     )
 
-    def _request_approval(self, tid: str, curriculum_id: str, level_id: str) -> None:
+    def _request_approval(self, tid: str, curriculum_id: str, level_id: str, uid: str) -> None:
         """A REQUEST: approved_at / approved_by stay empty. Only admin approval (V04) fills them."""
         rid = row_id("appr", tid, curriculum_id, level_id)
         try:
@@ -581,7 +666,7 @@ class ApplicationService:
                     "curriculum_id": curriculum_id,
                     "level_id": level_id,
                 },
-                [f'read("user:{tid}")'],
+                self._perms(uid),
             )
 
 

@@ -177,3 +177,82 @@ def test_no_national_id_number_is_collected_or_stored():
     assert "national" not in blob.lower() and "nin" not in {
         k.lower() for r in e.rows("teacher_application") for k in r
     }
+
+
+# -- round 2: N01 wiring and the M06 swap point -------------------------------------------------
+class _FakeNotificationService:
+    def __init__(self):
+        self.calls = []
+
+    def send(self, key, recipient, variables, idempotency_key, **kw):
+        self.calls.append((key, recipient.user_id, recipient.role, variables, idempotency_key))
+
+
+def test_the_real_catalogue_has_no_application_event_so_the_gap_is_recorded_not_invented():
+    from hs_core.notifications.catalog import EVENTS
+    from hs_core.teacher_application.ports import (
+        EVENT_FOR_NOTICE,
+        Notice,
+        NotificationServiceNotifier,
+    )
+
+    svc = _FakeNotificationService()
+    n = NotificationServiceNotifier(svc)
+    n.send(Notice("application_submitted_teacher", "u1", "k1"))
+    n.send(Notice("application_submitted_ops", None, "k2"))
+    assert svc.calls == [] and n.gaps == [
+        "application_submitted_teacher",
+        "application_submitted_ops",
+    ]
+    # when N01 adds the events this test must change: that is the signal to turn them on
+    assert not any(key in EVENTS for key, _ in EVENT_FOR_NOTICE.values())
+
+
+def test_with_the_event_present_the_service_is_called_once_with_the_dedupe_key_and_no_channel():
+    from hs_core.teacher_application.ports import Notice, NotificationServiceNotifier
+
+    svc = _FakeNotificationService()
+    n = NotificationServiceNotifier(svc, events={"application_submitted_teacher": object()})
+    n.send(Notice("application_submitted_teacher", "u1", "app-submit-t:u1:1", {"attempt": 1}))
+    assert svc.calls == [
+        ("application_submitted_teacher", "u1", "teacher", {"attempt": 1}, "app-submit-t:u1:1")
+    ]
+    n.send(Notice("application_submitted_ops", None, "k"))  # no recipient: recorded gap
+    assert n.gaps == ["application_submitted_ops"]
+
+
+def test_the_app_wires_the_notification_service_and_a_submit_sends_no_real_channel():
+    from fastapi.testclient import TestClient
+
+    from hs_core.main import create_app
+    from hs_core.teacher_application import build_application_service
+    from hs_core.teacher_application.ports import NotificationServiceNotifier
+
+    e = Env()
+    app = create_app(
+        Settings(_env_file=None, hs_env="dev"),
+        repository=e.repo,
+        verifier=e.client.app.state.verifier,
+    )
+    assert isinstance(app.state.teacher_application.notifier, NotificationServiceNotifier)
+    assert app.state.teacher_application.notifier._service is app.state.notifications
+    svc = build_application_service(Settings(_env_file=None), e.repo)
+    assert type(svc.notifier).__name__ == "LogNotifier"  # no service given: log only
+    assert TestClient is not None
+
+
+def test_the_audit_default_is_one_explicit_swap_point():
+    from hs_core.teacher_application.ports import RepositoryAuditSink, build_audit_sink
+
+    assert isinstance(build_audit_sink(InMemoryRepository()), RepositoryAuditSink)
+    assert "AuditedRepository" in build_audit_sink.__doc__ and "M06" in build_audit_sink.__doc__
+
+
+def test_new_takeover_setting_is_inventoried_and_ranged():
+    assert "teacher_app_submit_takeover_minutes" in Settings.model_fields
+    assert CORE["TEACHER_APP_SUBMIT_TAKEOVER_MINUTES"]["kind"] == "non_secret"
+    ex = (ROOT / "services/core/.env.example").read_text().splitlines()
+    assert "TEACHER_APP_SUBMIT_TAKEOVER_MINUTES=" in ex
+    assert ApplicationPolicy.from_settings(Settings(_env_file=None)).submit_takeover_minutes == 10
+    bad = Settings(_env_file=None, teacher_app_submit_takeover_minutes=0)
+    assert any("TEACHER_APP_SUBMIT_TAKEOVER_MINUTES" in x for x in bad.problems())

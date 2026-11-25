@@ -274,7 +274,7 @@ def test_after_a_crash_a_different_key_cannot_take_over(env):
         )
     env.audit.fail = False
     r = env.submit(1, key="another-" + "k" * 12)
-    assert r.status_code == 409 and r.json()["error"]["code"] == "already_submitted"
+    assert r.status_code == 409 and r.json()["error"]["code"] == "submit_in_progress"
 
 
 def test_drafts_cannot_change_while_a_submit_is_in_flight(env):

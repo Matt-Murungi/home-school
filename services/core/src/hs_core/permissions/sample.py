@@ -170,6 +170,10 @@ class SampleWorld:
             c("availability_slot", f"av_{n}", teacher_id=t)
             c("availability_exception", f"ae_{n}", teacher_id=t)
             self.files.put("teacher-docs", f"f_td_{n}", [])
+            u = f"u{t}"
+            c("teacher_application", f"tapp_{n}", teacher_id=u, status="submitted")
+            c("teacher_referee", f"tref_{n}", teacher_id=u, application_id=f"tapp_{n}")
+            c("teacher_application_subject", f"tsub_{n}", teacher_id=u, application_id=f"tapp_{n}")
         # sessions domain
         for i in (1, 2):
             c("plan", f"plan{i}", price_ugx=100000 * i)

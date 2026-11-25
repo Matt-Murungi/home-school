@@ -3,6 +3,7 @@ library;
 
 export 'src/api/api_client.dart';
 export 'src/api/http_api_client.dart';
+export 'src/api/token_cache.dart';
 export 'src/auth/appwrite_auth_service.dart';
 export 'src/auth/auth_service.dart';
 export 'src/auth/otp_api.dart';

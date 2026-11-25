@@ -62,7 +62,9 @@ final submitKeyFactoryProvider = Provider<String Function()>((ref) {
 
 enum SyncStatus { saved, saving, offline, conflict, rateLimited, locked }
 
-enum SubmitPhase { idle, submitting, queuedOffline, done, failed }
+/// [inProgress]: the server is still finishing an earlier submit (409
+/// `submit_in_progress`, for example after a crash); it is retried by itself.
+enum SubmitPhase { idle, submitting, queuedOffline, inProgress, done, failed }
 
 class ApplicationState {
   const ApplicationState({
@@ -345,9 +347,8 @@ class ApplicationController extends Notifier<ApplicationState> {
     return server.copyWith(
       personal: server.personal.copyWith(
         photo: PhotoChoice(
-          state: sp.state,
+          state: 'chosen',
           localPath: lp!.localPath,
-          fileId: sp.fileId,
           crop: sp.crop,
         ),
       ),
@@ -457,6 +458,9 @@ class ApplicationController extends Notifier<ApplicationState> {
             draftIssues: res.issues,
             sync: edited ? SyncStatus.saving : SyncStatus.saved,
             status: res.status,
+            submit: state.submit == SubmitPhase.inProgress && _submitKey == null
+                ? SubmitPhase.idle
+                : state.submit,
           );
           await _persist();
           if (edited) _autosave = Timer(_t.autosave, () => unawaited(flush()));
@@ -487,8 +491,10 @@ class ApplicationController extends Notifier<ApplicationState> {
           _scheduleRetry(r.retryAfter);
           return;
         } on Rejected catch (r) {
-          if (r.code == 'application_locked' ||
-              r.code == 'submit_in_progress') {
+          if (r.code == 'submit_in_progress') {
+            state = state.copyWith(submit: SubmitPhase.inProgress);
+            _scheduleRetry();
+          } else if (r.code == 'application_locked') {
             state = state.copyWith(sync: SyncStatus.locked);
             unawaited(reloadFromServer());
           } else {
@@ -625,6 +631,13 @@ class ApplicationController extends Notifier<ApplicationState> {
         conflict: c.server,
       );
     } on Rejected catch (r) {
+      if (r.code == 'submit_in_progress') {
+        // Keep the key: the same request may resume the claim, or take it
+        // over once the server's window has passed.
+        state = state.copyWith(submit: SubmitPhase.inProgress);
+        _scheduleRetry();
+        return;
+      }
       _submitKey = null;
       await _store.clearSubmitKey(_user);
       state = state.copyWith(submit: SubmitPhase.failed);

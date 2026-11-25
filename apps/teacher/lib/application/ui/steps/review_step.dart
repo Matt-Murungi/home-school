@@ -120,6 +120,14 @@ class _ReviewStepState extends ConsumerState<ReviewStep> {
           ),
           for (final i in st.submitIssues) Text(_bullet(_issueLabel(s, i))),
         ],
+        if (st.submit == SubmitPhase.inProgress)
+          Card(
+            color: HsColors.primarySoft,
+            child: Padding(
+              padding: const EdgeInsets.all(HsSpace.md),
+              child: Text(s.submitInProgress),
+            ),
+          ),
         if (st.submit == SubmitPhase.queuedOffline)
           Card(
             color: HsColors.primarySoft,

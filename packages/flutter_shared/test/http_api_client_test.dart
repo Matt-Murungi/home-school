@@ -96,4 +96,32 @@ void main() {
       expect(headersSeen.last, {'auth': '', 'idem': ''}); // no token, no extras
     },
   );
+
+  test(
+    'a 401 drops the cached token and retries once with a fresh one',
+    () async {
+      var n = 0;
+      final cache = CachedTokenProvider(() async => 'tok-${++n}');
+      final s2 = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+      final auths = <String>[];
+      s2.listen((req) async {
+        auths.add(req.headers.value('authorization') ?? '');
+        req.response.statusCode = auths.length == 1 ? 401 : 200;
+        req.response.write('{}');
+        await req.response.close();
+      });
+      final c = HttpApiClient(
+        'http://127.0.0.1:${s2.port}',
+        bearerToken: cache.call,
+        invalidateToken: cache.invalidate,
+      );
+      addTearDown(() async {
+        c.close();
+        await s2.close(force: true);
+      });
+      final r = await c.send(const ApiRequest('GET', '/x'));
+      expect(r.statusCode, 200);
+      expect(auths, ['Bearer tok-1', 'Bearer tok-2']);
+    },
+  );
 }

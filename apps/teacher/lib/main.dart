@@ -41,9 +41,14 @@ Future<void> main() async {
   final db = await openAppDatabase();
   // Authenticated calls to the core service carry a short-lived Appwrite JWT.
   final account = Account(client);
+  // Appwrite rate-limits JWT creation: one token is reused for ~10 minutes.
+  final tokens = CachedTokenProvider(
+    () async => (await account.createJWT()).jwt,
+  );
   final coreApi = HttpApiClient(
     config.coreUrl,
-    bearerToken: () async => (await account.createJWT()).jwt,
+    bearerToken: tokens.call,
+    invalidateToken: tokens.invalidate,
   );
   final applicationApi = HttpApplicationApi(coreApi);
   final draftDb = await openDraftDatabase();

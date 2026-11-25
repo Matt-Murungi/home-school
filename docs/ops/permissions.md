@@ -194,9 +194,12 @@ Owner steps to verify: see memory.md, ticket M05, "Owner-blocked".
 | `struggle_tag` | read (configuration list) | no | read (label) | read (label) | no | no |
 | `subject` | of a published or retired version | no | read (label) | read (label) | no | no |
 | `subscription` | own children; guardian with grant `sessions` | no | read (label) | no | no | no |
+| `teacher_application` | no | own application, also while suspended; nothing once the account is deleted | read (label) | no | no | no |
+| `teacher_application_subject` | no | own | read (label) | no | no | no |
 | `teacher_approval` | no | own | read (label) | no | no | no |
 | `teacher_document` | no | own | read (label) | no | while an open case concerns the teacher (assigned lead) | no |
 | `teacher_profile` | no | own | read (label) | no | the teacher of an open assigned case (assigned lead) | no |
+| `teacher_referee` | no | own referees (read only) | read (label) | no | no | no |
 | `teacher_session_history` | no | own anonymised history (first name, class, date, duration), kept after the assignment ends | read (label) | no | no | no |
 | `teacher_zone` | no | own | read (label) | no | no | no |
 | `tier` | no | no | read (label) | no | no | no |
@@ -219,6 +222,7 @@ Owner steps to verify: see memory.md, ticket M05, "Owner-blocked".
 - `scheduling_issue`: S01 scheduling problems, server only (admin queue through an endpoint) (table arrives with its own ticket)
 - `schema_migration`: migration runner bookkeeping
 - `subscription_transition`: B03 subscription state log, server only (ops reads through an endpoint) (table arrives with its own ticket)
+- `teacher_application_claim`: V01 submit/revision claims and rate-limit slots, server only
 - `teacher_schedule_lease`: S01 per-teacher scheduling lease, server only (table arrives with its own ticket)
 - `travel_time_cache`: X01 zone-pair travel time cache, server only (table arrives with its own ticket)
 - `travel_usage`: X01 Google Routes usage counters, server only (table arrives with its own ticket)

@@ -211,25 +211,7 @@
    ]
   },
   {
-   "id": "photo_crop_outside",
-   "patch": {
-    "personal": {
-     "photo": {
-      "state": "chosen",
-      "crop": {
-       "x": 0.5,
-       "y": 0.1,
-       "size": 0.8
-      }
-     }
-    }
-   },
-   "issues": [
-    "personal.photo:invalid"
-   ]
-  },
-  {
-   "id": "photo_uploaded_without_id",
+   "id": "photo_state_uploaded_without_id",
    "patch": {
     "personal": {
      "photo": {
@@ -238,7 +220,69 @@
     }
    },
    "issues": [
-    "personal.photo:invalid"
+    "personal.photo:file_not_allowed"
+   ]
+  },
+  {
+   "id": "photo_with_someone_elses_file_id",
+   "patch": {
+    "personal": {
+     "photo": {
+      "state": "chosen",
+      "file_id": "someone_elses_file"
+     }
+    }
+   },
+   "issues": [
+    "personal.photo:file_not_allowed"
+   ]
+  },
+  {
+   "id": "photo_uploaded_with_file_id",
+   "patch": {
+    "personal": {
+     "photo": {
+      "state": "uploaded",
+      "file_id": "someone_elses_file",
+      "crop": {
+       "x": 0.1,
+       "y": 0.1,
+       "size": 0.8
+      }
+     }
+    }
+   },
+   "issues": [
+    "personal.photo:file_not_allowed"
+   ]
+  },
+  {
+   "id": "photo_file_id_refused_in_a_draft_too",
+   "patch": {
+    "personal": {
+     "photo": {
+      "state": "chosen",
+      "file_id": "f1"
+     }
+    }
+   },
+   "issues": [
+    "personal.photo:file_not_allowed"
+   ],
+   "final": false,
+   "replace": true
+  },
+  {
+   "id": "photo_unknown_state",
+   "patch": {
+    "personal": {
+     "photo": {
+      "state": "approved"
+     }
+    }
+   },
+   "issues": [
+    "personal.photo:file_not_allowed"
    ]
   },
   {

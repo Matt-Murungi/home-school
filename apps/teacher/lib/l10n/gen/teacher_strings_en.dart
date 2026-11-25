@@ -554,4 +554,8 @@ class TeacherStringsEn extends TeacherStrings {
   String errTooFewHours(int hours) {
     return 'Offer at least $hours hours a week.';
   }
+
+  @override
+  String get submitInProgress =>
+      'We are still finishing your earlier submission. This can take a few minutes; we will keep trying and you do not need to do anything.';
 }

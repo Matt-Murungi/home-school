@@ -238,15 +238,21 @@ class FakeApplicationApi implements ApplicationApi, ReferenceSource {
 
 /// One-shot failure for the fake (a response the real server could send).
 class Failure {
-  const Failure.rateLimited(this.retryAfter) : kind = 'rate';
-  const Failure.offline() : kind = 'offline', retryAfter = Duration.zero;
-  const Failure.rejected() : kind = 'rejected', retryAfter = Duration.zero;
+  const Failure.rateLimited(this.retryAfter) : kind = 'rate', code = '';
+  const Failure.offline()
+    : kind = 'offline',
+      code = '',
+      retryAfter = Duration.zero;
+  const Failure.rejected([this.code = 'forbidden'])
+    : kind = 'rejected',
+      retryAfter = Duration.zero;
+  final String code;
   final String kind;
   final Duration retryAfter;
 
   Exception toException() => switch (kind) {
     'rate' => RateLimited(retryAfter),
     'offline' => const OfflineFailure(),
-    _ => const Rejected('forbidden'),
+    _ => Rejected(code),
   };
 }
