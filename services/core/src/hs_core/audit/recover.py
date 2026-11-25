@@ -40,6 +40,7 @@ class RecoverResult:
     applied: int = 0
     not_applied: int = 0
     unverifiable: int = 0
+    failed_but_applied: int = 0
     skipped_young: int = 0
     already_settled: int = 0
     errors: int = 0
@@ -75,8 +76,11 @@ def recover_audit(
         for row in rows:
             cursor = row["$id"]
             scanned += 1
-            if meta_of(row).get("status") == "intent":
+            status = meta_of(row).get("status")
+            if status == "intent":
                 _settle(repo, service, row, res, young_after, job, run_key)
+            elif status == "failed":
+                _recheck_failed(repo, service, row, res, young_after, job, run_key)
             if max_rows is not None and scanned >= max_rows:
                 res.next_cursor = cursor
                 return res
@@ -111,6 +115,30 @@ def _settle(repo, service, row, res: RecoverResult, young_after: str, job: str, 
         log.warning("audit recovery skipped a row", extra={"error_type": type(e).__name__})
 
 
+def _recheck_failed(repo, service, row, res: RecoverResult, young_after: str, job: str, run_key):
+    """A `failed` row says the write did not happen. If the entity's state equals the intent's
+    after-state the row is wrong (a driver retried internally: Conflict/NotFound after the write
+    landed): add a corrective `applied_after_failed` row (never edit). Idempotent (fixed id).
+    The same state can also come from a later successful retry of the change; the corrective row
+    then still tells the truth (the intended state is in place)."""
+    if row["occurred_at"] > young_after:
+        return
+    try:
+        ref = meta_of(row).get("ref")
+        intent = service.get_row(ref) if ref else None
+        if intent is None or service.has_corrective(ref):
+            return
+        if _verdict(repo, intent) == "applied":
+            service.mark_applied_after_failed(intent, job=job, run_key=run_key)
+            res.failed_but_applied += 1
+            service.bump(
+                "failed_but_applied", intent=ref, entity=intent["entity"], action=intent["action"]
+            )
+    except Exception as e:  # noqa: BLE001
+        res.errors += 1
+        log.warning("audit recovery skipped a failed row", extra={"error_type": type(e).__name__})
+
+
 def _verdict(repo: Repository, row: dict[str, Any]) -> str:
     m = meta_of(row)
     if m.get("op") not in _VERIFIABLE_OPS:
@@ -140,6 +168,7 @@ def report(res: RecoverResult) -> dict[str, Any]:
         "not_applied": res.not_applied,
         "unverifiable": res.unverifiable,
         "unverifiable_ids": res.unverifiable_ids[:50],
+        "failed_but_applied": res.failed_but_applied,
         "errors": res.errors,
     }
 

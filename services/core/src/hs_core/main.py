@@ -13,6 +13,8 @@ from fastapi.responses import JSONResponse
 from . import errors
 from .audit import AuditedRepository, AuditService, client_ip_var
 from .audit import recover as audit_recover
+from .audit.adapters import LedgerAuditAdapter, TemplateAuditAdapter
+from .audit.admin_events import RateLimiter
 from .audit.admin_events import router as audit_events_router
 from .audit.context import server_request_key_var
 from .auth import AppwriteJwtVerifier, Principal, TokenVerifier, current_principal, require_roles
@@ -24,6 +26,7 @@ from .jobs.alerts import Alert, AlertSink, LogAlertSink
 from .jobs.api import router as jobs_router
 from .jobs.runner import Runner
 from .jobs.schedule import JOBS
+from .ledger import AppwriteLedgerStore, LedgerService
 from .logging_setup import configure_logging, request_id_var
 from .notifications import build_notification_service
 from .notifications import dispatch as notification_dispatch_job
@@ -76,6 +79,7 @@ def create_app(
         raw_repository, lead_blanket_read=settings.audit_lead_blanket_read, alert=audit_alert
     )
     app.state.repository = AuditedRepository(raw_repository, app.state.audit)
+    app.state.audit_rate = RateLimiter(settings.admin_audit_rate_per_min)
     audit_recover.bind(
         raw_repository,
         app.state.audit,
@@ -93,15 +97,23 @@ def create_app(
     )
     app.state.travel = build_travel_service(settings, app.state.repository)
     travel_jobs.configure(app.state.travel, app.state.repository)
+    # M05 permission sync rewrites `$permissions` of rows, many of them in audited tables, as
+    # derived state with no actor (M05 drift report `permission-audit` is its check): it gets the
+    # raw repository, not the audited wrapper (docs/ops/audit.md "Hooks", M05 row).
     app.state.permissions = wire_permissions(  # M05: binds the permission jobs
-        app.state.repository, app.state.runner, alert_sink, settings
+        raw_repository, app.state.runner, alert_sink, settings
     )
     app.state.reporter = reporter or build_reporter(settings)
     app.state.otp = otp_service or build_otp_service(
         settings, app.state.repository, sms_sender, user_directory
     )
     app.state.notifications = notification_service or build_notification_service(
-        settings, app.state.repository, alert_sink
+        settings, app.state.repository, alert_sink, audit=TemplateAuditAdapter(app.state.audit)
+    )
+    # $01: the ledger writes through the raw repository (append-only, its own seal protocol) and is
+    # audited by summary events (M06 round 3 decision: docs/ops/audit.md "Hooks").
+    app.state.ledger = LedgerService(
+        AppwriteLedgerStore(raw_repository), audit=LedgerAuditAdapter(app.state.audit)
     )
     # Fly sets Fly-Client-IP at its edge; outside dev we are always behind it.
     app.state.trust_proxy_ip = (

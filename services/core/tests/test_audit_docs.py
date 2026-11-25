@@ -97,3 +97,15 @@ def test_round2_decisions_are_documented(doc):
     ):  # fmt: skip
         assert needle in low, needle
     assert "required before staging" in low
+
+
+def test_round3_decisions_are_documented(doc):
+    low = doc.lower()
+    for needle in (
+        "summary event", "ledger.account_create", "applied_after_failed",
+        "admin_audit_rate_per_min",
+        "3 s budget", "node_env=production", "(create, update and delete)",
+        "unless a driver retries internally",
+    ):  # fmt: skip
+        assert needle in low, needle
+    assert "never contradicts" not in low

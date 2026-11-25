@@ -27,6 +27,27 @@ export class SearchAuditUnwired extends Error {
 
 type Fetch = typeof fetch;
 
+/**
+ * Runs `fn` with an AbortSignal and rejects when `ms` pass, whatever `fn` is waiting for (connect,
+ * headers, JWT, body read). The timer is cleared only when `fn` has completely finished, so a peer
+ * that sends headers and then stalls cannot hang the search.
+ */
+async function withTimeout<T>(ms: number, fn: (signal: AbortSignal) => Promise<T>): Promise<T> {
+  const ctl = new AbortController();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const expired = new Promise<never>((_res, rej) => {
+    timer = setTimeout(() => {
+      ctl.abort();
+      rej(new Error("timed out"));
+    }, ms);
+  });
+  try {
+    return await Promise.race([fn(ctl.signal), expired]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 export class CoreAuditSink implements AuditSink {
   private base: string;
   private fetchFn: Fetch;
@@ -44,37 +65,35 @@ export class CoreAuditSink implements AuditSink {
     this.timeoutMs = o.timeoutMs ?? 3000;
   }
   async record(entry: AuditEntry): Promise<void> {
-    const token = await this.jwt();
-    const ctl = new AbortController();
-    const timer = setTimeout(() => ctl.abort(), this.timeoutMs);
-    let res: Response;
-    try {
-      res = await this.fetchFn(`${this.base}${EVENT_PATH}`, {
-        method: "POST",
-        headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
-        // explicit field list: nothing else can ride along
-        body: JSON.stringify({
-          event: entry.action,
-          entity_types: entry.entityTypes,
-          query_kind: entry.queryKind,
-          results: entry.results,
-        }),
-        signal: ctl.signal,
-        cache: "no-store",
-      });
-    } catch {
-      throw new Error("audit request failed");
-    } finally {
-      clearTimeout(timer);
-    }
-    if (!res.ok) throw new Error(`audit request rejected (${res.status})`);
-    let ok = false;
-    try {
-      ok = ((await res.json()) as { recorded?: unknown }).recorded === true;
-    } catch {
-      /* not JSON */
-    }
-    if (!ok) throw new Error("audit request not confirmed");
+    await withTimeout(this.timeoutMs, async (signal) => {
+      const token = await this.jwt();
+      let res: Response;
+      try {
+        res = await this.fetchFn(`${this.base}${EVENT_PATH}`, {
+          method: "POST",
+          headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+          // explicit field list: nothing else can ride along
+          body: JSON.stringify({
+            event: entry.action,
+            entity_types: entry.entityTypes,
+            query_kind: entry.queryKind,
+            results: entry.results,
+          }),
+          signal,
+          cache: "no-store",
+        });
+      } catch {
+        throw new Error("audit request failed");
+      }
+      if (!res.ok) throw new Error(`audit request rejected (${res.status})`);
+      let ok = false;
+      try {
+        ok = ((await res.json()) as { recorded?: unknown }).recorded === true;
+      } catch {
+        /* not JSON */
+      }
+      if (!ok) throw new Error("audit request not confirmed");
+    });
   }
 }
 
@@ -82,30 +101,34 @@ export class CoreAuditSink implements AuditSink {
 export function appwriteJwtProvider(
   cfg: AdminConfig,
   sessionSecret: string,
-  o: { fetch?: Fetch; now?: () => number } = {},
+  o: { fetch?: Fetch; now?: () => number; timeoutMs?: number } = {},
 ): () => Promise<string> {
   const fetchFn = o.fetch ?? fetch;
   const now = o.now ?? Date.now;
   let cached: { jwt: string; at: number } | null = null;
   return async () => {
     if (cached && now() - cached.at < JWT_CACHE_MS) return cached.jwt;
-    let res: Response;
-    try {
-      res = await fetchFn(`${cfg.endpoint.replace(/\/+$/, "")}/account/jwts`, {
-        method: "POST",
-        headers: {
-          "x-appwrite-project": cfg.projectId,
-          "x-appwrite-session": sessionSecret,
-          "content-type": "application/json",
-        },
-        cache: "no-store",
-      });
-    } catch {
-      throw new Error("could not obtain a JWT");
-    }
-    if (!res.ok) throw new Error(`could not obtain a JWT (${res.status})`);
-    const jwt = ((await res.json().catch(() => ({}))) as { jwt?: unknown }).jwt;
-    if (typeof jwt !== "string" || jwt === "") throw new Error("could not obtain a JWT");
+    const jwt = await withTimeout(o.timeoutMs ?? 3000, async (signal) => {
+      let res: Response;
+      try {
+        res = await fetchFn(`${cfg.endpoint.replace(/\/+$/, "")}/account/jwts`, {
+          method: "POST",
+          headers: {
+            "x-appwrite-project": cfg.projectId,
+            "x-appwrite-session": sessionSecret,
+            "content-type": "application/json",
+          },
+          signal,
+          cache: "no-store",
+        });
+      } catch {
+        throw new Error("could not obtain a JWT");
+      }
+      if (!res.ok) throw new Error(`could not obtain a JWT (${res.status})`);
+      const j = ((await res.json().catch(() => ({}))) as { jwt?: unknown }).jwt;
+      if (typeof j !== "string" || j === "") throw new Error("could not obtain a JWT");
+      return j;
+    });
     cached = { jwt, at: now() };
     return jwt;
   };
@@ -118,7 +141,7 @@ const isLocalhost = (u: URL) => u.hostname === "localhost" || u.hostname === "12
  * development may run without it (a fake that persists nothing) or with a local core service.
  */
 export function auditSinkFor(cfg: AdminConfig, jwt: () => Promise<string>): AuditSink {
-  const deployed = cfg.envLabel !== "Local";
+  const deployed = cfg.deployed;
   if (!cfg.coreApiUrl) {
     if (deployed) throw new SearchAuditUnwired("CORE_API_URL is not set");
     return new MemoryAuditSink();

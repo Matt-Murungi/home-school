@@ -12,6 +12,9 @@ Hard limits, all enforced by the request model and tested:
 
 from __future__ import annotations
 
+import threading
+import time
+from collections.abc import Callable
 from typing import Literal
 
 from fastapi import APIRouter, Depends, Request
@@ -49,8 +52,33 @@ class SearchEvent(BaseModel):
     def model_post_init(self, _ctx) -> None:
         if len(set(self.entity_types)) != len(self.entity_types):
             raise ValueError("duplicate entity type")
+        if not set(self.results) <= set(self.entity_types):
+            raise ValueError("results name a type that was not searched")
         if any(not 0 <= n <= 10_000 for n in self.results.values()):
             raise ValueError("count out of range")
+
+
+class RateLimiter:
+    """Per-actor sliding window in process memory (one core instance; with several the ceiling is
+    the limit times the instances). `check` returns 0 when allowed, else seconds to wait."""
+
+    def __init__(self, per_minute: int, now: Callable[[], float] = time.monotonic) -> None:
+        self.max, self._now = per_minute, now
+        self._hits: dict[str, list[float]] = {}
+        self._lock = threading.Lock()
+
+    def check(self, key: str) -> int:
+        t = self._now()
+        with self._lock:
+            recent = [x for x in self._hits.get(key, []) if x > t - 60]
+            if len(recent) >= self.max:
+                self._hits[key] = recent
+                return max(1, int(recent[0] + 60 - t) + 1)
+            recent.append(t)
+            self._hits[key] = recent
+            if len(self._hits) > 10_000:
+                self._hits = {k: v for k, v in self._hits.items() if v[-1] > t - 60}
+        return 0
 
 
 @router.post("/event")
@@ -63,6 +91,10 @@ def record_event(
     declared = request.headers.get("content-length", "0")
     if declared.isdigit() and int(declared) > MAX_BODY_BYTES:
         raise AppError(413, "payload_too_large", "Request body too large")
+    limiter = request.app.state.audit_rate
+    wait = limiter.check(ctx.actor_id or "-")
+    if wait:
+        raise AppError(429, "rate_limited", "Too many audit events", {"Retry-After": str(wait)})
     types = sorted(body.entity_types)
     try:
         request.app.state.audit.record(

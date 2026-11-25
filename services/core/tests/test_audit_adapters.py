@@ -1,25 +1,13 @@
-"""M06 (#41) blocker 4b/4c: ready-made adapters for the `$01` ledger `AuditSink` and the N01
-`TemplateStore.audit` hook. The two modules are not on main yet, so the adapters are duck-typed on
-the exact shapes those branches use (`AuditEvent` dataclass; the publish payload dict)."""
+"""M06 (#41): unit tests of the ledger/template adapters (end to end with the real services:
+test_audit_ledger_templates.py)."""
 
 import json
-from dataclasses import dataclass, field
-from typing import Any
 
 import pytest
 
 from audit_helpers import audit_rows, build
 from hs_core.audit.adapters import LedgerAuditAdapter, TemplateAuditAdapter
-
-
-@dataclass(frozen=True, slots=True)
-class AuditEvent:  # same fields as hs_core.ledger.audit.AuditEvent on branch s01-ledger
-    key: str
-    action: str
-    entity_type: str
-    entity_id: str
-    actor_id: str | None
-    detail: dict[str, Any] = field(default_factory=dict)
+from hs_core.ledger.audit import AuditEvent  # the REAL event of the merged ledger
 
 
 def meta(row):

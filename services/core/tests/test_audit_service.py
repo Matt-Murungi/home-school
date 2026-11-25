@@ -120,8 +120,8 @@ class TestEveryAuditedTableIsCovered:
 
     def test_required_tables_are_in_the_set(self):
         need = {
-            "invoice", "payment", "earning", "payout", "payout_batch", "ledger_account",
-            "ledger_transaction", "ledger_entry", "tier", "tier_history", "bonus_rule",
+            "invoice", "payment", "earning", "payout", "payout_batch",
+            "tier", "tier_history", "bonus_rule",
             "session", "session_checkin", "session_confirmation", "cancellation", "dispute",
             "session_log", "session_log_topic", "session_log_struggle", "safeguarding_case",
             "safeguarding_action", "case_status", "app_setting", "role_assignment",

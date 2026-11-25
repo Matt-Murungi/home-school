@@ -158,3 +158,43 @@ class TestFailsClosed:
         c, _ = make()
         r = post(c, {**OK, "query": "CANARY-GRACE"})
         assert "CANARY-GRACE" not in r.text
+
+
+class TestResultsMatchTheTypes:
+    def test_results_for_a_type_not_searched_are_refused(self):
+        c, raw = make()
+        body = {**OK, "results": {"parent": 1, "child": 2}}
+        assert post(c, body).status_code == 422 and raw.list("audit_log") == []
+
+
+class TestRateLimit:
+    def test_an_admin_is_limited_per_minute_and_others_are_not(self):
+        c, raw = make(admin_audit_rate_per_min=3)
+        assert [post(c, OK).status_code for _ in range(5)] == [200, 200, 200, 429, 429]
+        assert len(raw.list("audit_log")) == 3
+        assert post(c, OK, token="sg").status_code == 200  # another admin
+
+    def test_the_429_has_retry_after_and_writes_nothing(self):
+        c, raw = make(admin_audit_rate_per_min=1)
+        post(c, OK)
+        r = post(c, OK)
+        assert r.status_code == 429 and int(r.headers["Retry-After"]) >= 1
+        assert len(raw.list("audit_log")) == 1
+
+    def test_the_window_slides(self):
+        from hs_core.audit.admin_events import RateLimiter
+
+        t = [0.0]
+        rl = RateLimiter(2, now=lambda: t[0])
+        assert rl.check("a") == 0 and rl.check("a") == 0 and rl.check("a") > 0
+        t[0] = 61
+        assert rl.check("a") == 0
+
+    def test_default_is_sixty_a_minute(self):
+        assert Settings(_env_file=None).admin_audit_rate_per_min == 60
+
+    def test_setting_is_range_checked(self):
+        assert any(
+            "ADMIN_AUDIT_RATE_PER_MIN" in p
+            for p in Settings(_env_file=None, admin_audit_rate_per_min=0).problems()
+        )

@@ -122,7 +122,7 @@ class TestUnauditedWriteTripwire:
             'T = "payout"\ndef f(repo):\n    repo.update(T, "p", {})\n',
             'def f(repo):\n    repo.update(table_id="dispute", row_id="d", data={})\n',
             'def f(c):\n    c.tables.update_row("session", "s", {})\n',
-            'def f(c):\n    c.upsert_row("ledger_account", "s", {})\n',
+            'def f(c):\n    c.upsert_row("payout_batch", "s", {})\n',
             'async def f(repo):\n    await repo.update("app_setting", "k", {})\n',
             'X: str = "session_log"\ndef f(self):\n    self.repo.create(X, "s", {})\n',
         ],

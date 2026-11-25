@@ -38,6 +38,7 @@ Which variable exists in which environment, what kind it is and where it lives. 
 | `GOOGLE_MAPS_IOS_KEY` | public client key | app-parent | build define | build define | build define | build_define |
 | `SENTRY_DSN_APP` | public client key | app-parent | build define | build define | build define | build_define |
 | `SENTRY_DSN_APP` | public client key | app-teacher | build define | build define | build define | build_define |
+| `ADMIN_AUDIT_RATE_PER_MIN` | config | core-service | 60 | 60 | 60 | fly_env |
 | `ADMIN_ENV` | config | app-admin | local | staging | production | host_env |
 | `AFRICASTALKING_SENDER_ID` | config | core-service | (empty: provider default sender) | (empty: provider default sender) | (empty: provider default sender) | fly_env |
 | `AFRICASTALKING_USERNAME` | config | core-service | sandbox in dev/staging | sandbox in dev/staging | sandbox in dev/staging | fly_env |

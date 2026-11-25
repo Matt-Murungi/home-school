@@ -7,6 +7,11 @@ table must be redacted or explicitly allow-listed here).
 
 from __future__ import annotations
 
+# The ledger tables (`ledger_account`, `ledger_transaction`, `ledger_entry`) are NOT here on
+# purpose: they are append-only, idempotent by their own deterministic ids and sealed by the
+# ledger's own protocol, and are audited by ONE summary row per posting / per account created
+# (`audit.adapters.LedgerAuditAdapter`, docs/ops/audit.md "Hooks"). Per-row audit would write
+# about 11 audit rows per posting.
 # SEC-6 / ADM-6: money, tiers, sessions and their children, logs, safeguarding, app settings,
 # role and approval changes. `app_setting` has no table yet (PLANNED): the name is reserved so the
 # settings ticket cannot forget the audit.
@@ -14,7 +19,6 @@ AUDITED_TABLES = frozenset(
     {
         # money
         "invoice", "payment", "earning", "payout", "payout_batch",
-        "ledger_account", "ledger_transaction", "ledger_entry",
         # tiers
         "tier", "tier_history", "bonus_rule",
         # plans, sessions and their children
@@ -117,7 +121,5 @@ TEXT_ALLOWED = frozenset(
         ("bonus_rule", "conditions"),
         ("subscription", "preferred_slots"),
         ("tier_history", "reason"),  # staff reason for a tier change
-        ("ledger_transaction", "description"),  # written by the ledger service
-        ("ledger_transaction", "reversal_reason"),  # staff reason for a reversal
     }
 )

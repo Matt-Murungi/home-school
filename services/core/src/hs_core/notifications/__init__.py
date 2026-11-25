@@ -21,12 +21,13 @@ def build_notification_service(
     repo: Repository,
     alerts: AlertSink | None = None,
     clock: Callable[[], datetime] | None = None,
+    audit: Callable[[dict], None] | None = None,
 ) -> NotificationService:
     """Wiring until N02 (#127): push and email channels are 'unconfigured' (every send fails
     permanently and loudly), the in-app channel is real (the row is the message)."""
     return NotificationService(
         repo,
-        store=TemplateStore(repo),
+        store=TemplateStore(repo, audit=audit),
         push=UnconfiguredChannel(),
         email_sender=UnconfiguredEmailSender(),
         in_app=StoredInAppChannel(),

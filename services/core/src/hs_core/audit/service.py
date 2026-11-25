@@ -433,6 +433,25 @@ class AuditService:
         except Exception as e:  # noqa: BLE001
             log.warning("failed-outcome row not written", extra={"error_type": type(e).__name__})
 
+    def get_row(self, row_id: str) -> dict | None:
+        return self._get_row(row_id)
+
+    def corrective_row_id(self, intent_id: str) -> str:
+        return "c" + hashlib.sha256(f"audit-corrective|{intent_id}".encode()).hexdigest()[:35]
+
+    def has_corrective(self, intent_id: str) -> bool:
+        return self._get_row(self.corrective_row_id(intent_id)) is not None
+
+    def mark_applied_after_failed(self, intent: Mapping[str, Any], *, job: str, run_key: str):
+        """Recovery: a `failed` row was wrong, the change landed. New row, fixed id."""
+        m = meta_of(intent)
+        return self._write_outcome(
+            intent["$id"], status="applied_after_failed", action=intent["action"],
+            entity=intent["entity"], entity_id=intent["entity_id"], seq=int(m.get("seq", 0)),
+            actor_id=None, actor_roles="system", source="system", job=job, ip=None,
+            request_id=short_id(run_key), error=None, row_id=self.corrective_row_id(intent["$id"]),
+        )  # fmt: skip
+
     def mark_not_applied(self, intent: Mapping[str, Any], *, job: str, run_key: str) -> bool:
         """Recovery: the intent never landed. Idempotent (fixed outcome id). True if written."""
         m = meta_of(intent)
@@ -446,7 +465,7 @@ class AuditService:
     def _write_outcome(
         self, intent_id: str, *, status: str, action: str, entity: str, entity_id: str, seq: int,
         actor_id: str | None, actor_roles: str, source: str, job: str | None, ip: str | None,
-        request_id: str, error: str | None,
+        request_id: str, error: str | None, row_id: str | None = None,
     ) -> bool:  # fmt: skip
         meta: dict[str, Any] = {"status": status, "ref": intent_id, "seq": seq, "source": source}
         if job:
@@ -455,7 +474,7 @@ class AuditService:
             meta["error"] = error
         _, a_text, _, _ = payload.make_sides(entity, None, None, meta)
         return self._create(
-            self.outcome_row_id(intent_id),
+            row_id or self.outcome_row_id(intent_id),
             {
                 "actor_id": actor_id, "actor_roles": actor_roles, "action": action,
                 "entity": entity, "entity_id": entity_id, "before": None, "after": a_text,

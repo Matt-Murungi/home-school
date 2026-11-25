@@ -109,11 +109,39 @@ class LedgerService:
     # ---- accounts -------------------------------------------------------------------------
     def ensure_chart_of_accounts(self) -> dict[str, Account]:
         stamp = iso(self._clock())
-        return {a.code: self.store.create_account(a) for a in chart.fixed_accounts(stamp)}
+        out = {a.code: self.store.create_account(a) for a in chart.fixed_accounts(stamp)}
+        for a in out.values():
+            self._record_account_audit(a)
+        return out
 
     def ensure_teacher_payable(self, teacher_id: str) -> Account:
         """Race-safe: the id derives from the code, so concurrent callers claim one row."""
-        return self.store.create_account(chart.teacher_payable(teacher_id, iso(self._clock())))
+        acct = self.store.create_account(chart.teacher_payable(teacher_id, iso(self._clock())))
+        self._record_account_audit(acct)
+        return acct
+
+    def _record_account_audit(self, a: Account) -> None:
+        """One summary event per account (M06 #41), deterministic key and content (no stamps), so
+        every ensure_* call is idempotent; a failure raises AuditFailed and repeating re-sends."""
+        event = AuditEvent(
+            key=f"ledger-account:{a.code}",
+            action="ledger.account_create",
+            entity_type="ledger_account",
+            entity_id=a.id,
+            actor_id=None,
+            detail={
+                "code": a.code,
+                "type": a.type.value,
+                "normal_side": a.normal_side.value,
+                "currency": a.currency,
+                "teacher_id": a.teacher_id,
+            },
+        )
+        try:
+            self._audit.record(event)
+        except Exception as exc:
+            log.warning("ledger.audit_failed", extra={"account": a.code})
+            raise AuditFailed(f"account {a.code} exists but audit failed") from exc
 
     def account(self, code: str) -> Account:
         found = self.store.get_account(code) if isinstance(code, str) else None

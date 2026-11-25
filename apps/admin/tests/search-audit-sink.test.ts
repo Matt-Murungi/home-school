@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { loadConfig } from "@/lib/config";
 import {
   CoreAuditSink,
@@ -193,5 +193,101 @@ describe("nothing persists nothing any more", () => {
   it("UnwiredAuditSink no longer exists in the app source", () => {
     for (const f of walk(join(__dirname, "..", "src")))
       expect(readFileSync(f, "utf8"), f).not.toMatch(/UnwiredAuditSink/);
+  });
+});
+
+describe("timeouts cover the whole request including the body (fake timers)", () => {
+  afterEach(() => vi.useRealTimers());
+  const stalledBody = () => new Response(new ReadableStream({ start() {} }), { status: 200 });
+  const cfg = loadConfig({ APPWRITE_ENDPOINT: "https://aw.test/v1", APPWRITE_PROJECT_ID: "p" });
+
+  it("CoreAuditSink: headers then a stalled body still fails at the timeout", async () => {
+    vi.useFakeTimers();
+    const sink = new CoreAuditSink({
+      baseUrl: CORE,
+      jwt: async () => "j",
+      timeoutMs: 3000,
+      fetch: async () => stalledBody(),
+    });
+    const p = sink.record(entry);
+    const assertion = expect(p).rejects.toThrow();
+    await vi.advanceTimersByTimeAsync(3001);
+    await assertion;
+  });
+  it("CoreAuditSink: a request that never answers fails at the timeout", async () => {
+    vi.useFakeTimers();
+    const sink = new CoreAuditSink({
+      baseUrl: CORE,
+      jwt: async () => "j",
+      timeoutMs: 3000,
+      fetch: () => new Promise<Response>(() => {}),
+    });
+    const assertion = expect(sink.record(entry)).rejects.toThrow();
+    await vi.advanceTimersByTimeAsync(3001);
+    await assertion;
+  });
+  it("CoreAuditSink: the JWT step is inside the same budget", async () => {
+    vi.useFakeTimers();
+    const sink = new CoreAuditSink({
+      baseUrl: CORE,
+      jwt: () => new Promise<string>(() => {}),
+      timeoutMs: 3000,
+      fetch: async () => ok(),
+    });
+    const assertion = expect(sink.record(entry)).rejects.toThrow();
+    await vi.advanceTimersByTimeAsync(3001);
+    await assertion;
+  });
+  it("appwriteJwtProvider: no answer fails at the timeout", async () => {
+    vi.useFakeTimers();
+    const get = appwriteJwtProvider(cfg, "s", {
+      fetch: () => new Promise<Response>(() => {}),
+      timeoutMs: 3000,
+    });
+    const assertion = expect(get()).rejects.toThrow();
+    await vi.advanceTimersByTimeAsync(3001);
+    await assertion;
+  });
+  it("appwriteJwtProvider: headers then a stalled body fails at the timeout", async () => {
+    vi.useFakeTimers();
+    const get = appwriteJwtProvider(cfg, "s", {
+      fetch: async () => stalledBody(),
+      timeoutMs: 3000,
+    });
+    const assertion = expect(get()).rejects.toThrow();
+    await vi.advanceTimersByTimeAsync(3001);
+    await assertion;
+  });
+  it("a fast answer is not cut off", async () => {
+    vi.useFakeTimers();
+    await new CoreAuditSink({
+      baseUrl: CORE,
+      jwt: async () => "j",
+      timeoutMs: 3000,
+      fetch: async () => ok(),
+    }).record(entry);
+  });
+});
+
+describe("deployed means a production build too", () => {
+  const jwt = async () => "j";
+  const base = { APPWRITE_ENDPOINT: "https://aw.test/v1", APPWRITE_PROJECT_ID: "p" };
+  it("NODE_ENV=production with a local label and no core URL is refused", () => {
+    expect(() =>
+      auditSinkFor(loadConfig({ ...base, NODE_ENV: "production", ADMIN_ENV: "local" }), jwt),
+    ).toThrow(SearchAuditUnwired);
+  });
+  it("NODE_ENV=production does not allow http://localhost", () => {
+    expect(() =>
+      auditSinkFor(
+        loadConfig({
+          ...base,
+          NODE_ENV: "production",
+          ADMIN_ENV: "local",
+          CORE_API_URL: "http://localhost:8080",
+        }),
+        jwt,
+      ),
+    ).toThrow(SearchAuditUnwired);
   });
 });

@@ -544,3 +544,64 @@ class TestRedactionOfGenericKeys:
         audited.update(entity, "r1", {key: "CANARY the parent said her child is ill"},
                        ctx=admin_ctx("g"))  # fmt: skip
         assert "CANARY" not in json.dumps(repo.list("audit_log"))
+
+
+# ---------------------------------------------------------------- round 3: failed rows re-checked
+class TestFailedRowsAreRecheckedByRecovery:
+    def landed_then_proof_error(self, op):
+        """Conflict/NotFound raised AFTER the write landed (a driver that retried internally)."""
+        repo = FaultyRepository()
+        _, service, audited, clock = build(repo)
+        if op != "create":
+            repo.create("tier", "t1", {"rate": 1})
+        err = Conflict("409") if op == "create" else NotFound("404")
+        repo.arm(2, "after", error=err)
+        with pytest.raises(type(err)):
+            if op == "create":
+                audited.create("tier", "t1", {"rate": 2}, ctx=admin_ctx("r"))
+            elif op == "update":
+                audited.update("tier", "t1", {"rate": 2}, ctx=admin_ctx("r"))
+            else:
+                audited.delete("tier", "t1", ctx=admin_ctx("r"))
+        repo.disarm()
+        assert statuses(repo) == ["intent", "failed"]  # the wrong row we must correct
+        clock.advance(hours=1)
+        return repo, service, clock
+
+    def sweep(self, repo, service, clock):
+        return recover_audit(repo, service, now=clock(), grace=timedelta(minutes=5),
+                             lookback=timedelta(hours=6))  # fmt: skip
+
+    @pytest.mark.parametrize("op", ["create", "update", "delete"])
+    def test_a_failed_row_for_a_change_that_landed_gets_a_corrective_row(self, op):
+        repo, service, clock = self.landed_then_proof_error(op)
+        res = self.sweep(repo, service, clock)
+        assert res.failed_but_applied == 1
+        assert statuses(repo) == ["intent", "failed", "applied_after_failed"]
+        assert service.metrics["failed_but_applied"] == 1
+        corrective = audit_rows(repo)[-1]
+        assert meta(corrective)["ref"] == audit_rows(repo)[0]["$id"]
+
+    @pytest.mark.parametrize("op", ["create", "update", "delete"])
+    def test_the_correction_is_idempotent_across_sweeps(self, op):
+        repo, service, clock = self.landed_then_proof_error(op)
+        for _ in range(3):
+            self.sweep(repo, service, clock)
+        assert statuses(repo).count("applied_after_failed") == 1
+
+    def test_a_genuinely_failed_change_is_not_corrected(self):
+        repo = FaultyRepository()
+        _, service, audited, clock = build(repo)
+        repo.create("tier", "t1", {"rate": 1})
+        repo.arm(2, "before", error=NotFound("404"))  # nothing was written
+        with pytest.raises(NotFound):
+            audited.update("tier", "t1", {"rate": 2}, ctx=admin_ctx("r"))
+        repo.disarm()
+        clock.advance(hours=1)
+        res = self.sweep(repo, service, clock)
+        assert res.failed_but_applied == 0 and statuses(repo) == ["intent", "failed"]
+
+    def test_a_failed_row_outside_the_lookback_is_left_alone(self):
+        repo, service, clock = self.landed_then_proof_error("update")
+        clock.advance(hours=24)
+        assert self.sweep(repo, service, clock).failed_but_applied == 0
