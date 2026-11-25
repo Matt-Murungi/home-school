@@ -123,3 +123,17 @@ def test_build_repository_from_settings_makes_no_network_call(monkeypatch):
     )
     assert isinstance(build_repository(s), AppwriteRepository)
     assert isinstance(build_repository(Settings(_env_file=None)), InMemoryRepository)
+
+
+def test_inmemory_list_supports_cursor_after_in_query_order():
+    from appwrite.query import Query
+
+    repo = InMemoryRepository()
+    for i in range(5):
+        repo.create("t", f"id{i}", {"n": i})
+    page = [Query.order_asc("n"), Query.limit(2)]
+    first = repo.list("t", page)
+    second = repo.list("t", [*page, Query.cursor_after(first[-1]["$id"])])
+    assert [r["n"] for r in first] == [0, 1] and [r["n"] for r in second] == [2, 3]
+    with pytest.raises(ValueError):
+        repo.list("t", [Query.cursor_after("missing")])

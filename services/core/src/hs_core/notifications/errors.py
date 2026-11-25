@@ -64,3 +64,8 @@ class RecipientMismatch(NotificationError):
 
 class InvalidIdempotencyKey(NotificationError, ValueError):
     pass
+
+
+class NaiveDatetime(NotificationError, ValueError):
+    """A datetime without a timezone was passed where an instant is required (it would be read as
+    server-local time). Pass a timezone-aware datetime (UTC or Africa/Kampala)."""

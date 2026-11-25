@@ -11,6 +11,7 @@ UNREGISTERED (push only) deletes the token and counts as permanent for that toke
 from __future__ import annotations
 
 import json
+import re
 import threading
 from collections import deque
 from collections.abc import Mapping
@@ -110,6 +111,9 @@ _EMAIL_FAILURE = {
 }
 
 
+_SAFE_ADDRESS = re.compile(r"[^\s\x00-\x1f\x7f]+\Z")
+
+
 class EmailChannel:
     """Adapts an ADR 0005 `EmailSender` to the common channel result."""
 
@@ -119,6 +123,8 @@ class EmailChannel:
     def send(
         self, to: str, subject: str, text: str, html: str, tags: Mapping[str, str], key: str
     ) -> ChannelResult:
+        if not _SAFE_ADDRESS.match(to or ""):  # header injection (CR/LF), control chars, spaces
+            return ChannelResult(False, FailureKind.PERMANENT, detail="invalid_address")
         msg = EmailMessage(to, subject, html, text, self.from_address, self.reply_to, dict(tags))
         res = self.sender.send(msg, idempotency_key=key)
         if res.accepted:

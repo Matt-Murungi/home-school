@@ -51,6 +51,7 @@ def _apply_queries(rows: list[dict], queries: list[str] | None) -> list[dict]:
     orders: list[tuple[str, bool]] = []
     limit: int | None = None
     offset = 0
+    cursor_after: str | None = None
     for q in parsed:
         m = q["method"]
         if m in cmp:
@@ -63,10 +64,17 @@ def _apply_queries(rows: list[dict], queries: list[str] | None) -> list[dict]:
             limit = q["values"][0]
         elif m == "offset":
             offset = q["values"][0]
+        elif m == "cursorAfter":
+            cursor_after = q["values"][0]
         else:
             raise ValueError(f"unsupported query method in fake repository: {m}")
     for attr, desc in reversed(orders):
         rows = sorted(rows, key=lambda r, a=attr: (r.get(a) is None, r.get(a)), reverse=desc)
+    if cursor_after is not None:  # Appwrite: rows after the row with this id, in query order
+        ids = [r.get("$id") for r in rows]
+        if cursor_after not in ids:
+            raise ValueError("cursor row not found")
+        rows = rows[ids.index(cursor_after) + 1 :]
     rows = rows[offset:]
     return rows[:limit] if limit is not None else rows
 

@@ -56,6 +56,7 @@ from .config import NotificationConfig
 from .devices import DeviceRegistry, token_hash
 from .errors import (
     InvalidIdempotencyKey,
+    NaiveDatetime,
     RecipientMismatch,
     TemplateError,
     UnknownEvent,
@@ -160,6 +161,11 @@ class FakeEscalation:
         self.acknowledged.append((group_id, user_id))
 
 
+def _transient_error(result: ChannelResult) -> str:
+    """`transient`, or `transient:exception:<TypeName>` when the provider call raised."""
+    return f"transient:{result.detail}" if result.detail.startswith("exception:") else "transient"
+
+
 def _iso(d: datetime) -> str:
     return d.astimezone(UTC).isoformat()
 
@@ -171,7 +177,7 @@ def _dt(s: str) -> datetime:
 def public_status(row: dict) -> str:
     st = row["status"]
     if st == "blocked":
-        return "suppressed"
+        return "expired" if row.get("last_error") == "suppressed:expired" else "suppressed"
     if st == "queued" and _meta(row).get("deferred"):
         return "deferred"
     return st
@@ -189,6 +195,22 @@ def _load(row: dict) -> dict:
 
 def _meta(row: dict) -> dict:
     return _load(row)["meta"]
+
+
+def is_renderable(row: dict) -> bool:
+    """Can `render_notification` show this row? False once the retention hook has removed the
+    variables (`payload_expired`), for unreadable payloads and for soft-deleted rows. The inbox
+    API must skip (or show a neutral line for) rows where this is False."""
+    if row.get("deleted_at") or not row.get("payload"):
+        return False
+    try:
+        d = json.loads(row["payload"])
+    except ValueError:
+        return False
+    if not isinstance(d, dict):
+        return False
+    meta = d.get("meta") or {}
+    return not meta.get("payload_expired")
 
 
 def _encode_vars(values: dict[str, Any], specs: dict[str, engine.VarSpec]) -> dict[str, Any]:
@@ -263,7 +285,12 @@ class NotificationService:
         *,
         deep_link: str | None = None,
         not_after: datetime | None = None,
+        subject_id: str | None = None,
     ) -> SendResult:
+        """`subject_id`: what the notification is about (child, session or invoice id). It is
+        part of the burst-limit key so that several events about different children are not
+        suppressed as one burst; callers of per-subject events SHOULD pass it. `not_after`
+        must be timezone-aware; when omitted the event's default lifetime applies."""
         ev = EVENTS.get(event_key)
         if ev is None:
             raise UnknownEvent(event_key)
@@ -282,6 +309,10 @@ class NotificationService:
             or _CONTROL.search(deep_link)
         ):
             raise ValueError("deep link must be a homeschool:// link of at most 500 characters")
+        if not_after is not None and not_after.utcoffset() is None:
+            raise NaiveDatetime("not_after must be timezone-aware (UTC or Africa/Kampala)")
+        if subject_id is not None and (len(subject_id) > 64 or _CONTROL.search(subject_id)):
+            raise ValueError("subject_id must be at most 64 printable characters")
         now = self._now()
         with self._send_locks(f"{idempotency_key}|{recipient.user_id}"):
             try:
@@ -304,6 +335,7 @@ class NotificationService:
                     deep_link,
                     not_after,
                     now,
+                    subject_id,
                 )
                 refs.append(ref)
                 dup = dup or existed
@@ -390,7 +422,20 @@ class NotificationService:
                 Query.limit(page),
             ],
         )
-        return sum(1 for r in rows if self._dispatch(r["$id"], now, owner=False))
+        done = 0
+        for r in rows:
+            try:  # one failing row must not block the rows behind it
+                done += bool(self._dispatch(r["$id"], now, owner=False))
+            except Exception as e:  # noqa: BLE001 - BaseException still propagates
+                self._log_row_error(r["$id"], e)
+        return done
+
+    @staticmethod
+    def _log_row_error(rid: str, exc: Exception) -> None:
+        log.error(
+            "notification dispatch failed for one row",
+            extra={"notification_id": rid, "error_type": type(exc).__name__},
+        )
 
     def render_notification(self, row: dict) -> Rendered:
         """The inbox text of a row, from the exact template version it was created with."""
@@ -408,7 +453,23 @@ class NotificationService:
         raw = "\x1f".join((idem, event_key, user_id, channel.value))
         return hashlib.sha256(raw.encode()).hexdigest()[:40]
 
-    def _enqueue(self, ev, recipient, channel, spec, variables, idem, deep_link, not_after, now):
+    @staticmethod
+    def _default_not_after(
+        ev: EventDef, variables: dict[str, Any], now: datetime
+    ) -> datetime | None:
+        """The event's default lifetime: `ttl_minutes` from now, cut short at the session start
+        (`expires_at_var`) when that variable is a timezone-aware datetime."""
+        if ev.ttl_minutes is None:
+            return None
+        limit = now + timedelta(minutes=ev.ttl_minutes)
+        at = variables.get(ev.expires_at_var) if ev.expires_at_var else None
+        if isinstance(at, datetime) and at.utcoffset() is not None:
+            limit = min(limit, at.astimezone(UTC))
+        return limit
+
+    def _enqueue(
+        self, ev, recipient, channel, spec, variables, idem, deep_link, not_after, now, subject=None
+    ):
         dedupe = self._dedupe_key(idem, ev.key, recipient.user_id, channel)
         rid = notification_row_id(dedupe)
         existing = self._get(rid)
@@ -420,19 +481,24 @@ class NotificationService:
         if (
             reason is None
             and ev.priority != "critical"
-            and self._over_rate_limit(recipient.user_id, ev.key, channel, now)
+            and self._over_rate_limit(recipient.user_id, ev.key, channel, now, subject or "")
         ):
             reason = "rate_limited"
         meta: dict[str, Any] = {"locale": spec.locale, "priority": ev.priority, "group": 0}
-        if not_after is not None:
-            meta["not_after"] = _iso(not_after)
+        if subject:
+            meta["subject"] = subject
         scheduled = now
         if reason is None and self._defers(ev, channel, now):
             scheduled = quiet_hours.next_allowed(
                 now, self.config.quiet_start_hour, self.config.quiet_end_hour
             )
             meta["deferred"] = True
-        elif reason is None:
+        # The default lifetime runs from the first moment the row may be sent (after quiet hours),
+        # so an overnight deferral alone never expires it; the session start still does.
+        not_after = not_after or self._default_not_after(ev, variables, scheduled)
+        if not_after is not None:
+            meta["not_after"] = _iso(not_after)
+        if reason is None and not meta.get("deferred"):
             meta["lease_until"] = _iso(now + timedelta(seconds=self.config.lease_s))
         row = self._new_row(
             rid,
@@ -501,24 +567,35 @@ class NotificationService:
             return False
         return quiet_hours.is_quiet(now, self.config.quiet_start_hour, self.config.quiet_end_hour)
 
-    def _over_rate_limit(self, user_id: str, key: str, channel: Channel, now: datetime) -> bool:
+    def _over_rate_limit(
+        self, user_id: str, key: str, channel: Channel, now: datetime, subject: str = ""
+    ) -> bool:
+        """Rows of this user in the window with the same template, channel and subject. Every row
+        in the window is counted (cursor paging, 100 per page), so a very busy user is not
+        undercounted. Still approximate under concurrent sends (no atomic counter)."""
         since = _iso(now - timedelta(seconds=self.config.rate_window_s))
-        rows = self.repo.list(
-            TABLE,
-            [
-                Query.equal("user_id", [user_id]),
-                Query.greater_than_equal("created_at", since),
-                Query.limit(200),
-            ],
-        )
-        n = sum(
-            1
-            for r in rows
-            if r["template_key"] == key
-            and r["channel"] == channel.value
-            and r["status"] != "blocked"
-        )
-        return n >= self.config.rate_limit
+        base = [
+            Query.equal("user_id", [user_id]),
+            Query.greater_than_equal("created_at", since),
+            Query.order_asc("created_at"),
+            Query.limit(100),
+        ]
+        n, cursor = 0, None
+        while True:
+            rows = self.repo.list(TABLE, base + ([Query.cursor_after(cursor)] if cursor else []))
+            for r in rows:
+                if (
+                    r["template_key"] == key
+                    and r["channel"] == channel.value
+                    and r["status"] != "blocked"
+                    and _meta(r).get("subject", "") == subject
+                ):
+                    n += 1
+                    if n >= self.config.rate_limit:
+                        return True
+            if len(rows) < 100:
+                return False
+            cursor = rows[-1]["$id"]
 
     def _get(self, rid: str) -> dict | None:
         try:
@@ -529,7 +606,10 @@ class NotificationService:
     def _resume(self, row: dict, now: datetime) -> NotificationRef:
         """An existing row for this key: finish it if a worker died holding it (lease expired)."""
         if row["status"] == "queued":
-            self._dispatch(row["$id"], now, owner=False)
+            try:
+                self._dispatch(row["$id"], now, owner=False)
+            except Exception as e:  # noqa: BLE001 - a retry must not raise provider/store errors
+                self._log_row_error(row["$id"], e)
             row = self.repo.get(TABLE, row["$id"])
         return self._ref(row)
 
@@ -604,6 +684,10 @@ class NotificationService:
         return self.render_notification(row)
 
     def _deliver(self, rid: str, row: dict, payload: dict, channel: Channel) -> ChannelResult:
+        """Render and hand to the channel. NEVER raises an `Exception`: whatever a provider (or
+        the renderer) throws becomes a TRANSIENT failure that carries the exception TYPE NAME
+        only (the message may hold tokens, addresses or URLs). BaseException (KeyboardInterrupt,
+        SystemExit, a killed worker) is not caught on purpose."""
         try:
             rendered = self._rendered(row, payload)
         except TemplateError as e:
@@ -613,6 +697,24 @@ class NotificationService:
                 f"render:{e.code}:{','.join(e.names)}",
             )
             return ChannelResult(False, FailureKind.PERMANENT, detail=f"template_{e.code}")
+        except Exception as e:  # noqa: BLE001 - see docstring
+            return self._raised(rid, channel, e)
+        try:
+            return self._send_on_channel(rid, row, payload, channel, rendered)
+        except Exception as e:  # noqa: BLE001 - see docstring
+            return self._raised(rid, channel, e)
+
+    def _raised(self, rid: str, channel: Channel, exc: Exception) -> ChannelResult:
+        name = type(exc).__name__
+        log.warning(
+            "notification channel raised",
+            extra={"notification_id": rid, "channel": channel.value, "error_type": name},
+        )
+        return ChannelResult(False, FailureKind.TRANSIENT, detail=f"exception:{name}")
+
+    def _send_on_channel(
+        self, rid: str, row: dict, payload: dict, channel: Channel, rendered: Rendered
+    ) -> ChannelResult:
         group = payload["meta"].get("group", 0)
         uid = row["user_id"]
         if channel is Channel.PUSH:
@@ -640,17 +742,21 @@ class NotificationService:
             data["deep_link"] = row["deep_link"]
         accepted: ChannelResult | None = None
         transient = False
+        transient_detail = "transient"
         unregistered = 0
         for t in targets:
-            res = self.push.send(
-                PushMessage(
-                    t.token,
-                    rendered.title,
-                    rendered.body,
-                    data,
-                    f"{rid}:{group}:{token_hash(t.token)[:12]}",
+            try:
+                res = self.push.send(
+                    PushMessage(
+                        t.token,
+                        rendered.title,
+                        rendered.body,
+                        data,
+                        f"{rid}:{group}:{token_hash(t.token)[:12]}",
+                    )
                 )
-            )
+            except Exception as e:  # noqa: BLE001 - one device must not stop the others
+                res = self._raised(rid, Channel.PUSH, e)
             if res.accepted:
                 accepted = accepted or res
             elif res.failure is FailureKind.UNREGISTERED:
@@ -658,10 +764,12 @@ class NotificationService:
                 self.devices.revoke_invalid(t.row_id)
             elif res.failure is FailureKind.TRANSIENT:
                 transient = True
+                if res.detail.startswith("exception:"):
+                    transient_detail = res.detail
         if accepted:
             return accepted
         if transient:
-            return ChannelResult(False, FailureKind.TRANSIENT, detail="transient")
+            return ChannelResult(False, FailureKind.TRANSIENT, detail=transient_detail)
         gone = unregistered == len(targets)  # includes "no device registered"
         return ChannelResult(
             False, FailureKind.PERMANENT, detail="no_device" if gone else "permanent"
@@ -701,14 +809,14 @@ class NotificationService:
                 rid,
                 {
                     "status": "queued",
-                    "last_error": "transient",
+                    "last_error": _transient_error(result),
                     "scheduled_at": _iso(now + timedelta(seconds=wait)),
                     "payload": json.dumps(payload),
                 },
             )
             log.warning(
                 "notification attempt failed, will retry",
-                extra={"notification_id": rid, "attempt": attempts},
+                extra={"notification_id": rid, "attempt": attempts, "detail": result.detail[:60]},
             )
             return
         error = ("permanent:" + result.detail) if not transient else "transient_exhausted"

@@ -16,7 +16,7 @@ Priorities (not stored in the table, which only has `category`):
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 from .engine import VarSpec
 from .templates import Channel, TemplateSpec
@@ -40,6 +40,8 @@ class EventDef:
     email_body: str = ""
     urgent: bool = False  # operational, but time-boxed: not deferred by quiet hours
     fallback_email: bool = False  # push failure falls back to email (critical events)
+    ttl_minutes: int | None = None  # default lifetime from send time; None = never expires
+    expires_at_var: str | None = None  # a datetime variable (session start) that also ends it
 
     @property
     def template_channels(self) -> tuple[Channel, ...]:
@@ -347,6 +349,45 @@ _add(
     "{{headline}}" + _OPEN,
     category="marketing",
 )
+
+
+# --- default lifetimes (N01 round 2): a notification that could not be delivered in time is marked
+# `expired` and never sent late. `(minutes, variable)`: the variable (a datetime such as the session
+# start) ends it earlier. An explicit `not_after` passed to `send` wins. Safeguarding never expires.
+_H, _D = 60, 24 * 60
+TTL_DECISIONS: dict[str, tuple[int | None, str | None]] = {
+    "assignment_offer_teacher": (60, None),
+    "teacher_assigned_parent": (7 * _D, None),
+    "substitute_assigned_parent": (3 * _D, "lesson_time"),
+    "session_reminder_day_before_parent": (_D, "lesson_time"),
+    "session_reminder_day_before_teacher": (_D, "lesson_time"),
+    "session_reminder_1h_parent": (90, "lesson_time"),
+    "session_reminder_1h_teacher": (90, "lesson_time"),
+    "session_checked_in_parent": (6 * _H, None),
+    "session_checked_out_parent": (6 * _H, None),
+    "session_confirm_request_parent": (3 * _D, None),
+    "session_log_published_parent": (7 * _D, None),
+    "session_cancelled_parent": (3 * _D, None),
+    "session_cancelled_teacher": (3 * _D, None),
+    "session_disputed_teacher": (7 * _D, None),
+    "payment_due_parent": (14 * _D, None),
+    "payment_failed_parent": (7 * _D, None),
+    "payment_received_parent": (7 * _D, None),
+    "payout_sent_teacher": (14 * _D, None),
+    "matching_failed_parent": (3 * _D, None),
+    "matching_failed_admin": (3 * _D, None),
+    "no_substitute_parent": (3 * _D, None),
+    "no_substitute_admin": (3 * _D, None),
+    "document_expiring_teacher": (14 * _D, None),
+    "tier_changed_teacher": (14 * _D, None),
+    "safeguarding_concern_admin": (None, None),
+    "marketing_announcement_parent": (_D, None),
+}
+for _k, (_m, _var) in TTL_DECISIONS.items():
+    EVENTS[_k] = replace(EVENTS[_k], ttl_minutes=_m, expires_at_var=_var)
+_missing = set(EVENTS) - set(TTL_DECISIONS)
+if _missing:  # a new event must decide its lifetime
+    raise RuntimeError(f"catalog events without a TTL decision: {sorted(_missing)}")
 
 
 def default_templates() -> list[TemplateSpec]:

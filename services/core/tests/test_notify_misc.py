@@ -112,7 +112,8 @@ def test_retention_hook_clears_payloads_once_and_is_chunked():
     assert expire_payloads(rig.repo, cutoff, rig.clock.now, page=4) == 4
     assert expire_payloads(rig.repo, cutoff, rig.clock.now, page=4) == 2
     assert expire_payloads(rig.repo, cutoff, rig.clock.now, page=4) == 0
-    assert all(r["payload"] is None and r["deleted_at"] for r in rig.repo.list("notification"))
+    rows = rig.repo.list("notification")
+    assert all(r["deleted_at"] and json.loads(r["payload"])["vars"] == {} for r in rows)
 
 
 def test_app_binds_the_dispatch_job_and_wires_no_real_channels(settings, repo, verifier):
