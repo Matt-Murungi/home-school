@@ -58,7 +58,9 @@ Nothing was verified against the statute or PDPO site directly. Treat every item
 | 1. Keep in scope, behind a feature flag, off until the lawyer clears | Keeps design options open. |
 | 2. Remove from MVP scope entirely | Matches the issue's edge case if advice is negative; no other ticket currently depends on it (none found in the backlog). |
 
-## Decision (PROPOSAL pending lawyer review and owner choice)
+## Decision
+
+**PROPOSAL pending lawyer review and owner choice.**
 
 None of this is final. It is the engineering side's default so work can proceed:
 
