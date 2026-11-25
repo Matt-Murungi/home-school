@@ -31,6 +31,6 @@
     "jsdom": "^25",
     "prettier": "^3.10.1",
     "typescript": "^5",
-    "vitest": "^2"
+    "vitest": "^5"
   }
 }
