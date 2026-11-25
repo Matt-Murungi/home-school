@@ -1,0 +1,7 @@
+arb-dir: lib/src/l10n
+template-arb-file: app_en.arb
+output-dir: lib/src/l10n/gen
+output-localization-file: hs_strings.dart
+output-class: HsStrings
+synthetic-package: false
+nullable-getter: false
