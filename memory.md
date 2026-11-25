@@ -61,6 +61,7 @@ Reviewer writes: commands run, results, criterion-by-criterion verdict, findings
 | packages/flutter_shared | `cd packages/flutter_shared && flutter test` (lint: `dart format --set-exit-if-changed . && flutter analyze`) |
 | apps/parent | `cd apps/parent && flutter test` (same lint) |
 | apps/teacher | `cd apps/teacher && flutter test` (same lint) |
+| ops (F08) | `cd ops && python3 -m unittest discover -s tests && python3 check_ops.py` |
 | services/core (F03) | `cd services/core && uv run pytest -q` (lint: `uv run ruff check . && uv run ruff format --check .`); offline, no Docker needed |
 | docs/legal (policy inventory) | `python3 docs/legal/check-policy-inventory.py` (fails on missing purpose/consumer ticket/owner/status or unknown ticket #) |
 | docs/adr (ADR lint; reuse for every decision ticket) | `python3 docs/adr/check-adrs.py` (all ADRs) or `python3 docs/adr/check-adrs.py docs/adr/00NN-x.md`. Needs `# ADR NNNN — title` (number = file name), `- **Status:**` (Proposed/Accepted/Superseded/Deprecated), `- **Date:**`, `- **Ticket:**`, and `## Context`, `## Decision`, `## Consequences`. Exit 1 on failure. Stdlib only. |
@@ -251,6 +252,33 @@ Suggested order: E00 decisions (D01–D03, D05; D04, D06 later/owner) → E01 fo
 
 - **Unverified:** actual `docker build` / container run (docker not installed here); real Appwrite calls (read-only live project, nothing contacted); "container runs on staging, /health reachable on staging URL" and "deployed to staging" (owner-blocked, below).
 
+### F08 · Error tracking, logging and uptime monitoring (#34)
+
+- **Status:** ready-for-review (blocked-foundation after merge) · branch `f08-monitoring` (pushed, no PR).
+- **Built:** `services/core/src/hs_core/observability/` (`scrub.py` before_send/before_breadcrumb PII scrubber, `reporter.py` `ErrorReporter` + `SentryReporter` (own Client, sentry-sdk 3, DSN from `SENTRY_DSN` only, refuses a real transport under pytest) + `NoopReporter` + `FakeReporter` + `report_once`); wiring in `main.py`/`errors.py` (5xx reported once with request_id), `settings.py` (`sentry_dsn` SecretStr, https check), `logging_setup.py` (log message and exception text scrubbed). `ops/alerts.json`, `ops/uptime.json`, `ops/check_ops.py` (validator), new top-level dir `ops` (added to `check_layout.py` ALLOWED_TOP, `packages.json` id `ops`). Docs: `docs/ops/runbook.md`, `setup.md` (owner-blocked steps), `integration.md` (Flutter dart-define, admin, worker hooks).
+- **Tests:** `cd services/core && uv run pytest -q` -> 96 passed (23 new), ruff clean; `cd ops && python3 -m unittest discover -s tests && python3 check_ops.py` -> 17 OK; root `make test` 7 ran ok/0 failed, `make lint` 5 ok/0 failed.
+- **Criterion -> test map:**
+
+| Criterion / edge case | Test / decision |
+|---|---|
+| Sentry in core service and worker | `test_reporter.py` (adapter, wiring); worker = same module, F04 uses `ErrorReporter` |
+| Sentry in parent/teacher/admin | Not built: documented hooks in `docs/ops/integration.md` (F05/F06 own the code) |
+| PII scrubbing (phones, names, emails, tokens, bodies) | `test_scrub.py` (realistic nested event, exception message with phone, key masking at depth, frame vars and bodies dropped, idempotent, fail-closed) |
+| Test exception appears without personal data | `test_sentry_event_has_tags_and_is_scrubbed` (fake transport); live check owner-blocked |
+| request_id / environment / release tags; logs carry request_id | `test_sentry_event_has_tags_and_is_scrubbed`, `test_unhandled_exception_is_reported_once_with_request_id_and_no_pii`, `test_error_logs_carry_request_id_and_scrubbed_exception_text` |
+| No DSN = disabled; never sends in tests | `test_no_dsn_means_noop_reporter`, `test_dsn_builds_sentry_reporter_only_with_transport_in_tests` |
+| Reporter failure must not break requests | `test_reporter_failure_never_breaks_the_caller` |
+| Alert fatigue/noise | `test_ops.py::test_noise_controls_present`, `test_no_single_blip_alerts`, `test_client_errors_are_not_reported`; policy in runbook |
+| All NFR-17 alerts exist | `test_ops.py::test_every_nfr17_alert_exists`, runbook section per alert |
+| Uptime /health every minute staging+production, /ready, admin | `test_ops.py::Uptime` (6 tests) |
+| Monitoring itself down | `monitoring-heartbeat-missing` alert + second vendor + monthly test (`test_monitoring_itself_down_is_covered`) |
+| Crash while offline queued | Documented: sentry_flutter disk cache (integration.md); device test owner-blocked |
+| Alerts reach founder/ops | Routes in alerts.json; destinations owner-blocked (setup.md) |
+| Stopping staging API triggers alert | owner-blocked (needs staging + vendor) |
+
+- **Deviations/notes:** sentry-sdk 3.x dropped `send_default_pii`/`include_local_variables`; scrubber drops frame vars instead. Names/addresses in free text cannot be regex-detected: rule is use ids, plus key masking. `ops/` required adding a top-level dir to the layout check.
+- **Follow-ups:** F04 should ping `HS_HEARTBEAT_URL` and tag job failures `alert=job-failure`; payments/payouts/safeguarding tickets must emit `alert=` tags; F05/F06 implement the integration notes.
+
 ### F06 · Scaffold admin dashboard app (#32)
 
 - **Status:** blocked-foundation-merged · PR #164, squash merge d605bb9, issue #32 closed. Owner-blocked: real login/MFA on staging, staging deploy, MFA factor choice.
@@ -313,6 +341,8 @@ Suggested order: E00 decisions (D01–D03, D05; D04, D06 later/owner) → E01 fo
 - F03: Fly.io app `fly.toml`, staging deploy and secrets (`APPWRITE_API_KEY`, project/database IDs) per ADR 0003; non-live Appwrite project for staging; Docker image build/run proof (docker not installed on the build machine); AppwriteJwtVerifier and AppwriteRepository against a real non-live project.
 - F06: staging Appwrite project + test admin with MFA to verify real login/MFA; deploy target and env values for the admin app (see F06 block).
 - F05: iOS and release builds need Xcode/Codemagic, signing keys, and the app store accounts; app/bundle ids and brand name are undecided (placeholders `ug.homeschool.home_school_*`).
+
+- F08: Sentry account + 5 projects and DSNs (Fly secret `SENTRY_DSN`, `NEXT_PUBLIC_SENTRY_DSN`, dart-define); alert routing to owner email/push; uptime vendor account (Better Stack free, UptimeRobot free second check) + heartbeat URL; staging/production hostnames. Exact steps: `docs/ops/setup.md`. Defaults are free tiers, no paid plan chosen.
 
 ## Questions for the owner (collected; ask at the end)
 
