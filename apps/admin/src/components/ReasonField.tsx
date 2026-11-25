@@ -1,4 +1,12 @@
-export function ReasonField({ error, defaultValue }: { error?: string; defaultValue?: string }) {
+export function ReasonField({
+  error,
+  defaultValue,
+  onChange,
+}: {
+  error?: string;
+  defaultValue?: string;
+  onChange?: (value: string) => void;
+}) {
   return (
     <div className="field">
       <label htmlFor="reason">Reason for change</label>
@@ -9,6 +17,7 @@ export function ReasonField({ error, defaultValue }: { error?: string; defaultVa
         minLength={10}
         rows={3}
         defaultValue={defaultValue}
+        onChange={onChange ? (e) => onChange(e.target.value) : undefined}
         aria-invalid={!!error}
       />
       {error && (

@@ -35,7 +35,7 @@ from typing import Any
 from .repository import Repository
 
 APPEND_ONLY_TABLES = frozenset(
-    {"ledger_entry", "ledger_transaction", "audit_log", "safeguarding_action"}
+    {"ledger_entry", "ledger_transaction", "audit_log", "safeguarding_action", "app_setting_change"}
 )
 WRITE_METHODS = frozenset(
     {

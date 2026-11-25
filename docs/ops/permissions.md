@@ -209,6 +209,8 @@ Owner steps to verify: see memory.md, ticket M05, "Owner-blocked".
 ### Service-only tables (no client read for anyone)
 
 - `access_window`: permission service bookkeeping (when time-limited access lapses)
+- `app_setting`: H05 business-rule settings value rows, read and changed through the core API
+- `app_setting_change`: H05 settings history (append-only), read through the core API
 - `billing_claim`: B03 idempotency claims, server only (table arrives with its own ticket)
 - `billing_credit`: B03 billing credits, server only (table arrives with its own ticket)
 - `billing_payment`: B03 payment flags, server only (table arrives with its own ticket)

@@ -27,6 +27,8 @@ export function canAccessPath(pathname: string, roles: readonly AdminRole[]): bo
  */
 const API_ROUTES: readonly { href: string; roles: readonly AdminRole[] }[] = [
   { href: "/api/search", roles: ["opsadmin", "curator", "safeguardinglead"] },
+  // H05: the A-50 settings screen's data route; super admin only, like the screen (NFR-18).
+  { href: "/api/settings", roles: ["superadmin"] },
 ];
 
 function matches(href: string, pathname: string): boolean {

@@ -575,6 +575,11 @@ SERVICE_ONLY_TABLES: dict[str, str] = {
     "schema_migration": "migration runner bookkeeping",
     "sample_item": "CI sample table",
     "access_window": "permission service bookkeeping (when time-limited access lapses)",
+    # H05 (#134): settings are read and changed through the superadmin-only core API
+    # (/v1/admin/settings), never by a client or by an admin straight from Appwrite: a row-level
+    # read grant would be a second path that skips the role check. Decision recorded in memory.md.
+    "app_setting": "H05 business-rule settings value rows, read and changed through the core API",
+    "app_setting_change": "H05 settings history (append-only), read through the core API",
 }
 # Tables owned by tickets that are not on main yet. Decided now so their merge does not leave a
 # table without a decision; `test_decisions_cover_every_table` allows these to be absent.

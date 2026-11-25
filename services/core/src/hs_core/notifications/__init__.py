@@ -9,7 +9,7 @@ from ..jobs.alerts import AlertSink
 from ..repository import Repository
 from ..settings import Settings
 from .channels import StoredInAppChannel, UnconfiguredChannel, UnconfiguredEmailSender
-from .config import NotificationConfig
+from .config import LiveNotificationConfig, NotificationConfig
 from .devices import DeviceRegistry
 from .preferences import RepositoryPreferenceStore
 from .service import NoDirectory, NotificationService, NullEscalation
@@ -22,9 +22,13 @@ def build_notification_service(
     alerts: AlertSink | None = None,
     clock: Callable[[], datetime] | None = None,
     audit: Callable[[dict], None] | None = None,
+    app_settings=None,
 ) -> NotificationService:
     """Wiring until N02 (#127): push and email channels are 'unconfigured' (every send fails
     permanently and loudly), the in-app channel is real (the row is the message)."""
+    config = NotificationConfig.from_settings(settings)
+    if app_settings is not None:  # H05: stored values win over the environment defaults
+        config = LiveNotificationConfig(config, app_settings)
     return NotificationService(
         repo,
         store=TemplateStore(repo, audit=audit),
@@ -34,7 +38,7 @@ def build_notification_service(
         directory=NoDirectory(),
         devices=DeviceRegistry(repo),
         preferences=RepositoryPreferenceStore(repo),
-        config=NotificationConfig.from_settings(settings),
+        config=config,
         alerts=alerts,
         clock=clock,
         escalation=NullEscalation(),

@@ -27,7 +27,7 @@ ISSUE_TABLES = {
     "ledger_transaction", "ledger_entry", "feedback", "safeguarding_case", "safeguarding_action", "audit_log",
     "notification",
 }
-APPEND_ONLY = {"ledger_entry", "ledger_transaction", "audit_log", "safeguarding_action"}
+APPEND_ONLY = {"ledger_entry", "ledger_transaction", "audit_log", "safeguarding_action", "app_setting_change"}
 
 
 def cols(table):
@@ -283,7 +283,7 @@ class DocConsistency(unittest.TestCase):
         self.assertEqual(overclaims("INTENDED insert-only via AppendOnlyRepository (opt-in, not wired yet)"), [])
 
     def test_append_only_notes_say_intended_opt_in_not_wired(self):
-        for t in APPEND_ONLY:
+        for t in APPEND_ONLY - {"app_setting_change"}:  # wired through the audited repository (H05)
             note = META[t]["note"]
             self.assertIn("opt-in", note, t)
             if t in ("ledger_entry", "ledger_transaction"):

@@ -13,8 +13,8 @@ from __future__ import annotations
 # (`audit.adapters.LedgerAuditAdapter`, docs/ops/audit.md "Hooks"). Per-row audit would write
 # about 11 audit rows per posting.
 # SEC-6 / ADM-6: money, tiers, sessions and their children, logs, safeguarding, app settings,
-# role and approval changes. `app_setting` has no table yet (PLANNED): the name is reserved so the
-# settings ticket cannot forget the audit.
+# role and approval changes. `app_setting` (value rows) and `app_setting_change` (the append-only
+# history) exist since H05 (#134).
 AUDITED_TABLES = frozenset(
     {
         # money
@@ -29,11 +29,11 @@ AUDITED_TABLES = frozenset(
         # safeguarding
         "safeguarding_case", "safeguarding_action", "case_status",
         # settings, roles, approvals
-        "app_setting", "role_assignment", "user_profile", "teacher_profile",
+        "app_setting", "app_setting_change", "role_assignment", "user_profile", "teacher_profile",
         "teacher_approval", "teacher_document",
     }
 )  # fmt: skip
-PLANNED_TABLES = frozenset({"app_setting"})  # audited by name before the table exists
+PLANNED_TABLES: frozenset[str] = frozenset()  # audited by name before the table exists
 
 # Case content: reading these rows is itself audited (read_audited) and the plain
 # AuditedRepository.get/list refuse them.
@@ -125,5 +125,11 @@ TEXT_ALLOWED = frozenset(
         ("bonus_rule", "conditions"),
         ("subscription", "preferred_slots"),
         ("tier_history", "reason"),  # staff reason for a tier change
+        # H05: settings are non-secret business rules; values and the reason must be reviewable
+        ("app_setting", "value"),
+        ("app_setting", "pending_value"),
+        ("app_setting_change", "value"),
+        ("app_setting_change", "previous_value"),
+        ("app_setting_change", "reason"),
     }
 )

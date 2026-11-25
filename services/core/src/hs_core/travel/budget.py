@@ -74,19 +74,27 @@ class BudgetGuard:
         self,
         store: UsageStore,
         *,
-        daily_elements: int,
-        monthly_elements: int,
+        daily_elements: int | Callable[[], int],  # a callable is read at every use (H05 setting)
+        monthly_elements: int | Callable[[], int],
         cost_micro_usd_per_element: int,
         alerts: TravelAlertSink,
         clock: Callable[[], datetime],
     ) -> None:
         self._store = store
-        self.daily_elements = daily_elements
-        self.monthly_elements = monthly_elements
+        self._daily = daily_elements
+        self._monthly = monthly_elements
         self.cost_per_element = cost_micro_usd_per_element
         self._alerts = alerts
         self._clock = clock
         self._lock = threading.Lock()
+
+    @property
+    def daily_elements(self) -> int:
+        return self._daily() if callable(self._daily) else self._daily
+
+    @property
+    def monthly_elements(self) -> int:
+        return self._monthly() if callable(self._monthly) else self._monthly
 
     def day_key(self) -> str:
         return "d:" + self._clock().astimezone(KAMPALA).date().isoformat()

@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta
 
+from ..app_settings.jobs import settings_activate
 from ..audit.recover import audit_recover
 from ..auth_otp.jobs import otp_cleanup
 from ..notifications.dispatch import notification_dispatch
@@ -94,5 +95,15 @@ JOBS: list[JobSpec] = [
         schedule=Schedule(timedelta(hours=1)),
         max_attempts=3,
         catch_up=timedelta(hours=2),
+    ),
+    # H05: activate scheduled setting changes at their effective time and repair value rows that
+    # fell behind their history after a crash. Recomputes from the history, so repeats are safe.
+    JobSpec(
+        "settings-activate",
+        settings_activate,
+        schedule=Schedule(timedelta(minutes=1)),
+        max_attempts=3,
+        catch_up=timedelta(minutes=10),
+        timeout=timedelta(seconds=30),
     ),
 ]

@@ -171,6 +171,10 @@ class Settings(BaseSettings):
     role_reconcile_remove_unrecorded_staff: bool = False
     # Role-change endpoints: grants + revokes one actor may make per hour (per instance).
     role_changes_per_hour: int = 60
+    # H05 settings (business rules in app_settings/registry.py). The environment value of a
+    # registered rule is only its DEFAULT; a value stored by the super admin wins.
+    settings_cache_ttl_s: int = 30  # how long a service instance may use a cached value
+    late_cancellation_notice_hours: int = 24  # default of session.late_cancellation_notice_hours
 
     # M06 audit log. Owner question 12: the safeguarding lead reads the whole audit log (default
     # on, as the ADR 0012 deviation); off = opsadmin and superadmin only.
@@ -199,6 +203,10 @@ class Settings(BaseSettings):
                 out.append(f"{name.upper()} must be between {lo} and {hi}")
         if self.notify_quiet_start_hour == self.notify_quiet_end_hour:
             out.append("NOTIFY_QUIET_START_HOUR and NOTIFY_QUIET_END_HOUR must differ")
+        if not 1 <= self.settings_cache_ttl_s <= 600:
+            out.append("SETTINGS_CACHE_TTL_S must be between 1 and 600")
+        if not 1 <= self.late_cancellation_notice_hours <= 168:
+            out.append("LATE_CANCELLATION_NOTICE_HOURS must be between 1 and 168")
         for name, (lo, hi) in AUDIT_RANGES.items():
             if not lo <= getattr(self, name) <= hi:
                 out.append(f"{name.upper()} must be between {lo} and {hi}")

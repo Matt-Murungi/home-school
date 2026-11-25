@@ -6767,6 +6767,186 @@
           ]
         }
       ]
+    },
+    {
+      "$id": "app_setting",
+      "databaseId": "main",
+      "name": "app_setting",
+      "enabled": true,
+      "rowSecurity": true,
+      "$permissions": [],
+      "columns": [
+        {
+          "key": "setting_key",
+          "type": "varchar",
+          "size": 64,
+          "required": true
+        },
+        {
+          "key": "value",
+          "type": "varchar",
+          "size": 1000,
+          "required": true
+        },
+        {
+          "key": "revision",
+          "type": "integer",
+          "required": true,
+          "min": 1,
+          "max": 1000000
+        },
+        {
+          "key": "active_revision",
+          "type": "integer",
+          "required": true,
+          "min": 0,
+          "max": 1000000
+        },
+        {
+          "key": "pending_revision",
+          "type": "integer",
+          "required": false,
+          "min": 1,
+          "max": 1000000
+        },
+        {
+          "key": "pending_value",
+          "type": "varchar",
+          "size": 1000,
+          "required": false
+        },
+        {
+          "key": "pending_effective_at",
+          "type": "datetime",
+          "required": false
+        },
+        {
+          "key": "updated_at",
+          "type": "datetime",
+          "required": true
+        }
+      ],
+      "indexes": [
+        {
+          "key": "unique_setting_key",
+          "type": "unique",
+          "columns": [
+            "setting_key"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_pending",
+          "type": "key",
+          "columns": [
+            "pending_effective_at"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        }
+      ]
+    },
+    {
+      "$id": "app_setting_change",
+      "databaseId": "main",
+      "name": "app_setting_change",
+      "enabled": true,
+      "rowSecurity": true,
+      "$permissions": [],
+      "columns": [
+        {
+          "key": "setting_key",
+          "type": "varchar",
+          "size": 64,
+          "required": true
+        },
+        {
+          "key": "revision",
+          "type": "integer",
+          "required": true,
+          "min": 1,
+          "max": 1000000
+        },
+        {
+          "key": "op",
+          "type": "string",
+          "format": "enum",
+          "elements": [
+            "set",
+            "rollback",
+            "cancel"
+          ],
+          "required": true
+        },
+        {
+          "key": "value",
+          "type": "varchar",
+          "size": 1000,
+          "required": false
+        },
+        {
+          "key": "previous_value",
+          "type": "varchar",
+          "size": 1000,
+          "required": false
+        },
+        {
+          "key": "effective_at",
+          "type": "datetime",
+          "required": true
+        },
+        {
+          "key": "cancels_revision",
+          "type": "integer",
+          "required": false,
+          "min": 1,
+          "max": 1000000
+        },
+        {
+          "key": "reason",
+          "type": "varchar",
+          "size": 500,
+          "required": true
+        },
+        {
+          "key": "actor_id",
+          "type": "varchar",
+          "size": 36,
+          "required": false
+        },
+        {
+          "key": "created_at",
+          "type": "datetime",
+          "required": true
+        }
+      ],
+      "indexes": [
+        {
+          "key": "unique_setting_revision",
+          "type": "unique",
+          "columns": [
+            "setting_key",
+            "revision"
+          ],
+          "orders": [
+            "ASC",
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_actor",
+          "type": "key",
+          "columns": [
+            "actor_id"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        }
+      ]
     }
   ],
   "buckets": [

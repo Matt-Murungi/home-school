@@ -68,6 +68,7 @@ Which variable exists in which environment, what kind it is and where it lives. 
 | `HS_STAGING_ADMIN_URL` | config | ops-uptime | - | https base URL of the staging admin app (hostname, owner-blocked until it exists) | - | provider_console |
 | `HS_STAGING_API_URL` | config | ops-uptime | - | https base URL of the staging core service (hostname, owner-blocked until it exists) | - | provider_console |
 | `JOB_ALERT_AFTER_FAILURES` | config | core-service | 3 | 3 | 3 | fly_env |
+| `LATE_CANCELLATION_NOTICE_HOURS` | config | core-service | 24 | 24 | 24 | fly_env |
 | `LOG_LEVEL` | config | core-service | DEBUG | INFO | INFO | fly_env |
 | `MOMO_COLLECTION_API_USER` | config | core-service | own user id | own user id | own user id | fly_env |
 | `MOMO_DISBURSEMENT_API_USER` | config | core-service | own user id | own user id | own user id | fly_env |
@@ -93,6 +94,7 @@ Which variable exists in which environment, what kind it is and where it lives. 
 | `ROLE_CHANGES_PER_HOUR` | config | core-service | 60 | 60 | 60 | fly_env |
 | `ROLE_RECONCILE_GRACE_S` | config | core-service | 300 | 300 | 300 | fly_env |
 | `ROLE_RECONCILE_REMOVE_UNRECORDED_STAFF` | config | core-service | false | false | false | fly_env |
+| `SETTINGS_CACHE_TTL_S` | config | core-service | 30 | 30 | 30 | fly_env |
 | `TRAVEL_CACHE_TTL_DAYS` | config | core-service | 7 | 7 | 7 | fly_env |
 | `TRAVEL_DAILY_ELEMENT_BUDGET` | config | core-service | 1000 | 1000 | 1000 | fly_env |
 | `TRAVEL_ELEMENT_COST_MICRO_USD` | config | core-service | 10000 | 10000 | 10000 | fly_env |

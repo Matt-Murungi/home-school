@@ -32,7 +32,10 @@ type Fetch = typeof fetch;
  * headers, JWT, body read). The timer is cleared only when `fn` has completely finished, so a peer
  * that sends headers and then stalls cannot hang the search.
  */
-async function withTimeout<T>(ms: number, fn: (signal: AbortSignal) => Promise<T>): Promise<T> {
+export async function withTimeout<T>(
+  ms: number,
+  fn: (signal: AbortSignal) => Promise<T>,
+): Promise<T> {
   const ctl = new AbortController();
   let timer: ReturnType<typeof setTimeout> | undefined;
   const expired = new Promise<never>((_res, rej) => {

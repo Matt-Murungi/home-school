@@ -30,3 +30,40 @@ class NotificationConfig:
             lease_s=s.notify_lease_s,
             escalate_after_min=s.notify_escalate_after_min,
         )
+
+
+class LiveNotificationConfig:
+    """NotificationConfig whose business-rule fields are read from the settings service at every
+    use (H05): a change by the super admin applies without a restart. `retry_base_s` and
+    `lease_s` are infrastructure tuning and stay in the environment."""
+
+    def __init__(self, base: NotificationConfig, app_settings) -> None:
+        self._base = base
+        self._s = app_settings
+
+    @property
+    def quiet_start_hour(self) -> int:
+        return int(self._s.get("notify.quiet_hours")["start_hour"])
+
+    @property
+    def quiet_end_hour(self) -> int:
+        return int(self._s.get("notify.quiet_hours")["end_hour"])
+
+    @property
+    def rate_limit(self) -> int:
+        return int(self._s.get("notify.rate_limit"))
+
+    @property
+    def rate_window_s(self) -> int:
+        return int(self._s.get("notify.rate_window_s"))
+
+    @property
+    def max_attempts(self) -> int:
+        return int(self._s.get("notify.max_attempts"))
+
+    @property
+    def escalate_after_min(self) -> int:
+        return int(self._s.get("notify.escalate_after_min"))
+
+    def __getattr__(self, name: str):
+        return getattr(self._base, name)

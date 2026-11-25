@@ -38,10 +38,39 @@ def config_from_settings(s: Settings) -> TravelConfig:
     )
 
 
+class LiveTravelConfig:
+    """TravelConfig whose business-rule fields are read from the settings service at every use
+    (H05): a change by the super admin applies without a restart. Other fields: the base."""
+
+    def __init__(self, base: TravelConfig, app_settings) -> None:
+        self._base = base
+        self._s = app_settings
+
+    @property
+    def cache_ttl(self) -> timedelta:
+        return timedelta(days=int(self._s.get("travel.cache_ttl_days")))
+
+    @property
+    def within_zone_minutes(self) -> int:
+        return int(self._s.get("travel.within_zone_minutes"))
+
+    @property
+    def fallback_speed_kmh(self) -> float:
+        return float(self._s.get("travel.fallback_speed_kmh"))
+
+    @property
+    def fallback_circuity(self) -> float:
+        return float(self._s.get("travel.fallback_circuity"))
+
+    def __getattr__(self, name: str):
+        return getattr(self._base, name)
+
+
 def build_travel_service(
     settings: Settings,
     repo: Repository,
     *,
+    app_settings=None,
     provider: TravelTimeProvider | None = None,
     alerts: TravelAlertSink | None = None,
     clock: Callable[[], datetime] | None = None,
@@ -50,10 +79,17 @@ def build_travel_service(
     alerts = alerts or LogTravelAlertSink()
     key = settings.google_maps_server_key.get_secret_value().strip()
     provider = provider or (GoogleRoutesProvider(key) if key else NullTravelTimeProvider())
+    daily: int | Callable[[], int] = settings.travel_daily_element_budget
+    monthly: int | Callable[[], int] = settings.travel_monthly_element_budget
+    config = config_from_settings(settings)
+    if app_settings is not None:  # H05: the super admin's value wins over the environment default
+        daily = lambda: int(app_settings.get("travel.daily_element_budget"))  # noqa: E731
+        monthly = lambda: int(app_settings.get("travel.monthly_element_budget"))  # noqa: E731
+        config = LiveTravelConfig(config, app_settings)
     budget = BudgetGuard(
         RepositoryUsageStore(repo),
-        daily_elements=settings.travel_daily_element_budget,
-        monthly_elements=settings.travel_monthly_element_budget,
+        daily_elements=daily,
+        monthly_elements=monthly,
         cost_micro_usd_per_element=settings.travel_element_cost_micro_usd,
         alerts=alerts,
         clock=clock,
@@ -62,7 +98,7 @@ def build_travel_service(
         provider,
         RepositoryTravelCacheStore(repo),
         budget,
-        config_from_settings(settings),
+        config,
         alerts=alerts,
         clock=clock,
         sleep=time.sleep,

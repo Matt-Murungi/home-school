@@ -11,6 +11,9 @@ from fastapi import Depends, FastAPI, Request
 from fastapi.responses import JSONResponse
 
 from . import errors
+from .app_settings import AppSettings, env_defaults
+from .app_settings import jobs as settings_jobs
+from .app_settings.api import router as settings_router
 from .audit import AuditedRepository, AuditService, client_ip_var
 from .audit import recover as audit_recover
 from .audit.adapters import LedgerAuditAdapter, TemplateAuditAdapter
@@ -103,7 +106,18 @@ def create_app(
         alert=sink,
         failure_alert_after=settings.job_alert_after_failures,
     )
-    app.state.travel = build_travel_service(settings, app.state.repository)
+    # H05: business-rule settings. Reads fall back to the environment default, then the code
+    # default; edits are audited (the app wires only the AuditedRepository here).
+    app.state.app_settings = AppSettings(
+        app.state.repository,
+        defaults=env_defaults(settings),
+        ttl_s=settings.settings_cache_ttl_s,
+        on_event=lambda name, info: audit_alert(f"settings_{name}", info),
+    )
+    settings_jobs.bind(app.state.app_settings)
+    app.state.travel = build_travel_service(
+        settings, app.state.repository, app_settings=app.state.app_settings
+    )
     travel_jobs.configure(app.state.travel, app.state.repository)
     # M05 permission sync rewrites `$permissions` of rows, many of them in audited tables, as
     # derived state with no actor (M05 drift report `permission-audit` is its check): it gets the
@@ -126,7 +140,11 @@ def create_app(
         roles=app.state.roles,
     )
     app.state.notifications = notification_service or build_notification_service(
-        settings, app.state.repository, alert_sink, audit=TemplateAuditAdapter(app.state.audit)
+        settings,
+        app.state.repository,
+        alert_sink,
+        audit=TemplateAuditAdapter(app.state.audit),
+        app_settings=app.state.app_settings,
     )
     # $01: the ledger writes through the raw repository (append-only, its own seal protocol) and is
     # audited by summary events (M06 round 3 decision: docs/ops/audit.md "Hooks").
@@ -150,6 +168,7 @@ def create_app(
     app.include_router(audit_events_router)
     app.include_router(catalogue_router)
     app.include_router(roles_router)
+    app.include_router(settings_router)
 
     @app.middleware("http")
     async def request_context(request: Request, call_next):
