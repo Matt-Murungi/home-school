@@ -102,13 +102,16 @@ class TestRequestContext:
         assert r.status_code == 401
         assert raw.get("tier", "t1")["rate"] == 1 and raw.list("audit_log") == []
 
-    def test_a_retried_http_request_with_the_same_request_id_audits_once(self):
+    def test_two_http_requests_with_the_same_client_request_id_are_two_audited_changes(self):
+        """The client's X-Request-ID is a correlation field, never the dedupe key (a fixed header
+        would otherwise switch auditing off): each request is audited, both rows carry the id."""
         app, raw = make_app()
         c = TestClient(app)
         h = {"Authorization": "Bearer admin", "X-Request-ID": "same-id"}
         c.put("/test/tier/t1", json={"rate": 7}, headers=h)
         c.put("/test/tier/t1", json={"rate": 7}, headers=h)
-        assert len(audit_rows(raw)) == 1
+        rows = audit_rows(raw)
+        assert len(rows) == 2 and {r["request_id"] for r in rows} == {"same-id"}
 
 
 class TestJobContext:

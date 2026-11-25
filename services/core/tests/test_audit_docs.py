@@ -85,3 +85,15 @@ def test_env_example_and_inventory_know_the_new_settings():
         "AUDIT_RECOVER_GRACE_S",
     ):
         assert f"{name}=" in env and f'"{name}"' in inv, name
+
+
+def test_round2_decisions_are_documented(doc):
+    low = doc.lower()
+    for needle in (
+        "keys and collisions", "key_collision", "ambiguous", "notwritten", "min_reason_chars",
+        "reason_truncated", "admin-ui events", "/v1/admin/audit/event", "unwiredauditsink",
+        "ledgeraudit", "templateaudit", "tables that are not audited", "child", "consent_record",
+        "audit.read", "unverifiable_intent", "cancel_reason", "end_reason", "earning.note",
+    ):  # fmt: skip
+        assert needle in low, needle
+    assert "required before staging" in low

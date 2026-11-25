@@ -65,6 +65,10 @@ GLOBAL_TOKENS = frozenset(
         # contact details and home location (full numbers, coordinates, address text)
         "phone", "msisdn", "mobile", "email", "address", "directions", "landmark",
         "lat", "lng", "lon", "latitude", "longitude", "geohash", "dob", "birthdate",
+        # round 2: generic keys that can hold a child's/family's location, identity or story. The
+        # per-key decision (docs/ops/audit.md "Redaction decisions"): redact; `title` is kept.
+        "coordinates", "coordinate", "location", "pickup", "pin", "pan", "nin", "passport",
+        "guardian", "comment", "comments", "note", "notes", "description",
         # document files and raw provider payloads
         "file", "raw",
         # assessment answer keys (decision: never logged; an exam-integrity secret)
@@ -72,6 +76,8 @@ GLOBAL_TOKENS = frozenset(
     }
 )  # fmt: skip
 # Joined forms (`codehash`, `tokenhash`): hashes of credentials are still credential material.
+ID_KEYS_OK_TOKENS = frozenset({"location", "pickup", "guardian", "comment", "note", "description"})
+GLOBAL_JOINED_CONTAINS = ("nationalid", "cardpan", "passportnumber")
 GLOBAL_JOINED_SUFFIXES = ("codehash", "tokenhash", "phonehash", "secretkey", "accesskey")
 # Person-name keys. A bare `name` is a person's name except on these label tables.
 NAME_IS_A_LABEL = frozenset(
@@ -94,6 +100,11 @@ ENTITY_REDACT: dict[str, frozenset[str]] = {
     "dispute": frozenset({"reason", "resolutionnote"}),
     "cancellation": frozenset({"reason"}),
     "role_assignment": frozenset({"revokereason"}),
+    # parent / staff free text (decisions of round 2: stored only as "[redacted]", the structured
+    # reason code or status column carries the audit-relevant fact)
+    "subscription": frozenset({"cancelreason"}),
+    "assignment": frozenset({"endreason"}),
+    "earning": frozenset({"note"}),
 }
 
 # Free-text or JSON columns of audited tables that are deliberately stored: configuration the

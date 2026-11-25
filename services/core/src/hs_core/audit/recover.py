@@ -102,6 +102,10 @@ def _settle(repo, service, row, res: RecoverResult, young_after: str, job: str, 
         else:
             res.unverifiable += 1
             res.unverifiable_ids.append(row["$id"])
+            # metric + alert hook (not only a log line): an operator must settle it
+            service.bump(
+                "unverifiable_intent", intent=row["$id"], entity=row["entity"], action=row["action"]
+            )
     except Exception as e:  # noqa: BLE001 - one bad row must not stop the sweep
         res.errors += 1
         log.warning("audit recovery skipped a row", extra={"error_type": type(e).__name__})
@@ -128,6 +132,18 @@ def _verdict(repo: Repository, row: dict[str, Any]) -> str:
     return "unverifiable"
 
 
+def report(res: RecoverResult) -> dict[str, Any]:
+    """What the `audit-recover` sweep found, for the job log and for operators."""
+    return {
+        "examined": res.examined,
+        "applied": res.applied,
+        "not_applied": res.not_applied,
+        "unverifiable": res.unverifiable,
+        "unverifiable_ids": res.unverifiable_ids[:50],
+        "errors": res.errors,
+    }
+
+
 # ----------------------------------------------------------------------- job handler
 def make_recover_handler(
     repo: Repository,
@@ -149,11 +165,7 @@ def make_recover_handler(
             run_key=ctx.effect_key,
         )  # fmt: skip
         if res.unverifiable or res.errors:
-            log.warning(
-                "audit recovery needs review",
-                extra={"unverifiable": res.unverifiable, "errors": res.errors,
-                       "ids": res.unverifiable_ids[:20]},
-            )  # fmt: skip
+            log.warning("audit recovery needs review", extra=report(res))
         log.info(
             "audit recovery chunk",
             extra={

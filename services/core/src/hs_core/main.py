@@ -13,12 +13,14 @@ from fastapi.responses import JSONResponse
 from . import errors
 from .audit import AuditedRepository, AuditService, client_ip_var
 from .audit import recover as audit_recover
+from .audit.admin_events import router as audit_events_router
+from .audit.context import server_request_key_var
 from .auth import AppwriteJwtVerifier, Principal, TokenVerifier, current_principal, require_roles
 from .auth_otp import build_otp_service
 from .auth_otp import jobs as otp_jobs
 from .auth_otp.api import client_ip
 from .auth_otp.api import router as otp_router
-from .jobs.alerts import AlertSink, LogAlertSink
+from .jobs.alerts import Alert, AlertSink, LogAlertSink
 from .jobs.api import router as jobs_router
 from .jobs.runner import Runner
 from .jobs.schedule import JOBS
@@ -65,8 +67,13 @@ def create_app(
     app.state.settings = settings
     raw_repository = repository or build_repository(settings)
     # M06: the app only hands out the audited wrapper; audited tables need an AuditContext.
+    sink = alert_sink or LogAlertSink()
+
+    def audit_alert(kind: str, info) -> None:  # key collisions, unverifiable intents
+        sink.send(Alert(kind=kind, job="audit", dedupe_key=kind, error=str(dict(info))[:300]))
+
     app.state.audit = AuditService(
-        raw_repository, lead_blanket_read=settings.audit_lead_blanket_read
+        raw_repository, lead_blanket_read=settings.audit_lead_blanket_read, alert=audit_alert
     )
     app.state.repository = AuditedRepository(raw_repository, app.state.audit)
     audit_recover.bind(
@@ -81,7 +88,7 @@ def create_app(
     app.state.runner = runner or Runner(
         app.state.repository,
         JOBS,
-        alert=alert_sink or LogAlertSink(),
+        alert=sink,
         failure_alert_after=settings.job_alert_after_failures,
     )
     app.state.travel = build_travel_service(settings, app.state.repository)
@@ -105,6 +112,7 @@ def create_app(
     errors.install(app)
     app.include_router(jobs_router)
     app.include_router(otp_router)
+    app.include_router(audit_events_router)
 
     @app.middleware("http")
     async def request_context(request: Request, call_next):
@@ -112,6 +120,8 @@ def create_app(
         if not is_safe_request_id(rid):
             rid = uuid.uuid4().hex
         token = request_id_var.set(rid)
+        # the audit dedupe key comes from the SERVER, never from the client's header
+        audit_rk = server_request_key_var.set(uuid.uuid4().hex)
         ip_token = client_ip_var.set(client_ip(request))
         start = time.perf_counter()
         status = 500
@@ -136,6 +146,7 @@ def create_app(
                 },
             )
             client_ip_var.reset(ip_token)
+            server_request_key_var.reset(audit_rk)
             request_id_var.reset(token)
 
     def health():

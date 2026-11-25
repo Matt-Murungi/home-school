@@ -302,8 +302,8 @@ class AccountService:
                 raise AccountConflict from None
 
     def _record_grant(self, user_id: str, role: str) -> None:
-        audited = self._audited(user_id, role)
         """M01 `role_assignment` is the grant history (`active_key`: one active grant per role)."""
+        audited = self._audited(user_id, role)
         data = {
             "user_id": user_id,
             "role": role,

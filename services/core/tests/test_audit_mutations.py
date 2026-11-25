@@ -12,6 +12,7 @@ from hs_core.audit import (
     AuditedRepository,
     AuditService,
     AuditUnavailable,
+    NotWritten,
     ReasonRequired,
     payload,
     registry,
@@ -47,8 +48,8 @@ def contract(make):
     repo4 = FaultyRepository()
     _, _, audited4, _ = make(repo4)
     repo4.create("tier", "t1", {"rate": 1})
-    repo4.arm(2, "before", error=RuntimeError("x"))
-    with pytest.raises(RuntimeError):
+    repo4.arm(2, "before", error=NotWritten("x"))  # proves nothing was written
+    with pytest.raises(NotWritten):
         audited4.update("tier", "t1", {"rate": 2}, ctx=admin_ctx("m4"))
     statuses = [json.loads(r["after"])["meta"]["status"] for r in audit_rows(repo4)]
     assert statuses == ["intent", "failed"], "failed change not marked"
@@ -97,6 +98,34 @@ def contract(make):
                   lookback=timedelta(hours=6))  # fmt: skip
     statuses = [json.loads(r["after"])["meta"]["status"] for r in audit_rows(repo8)]
     assert statuses == ["intent", "not_applied"], "crash not settled"
+
+    # 9. a client-chosen/reused key cannot suppress a DIFFERENT change (round 2, blocker 1)
+    repo9, _, audited9, _ = make()
+    repo9.create("tier", "t1", {"status": "a"})
+    audited9.update("tier", "t1", {"status": "b"}, ctx=admin_ctx("same-rid"))
+    audited9.update("tier", "t1", {"status": "c"}, ctx=admin_ctx("same-rid"))
+    assert len(audit_rows(repo9)) == 2, "shared key suppressed a different change"
+
+    # 10. an ambiguous error (the write may have landed) is NOT recorded as failed (blocker 2)
+    repo10 = FaultyRepository()
+    _, _, audited10, _ = make(repo10)
+    repo10.create("tier", "t1", {"rate": 1})
+    repo10.arm(2, "after", error=TimeoutError("landed, then timed out"))
+    with pytest.raises(TimeoutError):
+        audited10.update("tier", "t1", {"rate": 2}, ctx=admin_ctx("m10"))
+    statuses10 = [json.loads(r["after"])["meta"]["status"] for r in audit_rows(repo10)]
+    assert statuses10 == ["intent"], "ambiguous error marked failed"
+
+    # 11. a reason made of invisible characters is refused (blocker 3)
+    repo11, _, audited11, _ = make()
+    repo11.create("tier", "t1", {"rate": 1})
+    try:
+        audited11.update("tier", "t1", {"rate": 2}, ctx=admin_ctx("m11"),
+                         action="tier.override", reason="\u200b\ufeff\u2800")  # fmt: skip
+    except ReasonRequired:
+        pass
+    else:
+        raise AssertionError("invisible reason accepted")
 
 
 def real_make(repo=None, clock=None):
@@ -169,6 +198,26 @@ class TestMutationsFailTheContract:
         # contract imported recover_audit by name: patch that reference too
         monkeypatch.setitem(contract.__globals__, "recover_audit", lambda *a, **k: Noop())
         with pytest.raises(AssertionError, match="crash not settled"):
+            contract(real_make)
+
+    def test_mutation_client_controlled_key(self, monkeypatch):
+        """the pre-fix behaviour: any row under the key is a replay."""
+        monkeypatch.setattr(AuditService, "_same_change", staticmethod(lambda *a, **k: True))
+        with pytest.raises(AssertionError, match="suppressed"):
+            contract(real_make)
+
+    def test_mutation_ambiguous_error_marked_failed(self, monkeypatch):
+        from hs_core.audit import service as svc
+
+        monkeypatch.setattr(svc, "PROVEN_NOT_WRITTEN", (Exception,))
+        with pytest.raises(AssertionError, match="ambiguous error marked failed"):
+            contract(real_make)
+
+    def test_mutation_zero_width_reason_accepted(self, monkeypatch):
+        from hs_core.audit import service as svc
+
+        monkeypatch.setattr(svc, "reason_is_enough", lambda r: bool((r or "").strip()))
+        with pytest.raises(AssertionError, match="invisible reason accepted"):
             contract(real_make)
 
     def test_mutation_audit_log_updated_in_place_is_refused_by_the_wrapper(self):

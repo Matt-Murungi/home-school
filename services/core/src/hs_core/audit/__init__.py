@@ -27,6 +27,7 @@ from .errors import (
     AuditForbidden,
     AuditQueryError,
     AuditUnavailable,
+    NotWritten,
     ReasonRequired,
     UnauditedRead,
 )
@@ -37,7 +38,8 @@ from .service import AuditService
 
 __all__ = [
     "AuditContext", "AuditContextMissing", "AuditError", "AuditForbidden", "AuditPage",
-    "AuditQueryError", "AuditService", "AuditUnavailable", "AuditedRepository", "ReasonRequired",
+    "AuditQueryError", "AuditService", "AuditUnavailable", "AuditedRepository", "NotWritten",
+    "ReasonRequired",
     "UnauditedRead", "audit_scope", "bind_actor", "can_read_audit", "client_ip_var",
     "current_audit_context", "job_scope", "list_audit", "list_audited", "read_audited",
 ]  # fmt: skip

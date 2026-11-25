@@ -16,6 +16,7 @@ from hs_core.audit import (
     AuditedRepository,
     AuditService,
     AuditUnavailable,
+    NotWritten,
     ReasonRequired,
     UnauditedRead,
 )
@@ -99,9 +100,9 @@ class TestEveryAuditedTableIsCovered:
     def test_create_update_delete_each_write_one_row(self, table):
         repo, _, audited, _ = build()
         ctx = admin_ctx()
-        audited.create(table, "r1", {"a": 1}, ctx=ctx, reason="r")
-        audited.update(table, "r1", {"a": 2}, ctx=ctx, reason="r")
-        audited.delete(table, "r1", ctx=ctx, reason="r")
+        audited.create(table, "r1", {"a": 1}, ctx=ctx, reason="routine")
+        audited.update(table, "r1", {"a": 2}, ctx=ctx, reason="routine")
+        audited.delete(table, "r1", ctx=ctx, reason="routine")
         assert [r["action"] for r in audit_rows(repo)] == [
             f"{table}.create", f"{table}.update", f"{table}.delete"
         ]  # fmt: skip
@@ -205,7 +206,7 @@ class TestActorBinding:
         seed(repo, "dispute", "d1", {"status": "open"})
         audited.update(
             "dispute", "d1", {"status": "resolved", "actor_id": "u_evil", "actor": "root"},
-            ctx=admin_ctx(actor="u_real"), action="dispute.resolve", reason="ok",
+            ctx=admin_ctx(actor="u_real"), action="dispute.resolve", reason="all fine",
         )  # fmt: skip
         r = audit_rows(repo)[0]
         assert r["actor_id"] == "u_real"
@@ -303,15 +304,16 @@ class TestFailedBusinessWrite:
         _, _, audited, _ = build(repo)
         repo.create("tier", "t1", {"rate": 1})
         repo.arm(0)
-        repo.plan = {2: RuntimeError("appwrite 500 with a secret hunter2")}  # write 2 = tier
-        with pytest.raises(RuntimeError):
+        # write 2 = tier; an error that PROVES nothing was written (400 validation)
+        repo.plan = {2: NotWritten("appwrite 400 with a secret hunter2")}
+        with pytest.raises(NotWritten):
             audited.update("tier", "t1", {"rate": 2}, ctx=admin_ctx())
         repo.disarm()
         assert repo.get("tier", "t1")["rate"] == 1
         rows = audit_rows(repo)
         assert [meta(r)["status"] for r in rows] == ["intent", "failed"]
         failed = meta(rows[1])
-        assert failed["ref"] == rows[0]["$id"] and failed["error"] == "RuntimeError"
+        assert failed["ref"] == rows[0]["$id"] and failed["error"] == "NotWritten"
         assert "hunter2" not in json.dumps(rows)  # class name only, never the message
         assert rows[1]["action"] == rows[0]["action"] and rows[1]["entity_id"] == "t1"
 
@@ -326,8 +328,8 @@ class TestFailedBusinessWrite:
         _, _, audited, _ = build(repo)
         repo.create("tier", "t1", {"rate": 1})
         repo.arm(0)
-        repo.plan = {2: RuntimeError("tier write failed"), 3: RuntimeError("audit down too")}
-        with pytest.raises(RuntimeError, match="tier write failed"):
+        repo.plan = {2: NotWritten("tier write failed"), 3: RuntimeError("audit down too")}
+        with pytest.raises(NotWritten, match="tier write failed"):
             audited.update("tier", "t1", {"rate": 2}, ctx=admin_ctx())
         repo.disarm()
         assert [meta(r)["status"] for r in audit_rows(repo)] == ["intent"]
@@ -380,9 +382,9 @@ class TestIdempotencyAndRetries:
         _, _, audited, _ = build(repo)
         repo.create("tier", "t1", {"rate": 1})
         repo.arm(0)
-        repo.plan = {2: RuntimeError("blip")}
+        repo.plan = {2: NotWritten("blip")}
         ctx = admin_ctx(request_id="req-R")
-        with pytest.raises(RuntimeError):
+        with pytest.raises(NotWritten):
             audited.update("tier", "t1", {"rate": 2}, ctx=ctx)
         repo.disarm()
         audited.update("tier", "t1", {"rate": 2}, ctx=ctx)  # retry in the same request
@@ -508,9 +510,9 @@ class TestNonTableAdminActions:
         repo, service, *_ = build()
 
         def boom():
-            raise RuntimeError("appwrite said no")
+            raise NotWritten("appwrite said no")
 
-        with pytest.raises(RuntimeError):
+        with pytest.raises(NotWritten):
             service.run_change(
                 admin_ctx(), action="user.label.add", entity="user", entity_id="u9", op="action",
                 before={}, after={"x": 1}, reason=None, apply=boom,

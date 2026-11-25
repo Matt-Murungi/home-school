@@ -19,8 +19,9 @@ from typing import Any
 from appwrite.query import Query
 
 from ..repository import Repository
+from .context import AuditContext
 from .errors import AuditForbidden, AuditQueryError
-from .service import TABLE, iso, meta_of
+from .service import TABLE, AuditService, iso, meta_of
 
 MAX_LIMIT = 100
 _CURSOR = re.compile(r"[A-Za-z0-9_=-]{1,128}")
@@ -99,7 +100,14 @@ def list_audit(
     until: datetime | None = None,
     cursor: str | None = None,
     limit: int = 50,
+    audit: AuditService | None = None,
+    ctx: AuditContext | None = None,
 ) -> AuditPage:
+    """Pass `audit` and `ctx` (the verified caller) to record the read itself: one `audit.read`
+    row with the filter NAMES and the row count (ids only, no values), written before the page is
+    returned, so an unavailable audit store means no page (fail closed)."""
+    if (audit is None) != (ctx is None):
+        raise ValueError("audit and ctx go together")
     if not can_read_audit(roles, lead_blanket_read=lead_blanket_read):
         raise AuditForbidden
     if not 1 <= limit <= MAX_LIMIT:
@@ -126,4 +134,12 @@ def list_audit(
     rows = repo.list(TABLE, q)
     page = rows[:limit]
     more = len(rows) > limit
+    if audit is not None and ctx is not None:
+        given = {"entity": entity, "entity_id": entity_id, "actor_id": actor_id, "since": since,
+                 "until": until, "cursor": cursor}  # fmt: skip
+        used = [name for name, value in given.items() if value]
+        audit.record(
+            ctx, action="audit.read", entity="audit_log", entity_id="list",
+            after={"count": len(page), "filters": used}, op="read",
+        )  # fmt: skip
     return AuditPage([parse_row(r) for r in page], _encode(page[-1]["$id"]) if more else None)

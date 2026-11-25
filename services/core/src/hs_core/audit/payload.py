@@ -46,9 +46,16 @@ def is_redacted(entity: str, key: str) -> bool:
     if not toks:
         return False
     joined = "".join(toks)
+    if (entity, "_".join(toks)) in registry.TEXT_ALLOWED:
+        return False  # staff- or system-written text decided on in registry.TEXT_ALLOWED
     if joined in registry.ENTITY_REDACT.get(entity, ()):
         return True
-    if any(t in registry.GLOBAL_TOKENS for t in toks) or joined == "apikey":
+    hit = {t for t in toks if t in registry.GLOBAL_TOKENS}
+    if hit and toks[-1] == "id" and hit <= registry.ID_KEYS_OK_TOKENS:
+        return False  # a foreign key (`home_location_id`) names a row; it carries no location
+    if hit or joined == "apikey":
+        return True
+    if any(c in joined for c in registry.GLOBAL_JOINED_CONTAINS):
         return True
     if any(joined.endswith(s) for s in registry.GLOBAL_JOINED_SUFFIXES):
         return True

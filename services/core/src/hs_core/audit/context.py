@@ -26,6 +26,12 @@ current_audit_context: ContextVar[AuditContext | None] = ContextVar("audit_conte
 client_ip_var: ContextVar[str | None] = ContextVar("audit_client_ip", default=None)
 
 
+# Set by the request middleware to a SERVER-generated id (uuid4) for every request. The audit
+# dedupe key is derived from it, never from the client's X-Request-ID (which is only a
+# correlation field): a client must not be able to choose a key that collides with another change.
+server_request_key_var: ContextVar[str | None] = ContextVar("audit_server_key", default=None)
+
+
 def short_id(value: str, size: int = 36) -> str:
     """Fit a free-form id into a varchar(size) column; long ids are replaced by their hash."""
     return value if len(value) <= size else hashlib.sha256(value.encode()).hexdigest()[:size]
@@ -57,7 +63,11 @@ class AuditContext:
         known = tuple(sorted({r for r in roles if r in ROLES}))
         source: Source = "admin" if set(known) & ADMIN_ROLES else "user"
         rid = request_id or "-"
-        return cls(str(actor_id), known, source, short_id(rid), rid, ip)
+        # outside a request (tests, scripts) the caller's id is the key; inside one it is the
+        # server's id
+        return cls(
+            str(actor_id), known, source, short_id(rid), server_request_key_var.get() or rid, ip
+        )
 
     @classmethod
     def system(cls, job: str, *, run_key: str, request_id: str | None = None) -> AuditContext:

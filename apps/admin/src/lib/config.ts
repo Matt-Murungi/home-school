@@ -5,6 +5,8 @@ export type AdminConfig = {
   endpoint: string;
   projectId: string;
   databaseId: string;
+  /** Base URL of the core service (audit events). Empty = not set. */
+  coreApiUrl: string;
 };
 
 /** Unknown or missing ADMIN_ENV maps to "Local", never to Production. */
@@ -17,5 +19,6 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     endpoint: env.APPWRITE_ENDPOINT ?? "",
     projectId: env.APPWRITE_PROJECT_ID ?? "",
     databaseId: env.APPWRITE_DATABASE_ID || "main",
+    coreApiUrl: (env.CORE_API_URL ?? "").trim(),
   };
 }
