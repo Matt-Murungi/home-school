@@ -2,10 +2,18 @@
 /// implementation arrives with the first feature that needs it; tests use
 /// [FakeApiClient].
 class ApiRequest {
-  const ApiRequest(this.method, this.path, {this.body});
+  const ApiRequest(
+    this.method,
+    this.path, {
+    this.body,
+    this.headers = const {},
+  });
   final String method;
   final String path;
   final Map<String, Object?>? body;
+
+  /// Extra request headers (for example `Idempotency-Key`).
+  final Map<String, String> headers;
 }
 
 class ApiResponse {

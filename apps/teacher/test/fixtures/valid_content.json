@@ -1,0 +1,74 @@
+{
+ "personal": {
+  "full_name": "Grace Nakato",
+  "title": "ms",
+  "gender": "female",
+  "date_of_birth": "1992-04-17",
+  "languages": [
+   "en",
+   "lg"
+  ],
+  "photo": {
+   "state": "chosen",
+   "crop": {
+    "x": 0.1,
+    "y": 0.1,
+    "size": 0.8
+   }
+  }
+ },
+ "qualifications": {
+  "teacher_type": "registered",
+  "registration_number": "UG/TR/12345",
+  "highest_qualification": "degree",
+  "institution": "Makerere University",
+  "years_teaching": 6,
+  "current_school": "Kampala Parents School"
+ },
+ "curricula": [
+  {
+   "curriculum_id": "cur_ug",
+   "level_ids": [
+    "lvl_p1",
+    "lvl_p2"
+   ],
+   "subject_ids": [
+    "sub_math",
+    "sub_eng"
+   ]
+  }
+ ],
+ "referees": [
+  {
+   "name": "Peter Okello",
+   "phone": "0701 234 567",
+   "relationship": "head_teacher",
+   "years_known": 4,
+   "email": "peter@example.org"
+  },
+  {
+   "name": "Sarah Namuli",
+   "phone": "+256 755 000 111",
+   "relationship": "colleague",
+   "years_known": 2
+  }
+ ],
+ "referee_consent": true,
+ "zone_ids": [
+  "zone_ntinda",
+  "zone_kira"
+ ],
+ "travel_radius_km": 10,
+ "availability": [
+  {
+   "weekday": 1,
+   "start_minute": 900,
+   "end_minute": 1080
+  },
+  {
+   "weekday": 3,
+   "start_minute": 900,
+   "end_minute": 1080
+  }
+ ]
+}

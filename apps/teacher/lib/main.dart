@@ -6,6 +6,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:home_school_shared/home_school_shared.dart';
 
 import 'app.dart';
+import 'application/data/application_api.dart';
+import 'application/data/draft_database.dart';
+import 'application/data/draft_store.dart';
+import 'application/state/application_controller.dart';
 
 // Run with e.g.
 // flutter run --dart-define=HS_ENV=staging \
@@ -35,14 +39,25 @@ Future<void> main() async {
     session = null;
   }
   final db = await openAppDatabase();
+  // Authenticated calls to the core service carry a short-lived Appwrite JWT.
+  final account = Account(client);
+  final coreApi = HttpApiClient(
+    config.coreUrl,
+    bearerToken: () async => (await account.createJWT()).jwt,
+  );
+  final applicationApi = HttpApplicationApi(coreApi);
+  final draftDb = await openDraftDatabase();
   runApp(
     ProviderScope(
       overrides: [
         appConfigProvider.overrideWithValue(config),
         authServiceProvider.overrideWithValue(auth),
         offlineQueueProvider.overrideWithValue(OfflineQueue(db)),
+        applicationApiProvider.overrideWithValue(applicationApi),
+        referenceSourceProvider.overrideWithValue(applicationApi),
+        draftStoreProvider.overrideWithValue(DraftStore(draftDb)),
       ],
-      child: TeacherApp(initialLocation: session == null ? '/' : '/today'),
+      child: TeacherApp(initialLocation: session == null ? '/' : '/apply'),
     ),
   );
 }

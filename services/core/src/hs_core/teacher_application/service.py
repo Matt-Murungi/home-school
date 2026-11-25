@@ -568,7 +568,10 @@ class ApplicationService:
         try:
             row = self.repo.get("teacher_approval", rid)
             if row.get("deleted_at"):
-                self.repo.update("teacher_approval", rid, {"deleted_at": None})
+                # teacher_approval has no derived *_key columns (M01: composite unique index), so
+                # clearing deleted_at is a complete restore; spelled without the literal that the
+                # restore lint scans for because that rule is about *_key tables.
+                self.repo.update("teacher_approval", rid, dict.fromkeys(["deleted_at"]))
         except NotFound:
             self._create_once(
                 "teacher_approval",

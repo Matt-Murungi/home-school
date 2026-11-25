@@ -12,8 +12,13 @@ class HttpApiClient implements ApiClient {
     this.baseUrl, {
     this.timeout = const Duration(seconds: 15),
     HttpClient? client,
+    this.bearerToken,
   }) : _client = client ?? HttpClient();
 
+  /// Returns the current Appwrite JWT for calls that need a signed-in user
+  /// (null or a throw = send the request without a token; the server answers
+  /// 401). Never log the value.
+  final Future<String?> Function()? bearerToken;
   final String baseUrl;
   final Duration timeout;
   final HttpClient _client;
@@ -25,6 +30,11 @@ class HttpApiClient implements ApiClient {
     req.headers
       ..set(HttpHeaders.acceptHeader, 'application/json')
       ..set(HttpHeaders.contentTypeHeader, 'application/json');
+    final token = await bearerToken?.call();
+    if (token != null && token.isNotEmpty) {
+      req.headers.set(HttpHeaders.authorizationHeader, 'Bearer $token');
+    }
+    request.headers.forEach(req.headers.set);
     if (request.body != null) req.write(jsonEncode(request.body));
     final res = await req.close().timeout(timeout);
     final text = await res.transform(utf8.decoder).join().timeout(timeout);
