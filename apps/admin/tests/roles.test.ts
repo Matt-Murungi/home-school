@@ -44,8 +44,18 @@ describe("sidebar navigation (Design Brief, admin left sidebar)", () => {
     const hrefs = NAV_ITEMS.map((n) => n.href);
     expect(new Set(hrefs).size).toBe(hrefs.length);
   });
-  it("superadmin sees everything", () => {
-    expect(navFor(["superadmin"])).toHaveLength(NAV_ITEMS.length);
+  it("superadmin is NOT implicit: sees only overview and settings (SR 6.2 has no super_admin column; F03 core refuses it)", () => {
+    expect(navFor(["superadmin"]).map((n) => n.label)).toEqual(["Overview", "Settings"]);
+  });
+  it("superadmin who also holds a role sees that role's items", () => {
+    const labels = navFor(["superadmin", "safeguardinglead"]).map((n) => n.label);
+    expect(labels).toContain("Safeguarding");
+    expect(labels).not.toContain("Payments");
+  });
+  it("safeguarding cases are for safeguarding roles only (A-30)", () => {
+    expect(navFor(["opsadmin", "curator", "superadmin"]).map((n) => n.label)).not.toContain(
+      "Safeguarding",
+    );
   });
   it("curator sees catalogue, not payments or safeguarding", () => {
     const labels = navFor(["curator"]).map((n) => n.label);
@@ -61,10 +71,11 @@ describe("route guard by label", () => {
     ["/payments", ["opsadmin"], true],
     ["/payments", ["curator"], false],
     ["/payments", ["safeguardinglead"], false],
-    ["/payments", ["superadmin"], true],
+    ["/payments", ["superadmin"], false], // SR 6.2: payments are ops only
     ["/safeguarding", ["safeguardinglead"], true],
     ["/safeguarding", ["opsadmin"], false],
-    ["/safeguarding", ["superadmin"], true],
+    ["/safeguarding", ["superadmin"], false], // A-30: safeguarding roles only
+    ["/safeguarding", ["superadmin", "safeguardinglead"], true],
     ["/curriculum", ["curator"], true],
     ["/curriculum/42", ["curator"], true],
     ["/curriculum", ["opsadmin"], true], // SR 6.2: ops read the catalogue
@@ -85,6 +96,6 @@ describe("route guard by label", () => {
     expect(canAccessPath(path, rolesFromLabels(roles))).toBe(allowed);
   });
   it("does not match on a path prefix without a boundary", () => {
-    expect(canAccessPath("/paymentsx", ["superadmin"])).toBe(false);
+    expect(canAccessPath("/paymentsx", ["opsadmin"])).toBe(false);
   });
 });

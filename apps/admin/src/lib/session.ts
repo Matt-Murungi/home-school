@@ -1,4 +1,5 @@
 import "server-only";
+import { randomBytes } from "node:crypto";
 import { cookies, headers } from "next/headers";
 import { SESSION_COOKIE } from "./access";
 import { AppwriteAuthProvider } from "./auth/appwrite";
@@ -19,6 +20,22 @@ export const cookieOptions = (maxAge: number) => ({
   path: "/",
   maxAge,
 });
+
+export const nowMs = () => Date.now();
+
+let devKey: string | undefined;
+/**
+ * HMAC key for the pending-MFA cookie. Required in production (ADMIN_COOKIE_SECRET, 32+ chars, same
+ * on every instance). Outside production a random per-process key is used, so dev cookies simply
+ * stop working after a restart.
+ */
+export function pendingKey(): string {
+  const k = process.env.ADMIN_COOKIE_SECRET ?? "";
+  if (k.length >= 32) return k;
+  if (process.env.NODE_ENV === "production")
+    throw new Error("ADMIN_COOKIE_SECRET is not set (32+ characters required)");
+  return (devKey ??= randomBytes(32).toString("hex"));
+}
 
 export function authProvider() {
   return new AppwriteAuthProvider(loadConfig());

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { decideAccess } from "@/lib/access";
+import { decideAccess, isPlausibleSessionCookie } from "@/lib/access";
 
 describe("auth redirect when unauthenticated", () => {
   it("redirects a protected page to /login with the return path", () => {
@@ -59,6 +59,24 @@ describe("safeNext open-redirect guard", () => {
     const { safeNext } = await import("@/lib/access");
     for (const v of ["/%09/evil.com", "/%5Cevil.com", "/a/../../evil.com"]) {
       expect(new URL(safeNext(v), "http://h.test").origin).toBe("http://h.test");
+    }
+  });
+});
+
+describe("middleware cookie sanity check (cheap; real validation is per request in requireAccess)", () => {
+  it("accepts an opaque token and refuses empty, tiny, huge, whitespace or control characters", () => {
+    expect(isPlausibleSessionCookie("a".repeat(64))).toBe(true);
+    expect(isPlausibleSessionCookie("eyJhbGciOi.JIUzI1NiJ9-_=")).toBe(true);
+    for (const v of [
+      "",
+      undefined,
+      "x",
+      "a b a b a b a b a b",
+      "a".repeat(5000),
+      "abcdefgh\u0000ijkl",
+      "{}{}{}{}{}{}{}{}{}",
+    ]) {
+      expect(isPlausibleSessionCookie(v)).toBe(false);
     }
   });
 });

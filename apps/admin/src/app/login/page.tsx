@@ -50,6 +50,12 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
         )}
         <button type="submit">{mfa ? "Verify" : "Continue"}</button>
       </form>
+      {mfa && (
+        <form action="/api/session" method="post">
+          <input type="hidden" name="step" value="cancel" />
+          <button type="submit">Cancel and start again</button>
+        </form>
+      )}
     </main>
   );
 }
