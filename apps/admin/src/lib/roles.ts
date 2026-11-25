@@ -17,9 +17,17 @@ export function rolesFromLabels(labels: readonly string[]): AdminRole[] {
 
 /** Longest-boundary match of a path against the nav routes; unknown routes are denied. */
 export function canAccessPath(pathname: string, roles: readonly AdminRole[]): boolean {
-  const item = NAV_ITEMS.find((n) => matches(n.href, pathname));
+  const item = [...NAV_ITEMS, ...API_ROUTES].find((n) => matches(n.href, pathname));
   return !!item && item.roles.some((r) => roles.includes(r));
 }
+
+/**
+ * Guarded routes that are not sidebar screens. /api/search: the roles that may search anything
+ * (kept equal to the per-type allowlist by tests/search-policy.test.ts).
+ */
+const API_ROUTES: readonly { href: string; roles: readonly AdminRole[] }[] = [
+  { href: "/api/search", roles: ["opsadmin", "curator", "safeguardinglead"] },
+];
 
 function matches(href: string, pathname: string): boolean {
   if (href === "/") return pathname === "/";

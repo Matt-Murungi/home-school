@@ -42,6 +42,7 @@ Which variable exists in which environment, what kind it is and where it lives. 
 | `AFRICASTALKING_SENDER_ID` | config | core-service | (empty: provider default sender) | (empty: provider default sender) | (empty: provider default sender) | fly_env |
 | `AFRICASTALKING_USERNAME` | config | core-service | sandbox in dev/staging | sandbox in dev/staging | sandbox in dev/staging | fly_env |
 | `APPWRITE_CONNECT_TIMEOUT_S` | config | core-service | 3.05 | 3.05 | 3.05 | fly_env |
+| `APPWRITE_DATABASE_ID` | config | app-admin | main | main | main | host_env |
 | `APPWRITE_DATABASE_ID` | config | core-service | main | main | main | fly_env |
 | `APPWRITE_ENDPOINT` | config | app-admin | https://fra.cloud.appwrite.io/v1 | https://fra.cloud.appwrite.io/v1 | https://fra.cloud.appwrite.io/v1 | host_env |
 | `APPWRITE_ENDPOINT` | config | core-service | https://fra.cloud.appwrite.io/v1 | https://fra.cloud.appwrite.io/v1 | https://fra.cloud.appwrite.io/v1 | fly_env |

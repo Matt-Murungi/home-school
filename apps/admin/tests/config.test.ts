@@ -16,4 +16,8 @@ describe("environment label from config", () => {
     expect(c.projectId).toBe("p");
     expect(Object.keys(c)).not.toContain("apiKey");
   });
+  it("database id defaults to main and can be overridden", () => {
+    expect(loadConfig({}).databaseId).toBe("main");
+    expect(loadConfig({ APPWRITE_DATABASE_ID: "staging_db" }).databaseId).toBe("staging_db");
+  });
 });

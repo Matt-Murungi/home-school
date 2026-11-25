@@ -69,10 +69,68 @@ a {
   padding: 10px 20px;
   border-bottom: 1px solid var(--line);
 }
-.topbar input[type="search"] {
+.search {
+  position: relative;
   flex: 1;
   min-width: 0;
+}
+.search input[role="combobox"] {
+  width: 100%;
+  box-sizing: border-box;
   padding: 8px 12px;
+}
+.search-panel {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  max-height: 70vh;
+  overflow-y: auto;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.12);
+}
+.search-note {
+  margin: 0;
+  padding: 10px 12px;
+  color: var(--muted);
+}
+.search-group {
+  padding: 6px 12px 2px;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+.search-option {
+  display: flex;
+  flex-direction: column;
+  padding: 6px 12px;
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+.search-option[aria-selected="true"],
+.search-option:hover {
+  background: var(--brand);
+  color: #fff;
+}
+.search-sub {
+  color: inherit;
+  opacity: 0.8;
+}
+.search mark {
+  background: #ffe58a;
+  color: #000;
+}
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
 }
 .who {
   display: flex;

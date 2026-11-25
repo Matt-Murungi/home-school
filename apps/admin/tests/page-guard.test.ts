@@ -1,4 +1,4 @@
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { readFileSync, mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -29,6 +29,12 @@ describe("the real app: every page, route, layout and server action is guarded",
   const { violations, checked } = scanApp(SRC, PUBLIC_ROUTES);
   it("has no unguarded entry point", () => {
     expect(violations).toEqual([]);
+  });
+  it("enumerates and guards the search route with its own route literal", () => {
+    expect(checked).toContain("api/search/route.ts");
+    expect(readFileSync(join(SRC, "app/api/search/route.ts"), "utf8")).toContain(
+      'await requireAccess("/api/search")',
+    );
   });
   it("sees one page per nav item plus the allow-listed files", () => {
     const pages = checked.filter((f) => f.startsWith("(admin)/") && f.endsWith("/page.tsx"));
