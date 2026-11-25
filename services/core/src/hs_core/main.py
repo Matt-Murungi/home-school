@@ -22,6 +22,8 @@ from .auth_otp import build_otp_service
 from .auth_otp import jobs as otp_jobs
 from .auth_otp.api import client_ip
 from .auth_otp.api import router as otp_router
+from .catalogue import build_catalogue_service
+from .catalogue.api import router as catalogue_router
 from .jobs.alerts import Alert, AlertSink, LogAlertSink
 from .jobs.api import router as jobs_router
 from .jobs.runner import Runner
@@ -55,6 +57,7 @@ def create_app(
     reporter: ErrorReporter | None = None,
     otp_service=None,
     notification_service=None,
+    catalogue_service=None,
     sms_sender=None,
     user_directory=None,
     trust_proxy_ip: bool | None = None,
@@ -115,6 +118,9 @@ def create_app(
     app.state.ledger = LedgerService(
         AppwriteLedgerStore(raw_repository), audit=LedgerAuditAdapter(app.state.audit)
     )
+    app.state.catalogue = catalogue_service or build_catalogue_service(
+        settings, app.state.repository
+    )
     # Fly sets Fly-Client-IP at its edge; outside dev we are always behind it.
     app.state.trust_proxy_ip = (
         settings.hs_env != "dev" if trust_proxy_ip is None else trust_proxy_ip
@@ -125,6 +131,7 @@ def create_app(
     app.include_router(jobs_router)
     app.include_router(otp_router)
     app.include_router(audit_events_router)
+    app.include_router(catalogue_router)
 
     @app.middleware("http")
     async def request_context(request: Request, call_next):
