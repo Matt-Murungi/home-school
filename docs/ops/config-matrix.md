@@ -27,6 +27,7 @@ Which variable exists in which environment, what kind it is and where it lives. 
 | `MOMO_COLLECTION_SUBSCRIPTION_KEY` | server secret | core-service | fly:homeschool-core-dev (sandbox) | fly:homeschool-core-staging (sandbox) | fly:homeschool-core-prod (live) | fly_secret |
 | `MOMO_DISBURSEMENT_API_KEY` | server secret | core-service | fly:homeschool-core-dev (sandbox) | fly:homeschool-core-staging (sandbox) | fly:homeschool-core-prod (live) | fly_secret |
 | `MOMO_DISBURSEMENT_SUBSCRIPTION_KEY` | server secret | core-service | fly:homeschool-core-dev (sandbox) | fly:homeschool-core-staging (sandbox) | fly:homeschool-core-prod (live) | fly_secret |
+| `OTP_PEPPER` | server secret | core-service | fly:homeschool-core-dev | fly:homeschool-core-staging | fly:homeschool-core-prod | fly_secret |
 | `PLAY_UPLOAD_KEYSTORE` | server secret | app-stores | - | - | TBD (owner-blocked) | app_store_console |
 | `PLAY_UPLOAD_KEYSTORE_PASSWORD` | server secret | codemagic | - | - | TBD (owner-blocked) | codemagic_variable |
 | `RESEND_API_KEY` | server secret | core-service | fly:homeschool-core-dev | fly:homeschool-core-staging | fly:homeschool-core-prod | fly_secret |
@@ -38,6 +39,7 @@ Which variable exists in which environment, what kind it is and where it lives. 
 | `SENTRY_DSN_APP` | public client key | app-parent | build define | build define | build define | build_define |
 | `SENTRY_DSN_APP` | public client key | app-teacher | build define | build define | build define | build_define |
 | `ADMIN_ENV` | config | app-admin | local | staging | production | host_env |
+| `AFRICASTALKING_SENDER_ID` | config | core-service | (empty: provider default sender) | (empty: provider default sender) | (empty: provider default sender) | fly_env |
 | `AFRICASTALKING_USERNAME` | config | core-service | sandbox in dev/staging | sandbox in dev/staging | sandbox in dev/staging | fly_env |
 | `APPWRITE_CONNECT_TIMEOUT_S` | config | core-service | 3.05 | 3.05 | 3.05 | fly_env |
 | `APPWRITE_DATABASE_ID` | config | core-service | main | main | main | fly_env |
@@ -59,6 +61,17 @@ Which variable exists in which environment, what kind it is and where it lives. 
 | `LOG_LEVEL` | config | core-service | DEBUG | INFO | INFO | fly_env |
 | `MOMO_COLLECTION_API_USER` | config | core-service | own user id | own user id | own user id | fly_env |
 | `MOMO_DISBURSEMENT_API_USER` | config | core-service | own user id | own user id | own user id | fly_env |
+| `OTP_APP_HASH` | config | core-service | (empty until the release signing key exists) | (empty until the release signing key exists) | (empty until the release signing key exists) | fly_env |
+| `OTP_DORMANT_DAYS` | config | core-service | 180 | 180 | 180 | fly_env |
+| `OTP_IP_REQUESTS_PER_DAY` | config | core-service | 60 | 60 | 60 | fly_env |
+| `OTP_IP_REQUESTS_PER_HOUR` | config | core-service | 20 | 20 | 20 | fly_env |
+| `OTP_IP_VERIFIES_PER_HOUR` | config | core-service | 60 | 60 | 60 | fly_env |
+| `OTP_MAX_ATTEMPTS` | config | core-service | 5 | 5 | 5 | fly_env |
+| `OTP_PHONE_FAILURES_PER_HOUR` | config | core-service | 10 | 10 | 10 | fly_env |
+| `OTP_PHONE_REQUESTS_PER_DAY` | config | core-service | 10 | 10 | 10 | fly_env |
+| `OTP_PHONE_REQUESTS_PER_HOUR` | config | core-service | 5 | 5 | 5 | fly_env |
+| `OTP_RESEND_COOLDOWN_S` | config | core-service | 30 | 30 | 30 | fly_env |
+| `OTP_TTL_S` | config | core-service | 300 | 300 | 300 | fly_env |
 <!-- END GENERATED:matrix -->
 
 ## Rules

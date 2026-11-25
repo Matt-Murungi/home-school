@@ -16,6 +16,21 @@ REQUIRED_DEPLOYED = (
     "appwrite_api_key",
     "appwrite_database_id",
 )
+# A01: allowed (min, max) of each OTP tuning setting; out-of-range values fail startup.
+OTP_RANGES: dict[str, tuple[int, int]] = {
+    "otp_ttl_s": (60, 900),
+    "otp_max_attempts": (1, 10),
+    "otp_resend_cooldown_s": (5, 300),
+    "otp_phone_requests_per_hour": (1, 20),
+    "otp_phone_requests_per_day": (1, 50),
+    "otp_ip_requests_per_hour": (1, 500),
+    "otp_ip_requests_per_day": (1, 2000),
+    "otp_phone_failures_per_hour": (1, 50),
+    "otp_ip_verifies_per_hour": (1, 1000),
+    "otp_dormant_days": (30, 3650),
+}
+
+
 _PLACEHOLDERS = {"changeme", "change-me", "secret", "password", "example", "test", "xxx"}
 
 
@@ -56,6 +71,22 @@ class Settings(BaseSettings):
     # Alert after this many consecutive failed job attempts (NFR-17).
     job_alert_after_failures: int = 3
     sentry_dsn: SecretStr = SecretStr("")  # empty = error reporting disabled
+    # A01 phone OTP. Africa's Talking: owner-blocked (no account yet); empty = SMS unavailable.
+    africastalking_api_key: SecretStr = SecretStr("")
+    africastalking_username: str = ""  # "sandbox" selects the sandbox endpoint
+    africastalking_sender_id: str = ""  # empty = the provider's default sender
+    otp_pepper: SecretStr = SecretStr("")  # HMAC key for code and identifier hashes
+    otp_app_hash: str = ""  # Android SMS Retriever hash (placeholder until the signing key exists)
+    otp_ttl_s: int = 300
+    otp_max_attempts: int = 5
+    otp_resend_cooldown_s: int = 30
+    otp_phone_requests_per_hour: int = 5
+    otp_phone_requests_per_day: int = 10
+    otp_ip_requests_per_hour: int = 20
+    otp_ip_requests_per_day: int = 60
+    otp_phone_failures_per_hour: int = 10
+    otp_ip_verifies_per_hour: int = 60
+    otp_dormant_days: int = 180
 
     def problems(self) -> list[str]:
         """Variable-name-only list of what is wrong for this environment."""
@@ -63,6 +94,9 @@ class Settings(BaseSettings):
         dsn = self.sentry_dsn.get_secret_value().strip()
         if dsn and urlparse(dsn).scheme != "https":
             out.append("SENTRY_DSN must be an https DSN")
+        for name, (lo, hi) in OTP_RANGES.items():
+            if not lo <= getattr(self, name) <= hi:
+                out.append(f"{name.upper()} must be between {lo} and {hi}")
         if self.hs_env == "dev":
             return out
         for name in REQUIRED_DEPLOYED:
@@ -78,6 +112,9 @@ class Settings(BaseSettings):
             out.append(f"JOB_TICK_SECRET is required in {self.hs_env}")
         elif tick_key.lower() in _PLACEHOLDERS or len(tick_key) < 32:
             out.append("JOB_TICK_SECRET looks like a placeholder or is too short")
+        pepper = self.otp_pepper.get_secret_value().strip()
+        if not pepper or pepper.lower() in _PLACEHOLDERS or len(pepper) < 32:
+            out.append(f"OTP_PEPPER is required in {self.hs_env} (at least 32 characters)")
         if self.appwrite_endpoint.strip():
             u = urlparse(self.appwrite_endpoint)
             if u.scheme != "https":

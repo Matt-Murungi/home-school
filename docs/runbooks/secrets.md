@@ -33,6 +33,7 @@ Rotate each server secret on its interval (table below). Put a calendar reminder
 | `MOMO_COLLECTION_SUBSCRIPTION_KEY` | core-service | platform-owner | 180 d | payment-credential | yes | Call MoMo Collections as us (request payments). Production: live money movement into our account. |
 | `MOMO_DISBURSEMENT_API_KEY` | core-service | platform-owner | 180 d | payment-credential | yes | Authenticate to MoMo Disbursements. Production: send payouts to arbitrary numbers; highest financial blast radius. |
 | `MOMO_DISBURSEMENT_SUBSCRIPTION_KEY` | core-service | platform-owner | 180 d | payment-credential | yes | Call MoMo Disbursements as us. Production: pay out money from our wallet. |
+| `OTP_PEPPER` | core-service | platform-owner | 365 d | otp-pepper | no | HMAC key for OTP code hashes and phone/IP pseudonyms (A01). With a copy of the otp_challenge table a leak lets an attacker recover live 6-digit codes offline and link rate-limit rows to numbers; it does not let anyone sign in without a live challenge. |
 | `PLAY_UPLOAD_KEYSTORE` | app-stores (owner-blocked) | platform-owner | 365 d | signing-credential | yes | Sign app bundles as us for upload to Play. Play App Signing holds the real app signing key, so a leaked upload key can be reset through Play support; still a release-integrity risk. |
 | `PLAY_UPLOAD_KEYSTORE_PASSWORD` | codemagic (owner-blocked) | platform-owner | 365 d | signing-credential | yes | With the keystore file, signs uploads to Play. Stored as a Codemagic secure variable; never committed. |
 | `RESEND_API_KEY` | core-service | platform-owner | 180 d | provider-key | yes | Send email as our domain (receipts, safeguarding notices); phishing and reputation risk. Restrict to sending only (ADR 0005). |
@@ -126,6 +127,15 @@ Used by: `JOB_TICK_SECRET` (core-service), `JOB_TICK_SECRET` (job-tick-function)
 2. Set it on the core service first (`fly secrets import -a <fly-app>` with `JOB_TICK_SECRET=<value>` on stdin), then on the job-tick function variable in the same environment's Appwrite project, then redeploy the function. F04 has no previous-secret mechanism, so rotation is NOT overlapping: ticks signed with the old value are rejected from the moment the core service has the new value until the function has it. Ticks are idempotent (ADR 0002) and retried on the next tick, so there is no data loss; expect at most a gap of one tick. Accepting a previous value during rotation is an F04 follow-up (docs/ops/secrets.md).
 3. Verify: the next tick appears in the job-run log with status ok, and the uptime heartbeat (`HS_HEARTBEAT_URL`) is received.
 4. Record the rotation in the log; there is no previous value to unset.
+
+### Procedure `otp-pepper`
+
+Used by: `OTP_PEPPER` (core-service)
+
+1. Pick a quiet hour: rotating invalidates every OTP code in flight (at most 5 minutes of codes) and resets rate-limit counters, because code hashes and phone/IP pseudonyms are keyed by the pepper. There is no overlap mechanism.
+2. Generate a new random value (`openssl rand -hex 32`) locally; never paste it into chat or an issue.
+3. Set it on the core service (`fly secrets import -a <fly-app>` with `OTP_PEPPER=<value>` on stdin). Fly restarts the machines.
+4. Verify: request a code in the staging app and sign in with it; check that `otp-cleanup` job runs stay ok. Users who were mid-sign-in simply request a new code.
 
 ### Procedure `payment-credential`
 

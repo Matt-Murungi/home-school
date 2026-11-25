@@ -9,6 +9,7 @@ GOOD = {
     "APPWRITE_API_KEY": "k" * 64,
     "APPWRITE_DATABASE_ID": "main",
     "JOB_TICK_SECRET": "j" * 40,
+    "OTP_PEPPER": "o" * 40,
 }
 
 
@@ -40,6 +41,7 @@ def test_production_valid(monkeypatch):
         "APPWRITE_API_KEY",
         "APPWRITE_DATABASE_ID",
         "JOB_TICK_SECRET",
+        "OTP_PEPPER",
     ],
 )
 def test_missing_required_variable_fails_with_clear_error(monkeypatch, env_name, missing):

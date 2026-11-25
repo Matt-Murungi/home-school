@@ -12,6 +12,9 @@ from fastapi.responses import JSONResponse
 
 from . import errors
 from .auth import AppwriteJwtVerifier, Principal, TokenVerifier, current_principal, require_roles
+from .auth_otp import build_otp_service
+from .auth_otp import jobs as otp_jobs
+from .auth_otp.api import router as otp_router
 from .jobs.alerts import AlertSink, LogAlertSink
 from .jobs.api import router as jobs_router
 from .jobs.runner import Runner
@@ -37,6 +40,10 @@ def create_app(
     runner: Runner | None = None,
     alert_sink: AlertSink | None = None,
     reporter: ErrorReporter | None = None,
+    otp_service=None,
+    sms_sender=None,
+    user_directory=None,
+    trust_proxy_ip: bool | None = None,
 ) -> FastAPI:
     settings = settings or load_settings()
     app = FastAPI(
@@ -58,8 +65,17 @@ def create_app(
         failure_alert_after=settings.job_alert_after_failures,
     )
     app.state.reporter = reporter or build_reporter(settings)
+    app.state.otp = otp_service or build_otp_service(
+        settings, app.state.repository, sms_sender, user_directory
+    )
+    # Fly sets Fly-Client-IP at its edge; outside dev we are always behind it.
+    app.state.trust_proxy_ip = (
+        settings.hs_env != "dev" if trust_proxy_ip is None else trust_proxy_ip
+    )
+    otp_jobs.bind(app.state.repository)
     errors.install(app)
     app.include_router(jobs_router)
+    app.include_router(otp_router)
 
     @app.middleware("http")
     async def request_context(request: Request, call_next):
