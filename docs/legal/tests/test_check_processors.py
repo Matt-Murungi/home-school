@@ -57,7 +57,7 @@ class TestRealFiles(unittest.TestCase):
 class TestRequiredIntegrations(unittest.TestCase):
     def test_each_sr_section_9_integration_has_entry(self):
         ids = {p["id"] for p in REG["processors"]}
-        for need in ["appwrite-cloud", "fly-io", "resend", "africas-talking", "firebase-fcm-apns",
+        for need in ["codemagic", "apple-app-store", "google-play", "appwrite-cloud", "fly-io", "resend", "africas-talking", "firebase-fcm-apns",
                      "google-maps", "sentry", "mtn-momo", "uptime-vendor", "github", "card-gateway"]:
             self.assertIn(need, ids)
 
@@ -157,6 +157,100 @@ class TestFields(unittest.TestCase):
     def test_unverified_label_on_legal_claims(self):
         for p in REG["processors"]:
             self.assertIn("unverified", p["cross_border_note"].lower(), p["id"])
+
+
+# Independent expectation: which processor must hold each inventory secret, derived from the
+# secret's name prefix (the inventory's consumer is where it is *used*, not who holds the data).
+PREFIX_TO_PROCESSOR = [
+    ("APPWRITE_", "appwrite-cloud"), ("FLY_", "fly-io"), ("RESEND_", "resend"),
+    ("AFRICASTALKING_", "africas-talking"), ("FCM_", "firebase-fcm-apns"), ("APNS_", "firebase-fcm-apns"),
+    ("GOOGLE_MAPS_", "google-maps"), ("SENTRY_", "sentry"), ("MOMO_", "mtn-momo"),
+    ("AIRTEL_", "airtel-money"), ("CARD_GATEWAY_", "card-gateway"), ("HS_HEARTBEAT", "uptime-vendor"),
+    ("PLAY_", "google-play"), ("IOS_", "apple-app-store"), ("APP_STORE_", "apple-app-store"),
+    ("CODEMAGIC_", "codemagic"),
+]
+FIRST_PARTY = {"JOB_TICK_SECRET", "ADMIN_COOKIE_SECRET"}
+REAL_INV = LEGAL.parent / "ops" / "secrets-inventory.json"
+
+
+class TestDerivedMapping(unittest.TestCase):
+    def setUp(self):
+        if not REAL_INV.exists():
+            self.skipTest("no real inventory")
+        self.inv = json.loads(REAL_INV.read_text())
+
+    def test_every_inventory_secret_maps_as_derived(self):
+        held = {n: p["id"] for p in REG["processors"] for n in p["secret_names"]}
+        fp = {x["name"] for x in REG["first_party_secrets"]}
+        for e in self.inv["entries"]:
+            if e["kind"] not in ("server_secret", "public_client_key"):
+                continue
+            n = e["name"]
+            want = [pid for pre, pid in PREFIX_TO_PROCESSOR if n.startswith(pre)]
+            if want:
+                self.assertEqual(held.get(n), want[0], n)
+                self.assertNotIn(n, fp, n)
+            else:
+                self.assertIn(n, FIRST_PARTY, f"{n}: no vendor prefix; first party?")
+                self.assertIn(n, fp)
+        self.assertEqual(fp, FIRST_PARTY)
+
+    def test_first_party_cannot_hide_vendor_secret(self):
+        for name, consumer in [("RESEND_API_KEY", "core-service"), ("PLAY_UPLOAD_KEYSTORE", "app-stores"),
+                               ("CODEMAGIC_SECURE_VARIABLES", "codemagic"), ("NEWTHING", "firebase-console"),
+                               ("NEWTHING2", "app-stores"), ("NEWTHING3", "codemagic")]:
+            def f(r, name=name):
+                for p in r["processors"]:
+                    if name in p["secret_names"]:
+                        p["secret_names"].remove(name)
+                r["first_party_secrets"].append({"name": name, "reason": "ours, honest"})
+            i = inv((name, "server_secret", consumer))
+            errs = cp.validate(broken(f), i, MD)
+            self.assertTrue(any(name in e and "first-party" in e for e in errs), (name, errs))
+
+    def test_first_party_needs_reason_and_not_also_claimed(self):
+        r = broken(lambda r: r["first_party_secrets"][0].update(reason=""))
+        self.assertTrue(any("reason" in e for e in cp.validate(r, None, MD)))
+        r = broken(lambda r: r["processors"][0]["secret_names"].append(r["first_party_secrets"][0]["name"]))
+        self.assertTrue(any("both" in e for e in cp.validate(r, None, MD)))
+
+    def test_unlisted_first_party_style_secret_still_fails(self):
+        i = inv(("ADMIN_COOKIE_SECRET2", "server_secret", "app-admin"))
+        self.assertTrue(any("ADMIN_COOKIE_SECRET2" in e for e in cp.validate(REG, i, MD)))
+
+
+class TestMutations(unittest.TestCase):
+    """Each mutation of the real register must make the real-inventory check fail."""
+
+    def setUp(self):
+        self.inv = json.loads(REAL_INV.read_text()) if REAL_INV.exists() else None
+
+    def fails(self, fn):
+        self.assertTrue(cp.validate(broken(fn), self.inv, MD, check_stale=self.inv is not None))
+
+    def test_remove_processor(self):
+        self.fails(lambda r: r["processors"].pop(0))
+
+    def test_remove_field(self):
+        self.fails(lambda r: r["processors"][3].pop("exit_procedure"))
+
+    def test_duplicate_id(self):
+        self.fails(lambda r: r["processors"].append(dict(r["processors"][1])))
+
+    def test_unknown_category(self):
+        self.fails(lambda r: r["processors"][2]["data_categories"].append("x"))
+
+    def test_signed_without_evidence(self):
+        self.fails(lambda r: r["processors"][2].update(agreement_status="signed"))
+
+    def test_unsigned_not_owner_blocked(self):
+        self.fails(lambda r: r["processors"][2].update(owner_blocked=False))
+
+    def test_claimed_twice(self):
+        self.fails(lambda r: r["processors"][0]["secret_names"].append(r["processors"][1]["secret_names"][0]))
+
+    def test_stale_name(self):
+        self.fails(lambda r: r["processors"][0]["secret_names"].append("NOPE_KEY"))
 
 
 class TestRegisterDoc(unittest.TestCase):

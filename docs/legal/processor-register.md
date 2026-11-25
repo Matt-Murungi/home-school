@@ -4,22 +4,26 @@
 
 **Status today: no agreement is signed for any processor ("not signed", owner-blocked).** Signing needs the owner's accounts and the lawyer's view of minimum DPA content (DP-9, lawyer Q19). Roles assumed (ADR 0006 option B1, a proposal): the platform is the data controller; the vendors below are processors.
 
+
 ## Summary
 
 | `id` | Provider | Phase | Data touched | Region / cross-border | Agreement | Owner-blocked |
 |---|---|---|---|---|---|---|
 | `appwrite-cloud` | Appwrite Cloud | MVP | child-data, parent-data, teacher-data, teacher-documents, phone, email, location, payment-data, safeguarding, credentials-tokens, logs-metadata | EU (Frankfurt) per ADR 0012 (cross-border: yes) | not signed | yes |
 | `fly-io` | Fly.io | MVP | child-data, parent-data, teacher-data, phone, email, location, payment-data, credentials-tokens, logs-metadata | EU (fra) per ADR 0003 (cross-border: yes) | not signed | yes |
-| `resend` | Resend | MVP | parent-data, teacher-data, email, child-data, logs-metadata | Region chosen at account creation (EU acceptable; owner picks, ADR 0005) (cross-border: yes) | not signed | yes |
-| `africas-talking` | Africa's Talking | MVP | phone, logs-metadata | Not confirmed; vendor is Kenya-headquartered, delivery routes through Ugandan operators (cross-border: yes) | not signed | yes |
+| `resend` | Resend | MVP | parent-data, teacher-data, email, child-data, logs-metadata | Chosen per sending domain when the domain is added (Resend docs, fetched 25 Nov 2026: https://resend.com/docs/dashboard/domains/introduction; the page does not list the regions or state data residency, so confirm in the dashboard). EU acceptable per ADR 0005. (cross-border: yes) | not signed | yes |
+| `africas-talking` | Africa's Talking | MVP | phone, logs-metadata | Not confirmed: vendor site and privacy policy returned HTTP 403 to automated fetch on 25 Nov 2026, so headquarters, storage country and DPA availability remain unverified; owner to ask the vendor (cross-border: yes) | not signed | yes |
 | `firebase-fcm-apns` | Firebase Cloud Messaging and Apple Push (APNs) | MVP | device-identifiers, parent-data, teacher-data, logs-metadata | Global (Google; US and other regions); Apple (global) (cross-border: yes) | not signed | yes |
 | `google-maps` | Google Maps Platform | MVP | location, child-data, parent-data, device-identifiers, logs-metadata | Global (Google) (cross-border: yes) | not signed | yes |
-| `sentry` | Sentry | MVP | logs-metadata, device-identifiers, credentials-tokens | Choose the EU (Germany) region at project creation; US is the default if unchosen (cross-border: yes) | not signed | yes |
+| `sentry` | Sentry | MVP | logs-metadata, device-identifiers, credentials-tokens | EU (Frankfurt) or US (Iowa), chosen when the organisation is created and not changeable afterwards (Sentry docs, fetched 25 Nov 2026: https://docs.sentry.io/organization/data-storage-location/). Choose EU. (cross-border: yes) | not signed | yes |
 | `mtn-momo` | MTN Mobile Money (Collections and Disbursements) | MVP | payment-data, phone, parent-data, teacher-data | Uganda (MTN Uganda; MoMo platform location not confirmed) (domestic) | not signed | yes |
 | `airtel-money` | Airtel Money | Phase 2 | payment-data, phone, parent-data, teacher-data | Uganda (Airtel Uganda; not confirmed) (domestic) | not signed | yes |
 | `card-gateway` | Card gateway (provider to be chosen) | Phase 2 | payment-data, parent-data, email | TBD with provider choice (cross-border: yes) | not signed | yes |
 | `uptime-vendor` | Uptime monitoring vendor (Better Stack or UptimeRobot, owner chooses) | MVP | logs-metadata, email, phone | Vendor default region; not confirmed (cross-border: yes) | not signed | yes |
 | `github` | GitHub (source, CI, project board) | MVP | source-code-only, credentials-tokens, teacher-data | Global (GitHub/Microsoft) (cross-border: yes) | not signed | yes |
+| `codemagic` | Codemagic (CI/CD for the Flutter apps) | MVP | source-code-only, credentials-tokens | Vendor-hosted build machines; region not confirmed (cross-border: yes) | not signed | yes |
+| `apple-app-store` | Apple App Store / App Store Connect | MVP | device-identifiers, logs-metadata, teacher-data | Apple, global (cross-border: yes) | not signed | yes |
+| `google-play` | Google Play Console | MVP | device-identifiers, logs-metadata, teacher-data | Google, global (cross-border: yes) | not signed | yes |
 
 ## How to sign a processor agreement (owner steps, same for each row)
 
@@ -42,7 +46,7 @@ Recommended defaults: sign the vendor's standard DPA where it exists; choose EU 
 - Region: EU (Frankfurt) per ADR 0012. Cross-border: yes. Stored in the EU while users and the controller are in Uganda; whether this needs a transfer undertaking or consent under the Act is open (ADR 0006, ADR 0012 DP-7 note, lawyer brief Q20-Q23). Appwrite Inc. is a US-parented company, so onward access is also a question. Legal position: unverified, for lawyer confirmation.
 - Agreement: **not signed** (owner-blocked: yes). DPA link: TBD: link to the signed DPA copy (owner uploads to the evidence folder; never commit the PDF if it holds commercial terms).
 - Sub-processors: Obtain Appwrite's current sub-processor list and change-notice terms with the DPA; list not yet collected.
-- Secrets held for it (names only, `docs/ops/secrets-inventory.json`): `APPWRITE_API_KEY`, `JOB_TICK_SECRET`.
+- Secrets held for it (names only, `docs/ops/secrets-inventory.json`): `APPWRITE_API_KEY`.
 - Exit and deletion procedure:
   1. Export every table and bucket with the core service export tooling plus the Appwrite console export (nightly export job if no point-in-time recovery, see memory.md question 7).
   2. Verify counts against the export, store the export encrypted in owner-controlled storage.
@@ -72,7 +76,7 @@ Recommended defaults: sign the vendor's standard DPA where it exists; choose EU 
 - Role: processor. Phase: MVP. SR/ADR reference: Email provider (ADR 0005).
 - Purpose: Transactional email (receipts, session notices, safeguarding notifications, account email).
 - Data categories: parent-data, teacher-data, email, child-data, logs-metadata.
-- Region: Region chosen at account creation (EU acceptable; owner picks, ADR 0005). Cross-border: yes. Email addresses, names and message content pass through the provider; region choice affects the transfer analysis. Resend is US-parented. Legal position: unverified, for lawyer confirmation.
+- Region: Chosen per sending domain when the domain is added (Resend docs, fetched 25 Nov 2026: https://resend.com/docs/dashboard/domains/introduction; the page does not list the regions or state data residency, so confirm in the dashboard). EU acceptable per ADR 0005.. Cross-border: yes. Email addresses, names and message content pass through the provider; region choice affects the transfer analysis. Resend is US-parented. Legal position: unverified, for lawyer confirmation.
 - Agreement: **not signed** (owner-blocked: yes). DPA link: TBD: link to the signed DPA copy (owner uploads to the evidence folder; never commit the PDF if it holds commercial terms).
 - Sub-processors: Obtain Resend's sub-processor list (it is understood to use AWS; confirm).
 - Secrets held for it (names only, `docs/ops/secrets-inventory.json`): `RESEND_API_KEY`, `RESEND_WEBHOOK_SECRET`.
@@ -87,7 +91,7 @@ Recommended defaults: sign the vendor's standard DPA where it exists; choose EU 
 - Role: processor. Phase: MVP. SR/ADR reference: Africa's Talking SMS.
 - Purpose: SMS for one-time passwords only (SR section 9).
 - Data categories: phone, logs-metadata.
-- Region: Not confirmed; vendor is Kenya-headquartered, delivery routes through Ugandan operators. Cross-border: yes. Phone numbers and OTP text are processed outside Uganda (country to be confirmed). Legal position: unverified, for lawyer confirmation.
+- Region: Not confirmed: vendor site and privacy policy returned HTTP 403 to automated fetch on 25 Nov 2026, so headquarters, storage country and DPA availability remain unverified; owner to ask the vendor. Cross-border: yes. Phone numbers and OTP text are processed outside Uganda (country to be confirmed). Legal position: unverified, for lawyer confirmation.
 - Agreement: **not signed** (owner-blocked: yes). DPA link: TBD: link to the signed DPA copy (owner uploads to the evidence folder; never commit the PDF if it holds commercial terms).
 - Sub-processors: Obtain the sub-processor and carrier list; carriers are separate controllers of their own network data.
 - Secrets held for it (names only, `docs/ops/secrets-inventory.json`): `AFRICASTALKING_API_KEY`.
@@ -132,7 +136,7 @@ Recommended defaults: sign the vendor's standard DPA where it exists; choose EU 
 - Role: processor. Phase: MVP. SR/ADR reference: Sentry.
 - Purpose: Error tracking with PII scrubbing before send (docs/ops/runbook.md PII rules).
 - Data categories: logs-metadata, device-identifiers, credentials-tokens.
-- Region: Choose the EU (Germany) region at project creation; US is the default if unchosen. Cross-border: yes. Scrubbed events only: no request bodies, names, emails, phones or addresses by design (F08). Residual risk: free text in exceptions. Legal position: unverified, for lawyer confirmation.
+- Region: EU (Frankfurt) or US (Iowa), chosen when the organisation is created and not changeable afterwards (Sentry docs, fetched 25 Nov 2026: https://docs.sentry.io/organization/data-storage-location/). Choose EU.. Cross-border: yes. Scrubbed events only: no request bodies, names, emails, phones or addresses by design (F08). Residual risk: free text in exceptions. Legal position: unverified, for lawyer confirmation.
 - Agreement: **not signed** (owner-blocked: yes). DPA link: TBD: link to the signed DPA copy (owner uploads to the evidence folder; never commit the PDF if it holds commercial terms).
 - Sub-processors: Sentry publishes a sub-processor list; obtain it with the DPA.
 - Secrets held for it (names only, `docs/ops/secrets-inventory.json`): `SENTRY_DSN`, `SENTRY_AUTH_TOKEN`, `SENTRY_DSN_APP`.
@@ -149,7 +153,7 @@ Recommended defaults: sign the vendor's standard DPA where it exists; choose EU 
 - Data categories: payment-data, phone, parent-data, teacher-data.
 - Region: Uganda (MTN Uganda; MoMo platform location not confirmed). Cross-border: no. Payer/payee MSISDN and amounts shared with MTN; likely domestic. If MTN's platform is hosted abroad that is outside our control. Legal position: unverified, for lawyer confirmation.
 - Agreement: **not signed** (owner-blocked: yes). DPA link: TBD: link to the signed DPA copy (owner uploads to the evidence folder; never commit the PDF if it holds commercial terms).
-- Sub-processors: Not applicable to us; MTN's API terms govern. Ask whether MTN will sign a DPA or only its standard API terms.
+- Sub-processors: Not applicable to us; MTN's API terms govern. Ask whether MTN will sign a DPA or only its standard API terms. Note: the MOMO_* variables read by packages/py_momo/scripts/manual_sandbox.py are a manual sandbox-script concern (owner's laptop, sandbox keys only, never CI); the production keys listed here are the core service's.
 - Secrets held for it (names only, `docs/ops/secrets-inventory.json`): `MOMO_COLLECTION_SUBSCRIPTION_KEY`, `MOMO_COLLECTION_API_KEY`, `MOMO_DISBURSEMENT_SUBSCRIPTION_KEY`, `MOMO_DISBURSEMENT_API_KEY`.
 - Exit and deletion procedure:
   1. Stop calling the API (feature flag in the payment adapter); settle pending transactions and reconcile.
@@ -192,8 +196,8 @@ Recommended defaults: sign the vendor's standard DPA where it exists; choose EU 
 - Data categories: logs-metadata, email, phone.
 - Region: Vendor default region; not confirmed. Cross-border: yes. Checks hit health endpoints only (no personal data). The vendor holds the owner's alert contact details (email/phone), which are personal data of staff. Legal position: unverified, for lawyer confirmation.
 - Agreement: **not signed** (owner-blocked: yes). DPA link: TBD: link to the signed DPA copy (owner uploads to the evidence folder; never commit the PDF if it holds commercial terms).
-- Sub-processors: Obtain the vendor's sub-processor list.
-- Secrets held for it (names only, `docs/ops/secrets-inventory.json`): none.
+- Sub-processors: Obtain the vendor's sub-processor list. Holds the heartbeat URL (HS_HEARTBEAT_URL), which is a secret-bearing URL.
+- Secrets held for it (names only, `docs/ops/secrets-inventory.json`): `HS_HEARTBEAT_URL`.
 - Exit and deletion procedure:
   1. Export the check list from ops/uptime.json (kept as code) and recreate in another vendor.
   2. Delete the account; revoke heartbeat URLs.
@@ -214,6 +218,56 @@ Recommended defaults: sign the vendor's standard DPA where it exists; choose EU 
   2. Rotate every secret stored in GitHub environments (docs/ops/secrets-inventory.json).
 - If the provider refuses a DPA: GitHub terms are standard; a refusal is not realistic. If the lawyer objects, self-host Git and CI.
 - Breach contact: TBD: vendor security/breach contact address from the signed DPA (breach duties: `breach-procedure.md`).
+
+### `codemagic` Codemagic (CI/CD for the Flutter apps)
+
+- Role: processor. Phase: MVP. SR/ADR reference: Mobile build and release (F05).
+- Purpose: Builds, signs and uploads the parent and teacher apps to the app stores (F05).
+- Data categories: source-code-only, credentials-tokens.
+- Region: Vendor-hosted build machines; region not confirmed. Cross-border: yes. Reasoning: builds run on its machines from our source with signing material held as secure variables. No production end-user personal data is sent: builds use public client keys and no production data, but build logs and artifacts must be kept free of personal data (a test fixture with real names would change this). Staff identities (owner email) are held. Legal position: unverified, for lawyer confirmation.
+- Agreement: **not signed** (owner-blocked: yes). DPA link: TBD: link to the signed DPA copy (owner uploads to the evidence folder; never commit the PDF if it holds commercial terms).
+- Sub-processors: Obtain Codemagic's sub-processor list and DPA terms.
+- Secrets held for it (names only, `docs/ops/secrets-inventory.json`): `CODEMAGIC_SECURE_VARIABLES`.
+- Exit and deletion procedure:
+  1. Move builds to another CI (GitHub Actions macOS runners) using the same signing material.
+  2. Rotate the keystore password, App Store Connect API key and delete the Codemagic team and its secure variables; confirm deletion.
+- If the provider refuses a DPA: Replace with another CI; low data risk, so a recorded risk acceptance is also reasonable after lawyer advice.
+- Breach contact: TBD: vendor security/breach contact address from the signed DPA (breach duties: `breach-procedure.md`).
+
+### `apple-app-store` Apple App Store / App Store Connect
+
+- Role: processor. Phase: MVP. SR/ADR reference: App Store distribution.
+- Purpose: Distribution of the iOS apps; Apple collects its own end-user, analytics and crash data and holds the developer-account data.
+- Data categories: device-identifiers, logs-metadata, teacher-data.
+- Region: Apple, global. Cross-border: yes. Apple acts largely as an independent controller of store and analytics data about end users; we receive aggregated reports only. We give Apple the developer account holder's data. Apple's terms are fixed and not negotiable. Legal position: unverified, for lawyer confirmation.
+- Agreement: **not signed** (owner-blocked: yes). DPA link: TBD: link to the signed DPA copy (owner uploads to the evidence folder; never commit the PDF if it holds commercial terms).
+- Sub-processors: Apple terms; not negotiable.
+- Secrets held for it (names only, `docs/ops/secrets-inventory.json`): `IOS_DISTRIBUTION_CERTIFICATE`, `IOS_PROVISIONING_PROFILES`, `APP_STORE_CONNECT_API_KEY`.
+- Exit and deletion procedure:
+  1. Remove the apps from sale and delete the app records; revoke the App Store Connect API key and the distribution certificate and provisioning profiles; close the developer account if leaving iOS.
+- If the provider refuses a DPA: Not negotiable: record risk acceptance after lawyer advice (the alternative is no iOS app).
+- Breach contact: TBD: vendor security/breach contact address from the signed DPA (breach duties: `breach-procedure.md`).
+
+### `google-play` Google Play Console
+
+- Role: processor. Phase: MVP. SR/ADR reference: Play Store distribution.
+- Purpose: Distribution of the Android apps; Google collects store, vitals and crash data about end users and holds developer-account data.
+- Data categories: device-identifiers, logs-metadata, teacher-data.
+- Region: Google, global. Cross-border: yes. Google acts largely as an independent controller of Play store and vitals data; we receive aggregated reports. Developer-account data is held by Google. Play terms are fixed. Legal position: unverified, for lawyer confirmation.
+- Agreement: **not signed** (owner-blocked: yes). DPA link: TBD: link to the signed DPA copy (owner uploads to the evidence folder; never commit the PDF if it holds commercial terms).
+- Sub-processors: Google terms; not negotiable.
+- Secrets held for it (names only, `docs/ops/secrets-inventory.json`): `PLAY_UPLOAD_KEYSTORE`, `PLAY_UPLOAD_KEYSTORE_PASSWORD`.
+- Exit and deletion procedure:
+  1. Unpublish and delete the apps; rotate to a new upload key via Play App Signing key reset; close the developer account if leaving Android.
+- If the provider refuses a DPA: Not negotiable: record risk acceptance after lawyer advice.
+- Breach contact: TBD: vendor security/breach contact address from the signed DPA (breach duties: `breach-procedure.md`).
+
+## First-party secrets (no third party holds them)
+
+Listed in `first_party_secrets` in `processors.json`. The validator refuses this marker for any secret with a vendor name prefix or a vendor consumer (app-stores, codemagic, firebase-console), so it cannot hide a third-party credential.
+
+- `JOB_TICK_SECRET`: Shared secret we generate between the core service and the job-tick function; no third party chooses or holds it beyond hosting it as a variable (Appwrite and Fly already covered as processors).
+- `ADMIN_COOKIE_SECRET`: Our own admin app cookie-signing secret; generated by us, held by the host environment only.
 
 ## Not processors (for the lawyer to confirm)
 

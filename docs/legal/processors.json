@@ -27,8 +27,7 @@
    "cross_border": true,
    "cross_border_note": "Stored in the EU while users and the controller are in Uganda; whether this needs a transfer undertaking or consent under the Act is open (ADR 0006, ADR 0012 DP-7 note, lawyer brief Q20-Q23). Appwrite Inc. is a US-parented company, so onward access is also a question. Legal position: unverified, for lawyer confirmation.",
    "secret_names": [
-    "APPWRITE_API_KEY",
-    "JOB_TICK_SECRET"
+    "APPWRITE_API_KEY"
    ],
    "agreement_status": "not signed",
    "owner_blocked": true,
@@ -96,7 +95,7 @@
     "logs-metadata"
    ],
    "regions": [
-    "Region chosen at account creation (EU acceptable; owner picks, ADR 0005)"
+    "Chosen per sending domain when the domain is added (Resend docs, fetched 25 Nov 2026: https://resend.com/docs/dashboard/domains/introduction; the page does not list the regions or state data residency, so confirm in the dashboard). EU acceptable per ADR 0005."
    ],
    "cross_border": true,
    "cross_border_note": "Email addresses, names and message content pass through the provider; region choice affects the transfer analysis. Resend is US-parented. Legal position: unverified, for lawyer confirmation.",
@@ -127,7 +126,7 @@
     "logs-metadata"
    ],
    "regions": [
-    "Not confirmed; vendor is Kenya-headquartered, delivery routes through Ugandan operators"
+    "Not confirmed: vendor site and privacy policy returned HTTP 403 to automated fetch on 25 Nov 2026, so headquarters, storage country and DPA availability remain unverified; owner to ask the vendor"
    ],
    "cross_border": true,
    "cross_border_note": "Phone numbers and OTP text are processed outside Uganda (country to be confirmed). Legal position: unverified, for lawyer confirmation.",
@@ -227,7 +226,7 @@
     "credentials-tokens"
    ],
    "regions": [
-    "Choose the EU (Germany) region at project creation; US is the default if unchosen"
+    "EU (Frankfurt) or US (Iowa), chosen when the organisation is created and not changeable afterwards (Sentry docs, fetched 25 Nov 2026: https://docs.sentry.io/organization/data-storage-location/). Choose EU."
    ],
    "cross_border": true,
    "cross_border_note": "Scrubbed events only: no request bodies, names, emails, phones or addresses by design (F08). Residual risk: free text in exceptions. Legal position: unverified, for lawyer confirmation.",
@@ -274,7 +273,7 @@
    "agreement_status": "not signed",
    "owner_blocked": true,
    "dpa_link": "TBD: link to the signed DPA copy (owner uploads to the evidence folder; never commit the PDF if it holds commercial terms)",
-   "sub_processors_note": "Not applicable to us; MTN's API terms govern. Ask whether MTN will sign a DPA or only its standard API terms.",
+   "sub_processors_note": "Not applicable to us; MTN's API terms govern. Ask whether MTN will sign a DPA or only its standard API terms. Note: the MOMO_* variables read by packages/py_momo/scripts/manual_sandbox.py are a manual sandbox-script concern (owner's laptop, sandbox keys only, never CI); the production keys listed here are the core service's.",
    "exit_procedure": [
     "Stop calling the API (feature flag in the payment adapter); settle pending transactions and reconcile.",
     "Close the product subscriptions; keep payment records per tax law (C03 retention)."
@@ -361,11 +360,13 @@
    ],
    "cross_border": true,
    "cross_border_note": "Checks hit health endpoints only (no personal data). The vendor holds the owner's alert contact details (email/phone), which are personal data of staff. Legal position: unverified, for lawyer confirmation.",
-   "secret_names": [],
+   "secret_names": [
+    "HS_HEARTBEAT_URL"
+   ],
    "agreement_status": "not signed",
    "owner_blocked": true,
    "dpa_link": "TBD: link to the signed DPA copy (owner uploads to the evidence folder; never commit the PDF if it holds commercial terms)",
-   "sub_processors_note": "Obtain the vendor's sub-processor list.",
+   "sub_processors_note": "Obtain the vendor's sub-processor list. Holds the heartbeat URL (HS_HEARTBEAT_URL), which is a secret-bearing URL.",
    "exit_procedure": [
     "Export the check list from ops/uptime.json (kept as code) and recreate in another vendor.",
     "Delete the account; revoke heartbeat URLs."
@@ -401,6 +402,109 @@
    ],
    "if_dpa_refused": "GitHub terms are standard; a refusal is not realistic. If the lawyer objects, self-host Git and CI.",
    "breach_contact": "TBD: vendor security/breach contact address from the signed DPA"
+  },
+  {
+   "id": "codemagic",
+   "name": "Codemagic (CI/CD for the Flutter apps)",
+   "role": "processor",
+   "phase": "MVP",
+   "sr_integration": "Mobile build and release (F05)",
+   "purpose": "Builds, signs and uploads the parent and teacher apps to the app stores (F05).",
+   "data_categories": [
+    "source-code-only",
+    "credentials-tokens"
+   ],
+   "regions": [
+    "Vendor-hosted build machines; region not confirmed"
+   ],
+   "cross_border": true,
+   "cross_border_note": "Reasoning: builds run on its machines from our source with signing material held as secure variables. No production end-user personal data is sent: builds use public client keys and no production data, but build logs and artifacts must be kept free of personal data (a test fixture with real names would change this). Staff identities (owner email) are held. Legal position: unverified, for lawyer confirmation.",
+   "secret_names": [
+    "CODEMAGIC_SECURE_VARIABLES"
+   ],
+   "agreement_status": "not signed",
+   "owner_blocked": true,
+   "dpa_link": "TBD: link to the signed DPA copy (owner uploads to the evidence folder; never commit the PDF if it holds commercial terms)",
+   "sub_processors_note": "Obtain Codemagic's sub-processor list and DPA terms.",
+   "exit_procedure": [
+    "Move builds to another CI (GitHub Actions macOS runners) using the same signing material.",
+    "Rotate the keystore password, App Store Connect API key and delete the Codemagic team and its secure variables; confirm deletion."
+   ],
+   "if_dpa_refused": "Replace with another CI; low data risk, so a recorded risk acceptance is also reasonable after lawyer advice.",
+   "breach_contact": "TBD: vendor security/breach contact address from the signed DPA"
+  },
+  {
+   "id": "apple-app-store",
+   "name": "Apple App Store / App Store Connect",
+   "role": "processor",
+   "phase": "MVP",
+   "sr_integration": "App Store distribution",
+   "purpose": "Distribution of the iOS apps; Apple collects its own end-user, analytics and crash data and holds the developer-account data.",
+   "data_categories": [
+    "device-identifiers",
+    "logs-metadata",
+    "teacher-data"
+   ],
+   "regions": [
+    "Apple, global"
+   ],
+   "cross_border": true,
+   "cross_border_note": "Apple acts largely as an independent controller of store and analytics data about end users; we receive aggregated reports only. We give Apple the developer account holder's data. Apple's terms are fixed and not negotiable. Legal position: unverified, for lawyer confirmation.",
+   "secret_names": [
+    "IOS_DISTRIBUTION_CERTIFICATE",
+    "IOS_PROVISIONING_PROFILES",
+    "APP_STORE_CONNECT_API_KEY"
+   ],
+   "agreement_status": "not signed",
+   "owner_blocked": true,
+   "dpa_link": "TBD: link to the signed DPA copy (owner uploads to the evidence folder; never commit the PDF if it holds commercial terms)",
+   "sub_processors_note": "Apple terms; not negotiable.",
+   "exit_procedure": [
+    "Remove the apps from sale and delete the app records; revoke the App Store Connect API key and the distribution certificate and provisioning profiles; close the developer account if leaving iOS."
+   ],
+   "if_dpa_refused": "Not negotiable: record risk acceptance after lawyer advice (the alternative is no iOS app).",
+   "breach_contact": "TBD: vendor security/breach contact address from the signed DPA"
+  },
+  {
+   "id": "google-play",
+   "name": "Google Play Console",
+   "role": "processor",
+   "phase": "MVP",
+   "sr_integration": "Play Store distribution",
+   "purpose": "Distribution of the Android apps; Google collects store, vitals and crash data about end users and holds developer-account data.",
+   "data_categories": [
+    "device-identifiers",
+    "logs-metadata",
+    "teacher-data"
+   ],
+   "regions": [
+    "Google, global"
+   ],
+   "cross_border": true,
+   "cross_border_note": "Google acts largely as an independent controller of Play store and vitals data; we receive aggregated reports. Developer-account data is held by Google. Play terms are fixed. Legal position: unverified, for lawyer confirmation.",
+   "secret_names": [
+    "PLAY_UPLOAD_KEYSTORE",
+    "PLAY_UPLOAD_KEYSTORE_PASSWORD"
+   ],
+   "agreement_status": "not signed",
+   "owner_blocked": true,
+   "dpa_link": "TBD: link to the signed DPA copy (owner uploads to the evidence folder; never commit the PDF if it holds commercial terms)",
+   "sub_processors_note": "Google terms; not negotiable.",
+   "exit_procedure": [
+    "Unpublish and delete the apps; rotate to a new upload key via Play App Signing key reset; close the developer account if leaving Android."
+   ],
+   "if_dpa_refused": "Not negotiable: record risk acceptance after lawyer advice.",
+   "breach_contact": "TBD: vendor security/breach contact address from the signed DPA"
+  }
+ ],
+ "first_party_secrets": [
+  {
+   "name": "JOB_TICK_SECRET",
+   "reason": "Shared secret we generate between the core service and the job-tick function; no third party chooses or holds it beyond hosting it as a variable (Appwrite and Fly already covered as processors)."
+  },
+  {
+   "name": "ADMIN_COOKIE_SECRET",
+   "reason": "Our own admin app cookie-signing secret; generated by us, held by the host environment only."
   }
  ]
 }

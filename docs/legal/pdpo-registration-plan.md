@@ -35,7 +35,7 @@ Evidence slots: each task has a reference code `EV-PDPO-nn`. Store the evidence 
 | 11 | Retention schedule | Lawyer | T-7w | Proposals from C03 | EV-PDPO-11 | | owner-blocked (C03) |
 | 12 | Breach procedure | Founders | T-7w | `breach-procedure.md` (draft, lawyer review pending); tabletop run once | EV-PDPO-12 (approved copy + tabletop notes) | | in repo / owner-blocked |
 | 13 | Privacy notice final | Lawyer | T-7w | Outline in `policy-inventory.md` | EV-PDPO-13 | | owner-blocked |
-| 14 | Processor agreements signed (or risk accepted) | Owner | T-7w | Steps in `processor-register.md`; validator shows `signed` only with link and date | EV-PDPO-14 (one slot per processor, 12 rows) | | owner-blocked |
+| 14 | Processor agreements signed (or risk accepted) | Owner | T-7w | Steps in `processor-register.md`; validator shows `signed` only with link and date | EV-PDPO-14 (one slot per processor, 15 rows) | | owner-blocked |
 | 15 | Fee payment (amount unverified) | Owner | T-6w | None | EV-PDPO-15 (receipt) | | owner-blocked |
 | 16 | Submission | Owner | T-6w | Packet assembled from rows 5-14 | EV-PDPO-16 (reference, copy) | | owner-blocked |
 | 17 | Certificate: number, expiry, renewal reminder 3 months before expiry | Owner | T-2w to launch | None | EV-PDPO-17 | | owner-blocked |
@@ -57,5 +57,5 @@ Evidence slots: each task has a reference code `EV-PDPO-nn`. Store the evidence 
 | Criterion | Evidence | Status |
 |---|---|---|
 | Registration certificate filed | EV-PDPO-17 | owner-blocked |
-| DPAs filed | EV-PDPO-14 x12 | owner-blocked |
+| DPAs filed | EV-PDPO-14 x15 | owner-blocked |
 | Breach runbook with timelines and contacts | `breach-procedure.md` (timeline done, contacts owner-blocked) and `docs/runbooks/data-breach.md` | built, lawyer review owner-blocked |

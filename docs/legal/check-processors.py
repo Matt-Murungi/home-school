@@ -31,9 +31,15 @@ DATA_CATEGORIES = {
 }
 AGREEMENT_STATUS = {"not signed", "in negotiation", "signed", "risk-accepted", "not required"}
 # SR section 9 integrations plus hosting/backend (ADR 0003, 0012), monitoring (F08), source (GitHub).
-REQUIRED_IDS = ["appwrite-cloud", "fly-io", "resend", "africas-talking", "firebase-fcm-apns", "google-maps",
+REQUIRED_IDS = ["codemagic", "apple-app-store", "google-play", "appwrite-cloud", "fly-io", "resend", "africas-talking", "firebase-fcm-apns", "google-maps",
                 "sentry", "mtn-momo", "airtel-money", "card-gateway", "uptime-vendor", "github"]
 INVENTORY_KINDS = {"server_secret", "public_client_key"}
+# Inventory consumers that are third-party vendors' consoles/services: a secret used there can never be
+# declared first-party. Likewise secrets whose name starts with a vendor prefix.
+VENDOR_CONSUMERS = {"app-stores", "codemagic", "firebase-console"}
+VENDOR_NAME_PREFIXES = ("APPWRITE_", "FLY_", "RESEND_", "AFRICASTALKING_", "FCM_", "APNS_", "GOOGLE_MAPS_",
+                        "SENTRY_", "MOMO_", "AIRTEL_", "CARD_GATEWAY_", "HS_HEARTBEAT", "PLAY_", "IOS_",
+                        "APP_STORE_", "CODEMAGIC_")
 
 
 def validate(register, inventory=None, register_md=None, check_stale=False):
@@ -81,13 +87,28 @@ def validate(register, inventory=None, register_md=None, check_stale=False):
     for n, owners in claimed.items():
         if len(set(owners)) > 1:
             errors.append(f"{n}: claimed by more than one processor {sorted(set(owners))}")
+    first_party = {}
+    for fp in register.get("first_party_secrets", []):
+        n = fp.get("name", "?")
+        first_party[n] = fp
+        if not str(fp.get("reason", "")).strip():
+            errors.append(f"{n}: first_party_secrets entry needs a reason")
+        if n in claimed:
+            errors.append(f"{n}: listed as first-party and also held by a processor (both is wrong)")
+        if n.startswith(VENDOR_NAME_PREFIXES):
+            errors.append(f"{n}: vendor-prefixed name cannot be declared first-party")
     if inventory is not None:
         names = set()
         for e in inventory.get("entries", []):
             names.add(e["name"])
-            if e.get("kind") in INVENTORY_KINDS and e["name"] not in claimed:
+            if e["name"] in first_party and e.get("consumer") in VENDOR_CONSUMERS:
+                errors.append(f"{e['name']}: consumer {e['consumer']} is a vendor; cannot be first-party, a processor must hold it")
+            if e.get("kind") in INVENTORY_KINDS and e["name"] not in claimed and e["name"] not in first_party:
                 errors.append(f"{e['name']}: in secrets inventory (consumer {e.get('consumer')}) but no processor lists it in secret_names")
         if check_stale:
+            for n in first_party:
+                if n not in names:
+                    errors.append(f"{n}: first-party secret not in the secrets inventory (stale)")
             for n, owners in claimed.items():
                 if n not in names:
                     errors.append(f"{n}: listed by {owners[0]} but not in the secrets inventory (stale)")
