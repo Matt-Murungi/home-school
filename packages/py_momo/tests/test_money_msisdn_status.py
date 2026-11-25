@@ -98,3 +98,15 @@ def test_unknown_reason_preserved_raw():
         is FailureReason.NOT_ENOUGH_FUNDS
     )
     assert map_reason(None) == (None, None)
+
+
+def test_msisdn_prefix_check_is_loose_on_purpose_airtel_and_others_not_rejected_locally():
+    """Documented behaviour (README + owner note): only `256` + [3|7] + 8 digits is checked.
+    Airtel (070/075), Africell (079) and 03x numbers are NOT rejected locally; MTN answers
+    payer/payee not found at request time. Local MTN-only prefix filtering was rejected because
+    prefixes change with number portability."""
+    for raw in ("0701234567", "0751234567", "0791234567", "0391234567", "0772123456"):
+        assert normalize_msisdn(raw).startswith("256")
+    for raw in ("0201234567", "0401234567", "077212345"):  # wrong lead digit / short: rejected
+        with pytest.raises(InvalidMsisdn):
+            normalize_msisdn(raw)

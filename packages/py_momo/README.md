@@ -27,9 +27,26 @@ Manual sandbox smoke test (owner only, calls the network, never run in CI):
 
 - **Idempotency:** `X-Reference-Id` (UUID v4) on every create. Generate with `new_reference_id()` and
   **persist it before the first call**. Same reference never creates a second payment (409 returns the
-  existing status). After a timeout / 5xx the client queries status first; it re-POSTs (same
-  reference) only when status is a definite 404 (not created); otherwise `OutcomeUnknown` and the
-  caller polls later. Never mint a new reference to "retry".
+  existing status).
+- **Create contract (RequestToPay and Transfer).** `request_to_pay` / `transfer` return a
+  `PaymentResult` (any status, including failed/pending) or raise exactly one of:
+  - `OutcomeUnknown(reference_id, detail)`: the POST may have been accepted and status could not
+    settle it (POST timeout, connection reset or 5xx AND the status query timed out, 5xx, 429,
+    401, 403, returned a bad body, or said 404 after a 409). **The client never POSTs again in that
+    case.** What the caller must do: keep the reference, poll `get_status(reference_id)` with the
+    SAME reference until it answers definitively (a result, or a definite `NotFound` meaning MTN
+    never saw it, after which re-calling the create with the same reference is safe). **Never mint
+    a new reference** for the same business operation (double payment). Payouts (`transfer`): hold
+    the payout and alert a human; do not retry with a new reference. `__cause__` and `detail` say
+    what failed.
+  - a definite 4xx refusal of the POST itself (`RequestRejected`, or `AuthError` for 401 after a
+    token refresh on the POST): MTN answered the POST, nothing was created; permanent.
+  - `RateLimited`: every POST got a 429 (MTN answered before processing; nothing created). The
+    client waits (`Retry-After`) and re-POSTs the same reference with no status query, because a
+    received 429 is a definite "not accepted"; retryable later.
+  - a pre-send failure (validation errors, token endpoint failure: no POST was sent).
+  The only case that allows a second POST is a status query returning a definite 404 (reference
+  unknown to MTN); it reuses the same reference so MTN dedupes if that 404 was wrong.
 - **Money:** `int` UGX only (floats, bools, strings rejected). `money.to_ugx(Decimal, rounding)` is the
   only place a fraction is rounded, with an explicit mode. Provider fractions are an error, never
   rounded. Our guard rails `min_amount_ugx=500` / `max_amount_ugx=5_000_000` are **assumptions**: set
@@ -38,17 +55,26 @@ Manual sandbox smoke test (owner only, calls the network, never run in CI):
   sandbox amounts are test values, not UGX; the amount integer is sent unchanged. Production is UGX
   and `X-Target-Environment` defaults to `mtnuganda` (unverified; confirm with MTN).
 - **MSISDN:** `+256 7xx..`, `256..`, `00256..`, `07xx..`, `7xx..` -> `2567xxxxxxxx`. Sandbox config
-  accepts non-Ugandan test numbers.
+  accepts non-Ugandan test numbers. The check is deliberately loose (`256` + `3|7` + 8 digits):
+  Airtel (070/075), Africell (079) and 03x numbers are NOT rejected locally; MTN answers
+  payer/payee not found. Prefix lists go stale with number portability, so we leave it to MTN
+  (owner may tighten later).
 - **Status:** SUCCESSFUL/PENDING/FAILED -> `successful/pending/failed`; unrecognised status stays
   pending; FAILED reasons enumerated in `FailureReason`, an unknown code becomes `UNKNOWN` with
   `raw_reason` kept.
 - **Callbacks (SEC-8):** `verify_callback(raw_body, reference_id=...)` never trusts the body: it only
   identifies the payment, then asks MTN's status endpoint and returns that result plus whether the
-  body agreed. Store `raw_body` untouched. Put the reference in our callback URL path and in
+  body agreed. With `expected_amount_ugx` it fails closed (`CallbackRejected`) if MTN's status has no
+  amount, an unparseable amount, a different amount, or a currency other than the configured one.
+  Store `raw_body` untouched. Put the reference in our callback URL path and in
   `externalId` (callback bodies do not carry `X-Reference-Id`). Always also poll.
 - **Errors:** retryable = `RateLimited`, `ServerError`, `TransportError/Timeout`, `OutcomeUnknown`
   (status query only); permanent = `MomoConfigError`, `ValidationError` family, `AuthError`,
-  `RequestRejected/NotFound`, `CallbackRejected`.
+  `RequestRejected/NotFound`, `CallbackRejected`. **Scope of "permanent":** `AuthError`,
+  `RequestRejected` and `NotFound` raised by a status poll (`get_status`) or by the POST itself
+  are permanent only for that call. From a status poll they say nothing about whether the payment
+  exists, so never treat them as "payment failed"; keep the reference. Creates convert them into
+  `OutcomeUnknown` whenever a POST may have been accepted.
 - **Logging:** logger `py_momo`; MSISDNs masked (`256***456`); tokens, keys and raw bodies never logged.
 
 ## Endpoints and headers implemented

@@ -4,7 +4,13 @@ Permanent: MomoConfigError, ValidationError (InvalidAmount, InvalidMsisdn), Auth
 RequestRejected (4xx), CallbackRejected.
 Retryable: RateLimited, ServerError, TransportError (connection/timeout before a response).
 OutcomeUnknown: a create call may or may not have been accepted; the caller must query status
-(never resend blindly). It is retryable only via a status query.
+with the SAME reference (never resend blindly, never mint a new reference). It is retryable only
+via a status query.
+
+AuthError / RequestRejected / NotFound are permanent ONLY for the call that raised them: from a
+status poll they say nothing about the payment (it may exist). `create` calls convert them into
+OutcomeUnknown whenever a POST may have been accepted; they escape a create only as the definite
+refusal of the POST itself.
 """
 
 from __future__ import annotations
@@ -75,13 +81,23 @@ class TransportTimeout(TransportError):
 
 
 class OutcomeUnknown(MomoError):
-    """The create call may have been accepted; status could not be established."""
+    """A create (RequestToPay/Transfer) may or may not exist at MTN and status could not tell.
+
+    Caller contract: persist nothing new. Poll `get_status(reference_id)` with the SAME reference
+    until it answers definitively (a result, or a definite 404 meaning MTN never saw it). NEVER
+    mint a new reference for the same business operation (double payment). For payouts: hold the
+    payout and alert a human. `detail` says what is known; `__cause__` is the last error.
+    """
 
     retryable = True
 
-    def __init__(self, reference_id: str):
-        super().__init__(f"outcome unknown for reference {reference_id}; query status")
+    def __init__(self, reference_id: str, detail: str = ""):
+        super().__init__(
+            f"outcome unknown for reference {reference_id}; query status"
+            + (f" ({detail})" if detail else "")
+        )
         self.reference_id = reference_id
+        self.detail = detail
 
 
 class CallbackRejected(MomoError):

@@ -202,19 +202,30 @@ class _Base:
     def _create(self, reference_id: str, body: dict, masked: str) -> PaymentResult:
         """POST with X-Reference-Id. Never resends blindly.
 
-        After a timeout, 5xx or 409 we query status first. Only a definite 404 (not created)
-        allows another POST, and it reuses the SAME reference id, so MTN dedupes if we were
-        wrong. If status cannot be established: OutcomeUnknown (caller polls later).
+        Once a POST may have reached MTN (timeout, connection reset, 5xx, 409) the ONLY ways out
+        are: a PaymentResult; OutcomeUnknown; or a definite 4xx refusal of the POST itself
+        (RequestRejected / AuthError, with a response to the POST). Rules:
+        - 202: accepted (PENDING).  409: exists; return its status (status failure -> Unknown).
+        - 429 on the POST: MTN answered before processing, so definitely NOT accepted: wait
+          (Retry-After) and POST again with the same reference, no status query. Exhausted ->
+          RateLimited (nothing was created).
+        - timeout / connection error / 5xx / any undocumented non-error code: ambiguous. Query
+          status; a result is returned. A DEFINITE 404 (reference unknown to MTN) is the only
+          case that permits another POST (same reference). Any other status outcome
+          (timeout, 5xx, 429, 401, 403, bad body...) raises OutcomeUnknown at once,
+          with no further POST.
         """
         path = f"{self.API}/{self.RESOURCE}"
+        rate_limited: RateLimited | None = None
         for attempt in range(self.config.max_attempts):
+            rate_limited = None
             try:
                 resp = self._once("POST", path, reference_id, body)
             except TransportError as e:
                 log.warning(
                     "create %s: no response (%s); checking status", reference_id, type(e).__name__
                 )
-                found = self._status_or_none(reference_id)
+                found = self._probe(reference_id, f"POST: {type(e).__name__}")
                 if found is not None:
                     return found
                 self._backoff(attempt)
@@ -224,27 +235,45 @@ class _Base:
                 return PaymentResult(reference_id, Status.PENDING)
             if resp.status == 409:  # duplicate reference: same key never makes a second payment
                 log.info("duplicate reference %s; returning existing status", reference_id)
-                return self.get_status(reference_id)
+                found = self._probe(reference_id, "POST: HTTP 409 duplicate")
+                if found is None:
+                    raise OutcomeUnknown(
+                        reference_id, "POST said 409 duplicate but status says 404 unknown"
+                    )
+                return found
             if resp.status == 429:
-                ra = resp.headers.get("Retry-After")
-                self._backoff(attempt, float(ra) if ra and ra.replace(".", "").isdigit() else None)
+                try:
+                    self._raise_for(resp)
+                except RateLimited as rl:
+                    rate_limited = rl
+                    self._backoff(attempt, rl.retry_after)
                 continue
-            if resp.status >= 500:
-                found = self._status_or_none(reference_id)
+            if resp.status >= 500 or resp.status < 400:  # 5xx, or an undocumented 1xx/3xx/2xx
+                found = self._probe(reference_id, f"POST: HTTP {resp.status}")
                 if found is not None:
                     return found
                 self._backoff(attempt)
                 continue
-            self._raise_for(resp)  # 4xx permanent
-        raise OutcomeUnknown(reference_id)
+            self._raise_for(resp)  # 4xx: MTN definitely refused the POST
+        if rate_limited is not None:
+            raise rate_limited
+        raise OutcomeUnknown(
+            reference_id,
+            f"{self.config.max_attempts} attempts; last status query said 404 (not created) "
+            "but the POST kept failing",
+        )
 
-    def _status_or_none(self, reference_id: str) -> PaymentResult | None:
+    def _probe(self, reference_id: str, why: str) -> PaymentResult | None:
+        """Status query after an ambiguous POST. Result -> it; definite 404 -> None (safe to
+        POST again, same reference); anything else -> OutcomeUnknown (cause preserved)."""
         try:
             return self.get_status(reference_id)
         except NotFound:
             return None
-        except (RateLimited, ServerError, TransportError):
-            return None  # cannot tell; caller backs off and tries the same key again
+        except Exception as exc:  # noqa: BLE001 - any status failure is "unknown", by design
+            raise OutcomeUnknown(
+                reference_id, f"{why}; status query failed: {type(exc).__name__}"
+            ) from exc
 
     # ---- callbacks -------------------------------------------------------------------
     def verify_callback(
@@ -280,7 +309,11 @@ class _Base:
             result = self.get_status(ref)
         except NotFound as exc:
             raise CallbackRejected("MTN does not know this reference") from exc
-        if expected_amount_ugx is not None and result.amount_ugx is not None:
+        if expected_amount_ugx is not None:  # fail closed: MTN must confirm amount AND currency
+            if result.amount_ugx is None:
+                raise CallbackRejected("MTN status has no usable amount; cannot confirm amount")
+            if result.currency != self.config.currency:
+                raise CallbackRejected("currency reported by MTN differs from configured currency")
             if result.amount_ugx != expected_amount_ugx:
                 raise CallbackRejected("amount reported by MTN differs from expected amount")
         claimed = map_status(body["status"]) if "status" in body else None

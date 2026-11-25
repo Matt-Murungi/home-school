@@ -426,19 +426,35 @@ def test_token_endpoint_5xx_is_retryable_server_error(fake):
 
 
 def test_token_manager_thread_safe_single_flight(fake):
+    """16 threads released together by a barrier hit a SLOW token endpoint: without the lock
+    each would miss the cache and fetch its own token (16 requests)."""
+    import time
+
+    real_token = fake._token
+
+    def slow_token(h):
+        time.sleep(0.2)  # long enough that every racing thread is inside the fetch window
+        return real_token(h)
+
+    fake._token = slow_token
     c = fake.collections()
+    n = 16
+    barrier = threading.Barrier(n)
     errs = []
 
     def work():
         try:
+            barrier.wait(timeout=5)
             pay(c)
         except Exception as e:  # pragma: no cover
             errs.append(e)
 
-    ts = [threading.Thread(target=work) for _ in range(12)]
+    ts = [threading.Thread(target=work) for _ in range(n)]
     [t.start() for t in ts]
     [t.join() for t in ts]
-    assert not errs and fake.token_requests == 1 and fake.accepted_count() == 12
+    assert not errs
+    assert fake.token_requests == 1  # exactly one token request despite 16 racers
+    assert fake.accepted_count() == n
 
 
 # ---- callbacks (SEC-8) -------------------------------------------------------------
