@@ -38,6 +38,7 @@ Which variable exists in which environment, what kind it is and where it lives. 
 | `GOOGLE_MAPS_IOS_KEY` | public client key | app-parent | build define | build define | build define | build_define |
 | `SENTRY_DSN_APP` | public client key | app-parent | build define | build define | build define | build_define |
 | `SENTRY_DSN_APP` | public client key | app-teacher | build define | build define | build define | build_define |
+| `ADMIN_AUDIT_RATE_PER_MIN` | config | core-service | 60 | 60 | 60 | fly_env |
 | `ADMIN_ENV` | config | app-admin | local | staging | production | host_env |
 | `AFRICASTALKING_SENDER_ID` | config | core-service | (empty: provider default sender) | (empty: provider default sender) | (empty: provider default sender) | fly_env |
 | `AFRICASTALKING_USERNAME` | config | core-service | sandbox in dev/staging | sandbox in dev/staging | sandbox in dev/staging | fly_env |
@@ -50,6 +51,10 @@ Which variable exists in which environment, what kind it is and where it lives. 
 | `APPWRITE_PROJECT_ID` | config | core-service | own project id | own project id | own project id | fly_env |
 | `APPWRITE_READ_TIMEOUT_S` | config | core-service | 10 | 10 | 10 | fly_env |
 | `APP_VERSION` | config | core-service | set by build | set by build | set by build | fly_env |
+| `AUDIT_LEAD_BLANKET_READ` | config | core-service | true | true | true | fly_env |
+| `AUDIT_RECOVER_GRACE_S` | config | core-service | 300 | 300 | 300 | fly_env |
+| `AUDIT_RECOVER_LOOKBACK_HOURS` | config | core-service | 6 | 6 | 6 | fly_env |
+| `CORE_API_URL` | config | app-admin | http://localhost:8080 or unset | https URL of the staging core service | https URL of the production core service | host_env |
 | `CORE_SERVICE_URL` | config | job-tick-function | own core service URL | own core service URL | own core service URL | appwrite_function_variable |
 | `GIT_SHA` | config | core-service | set by build | set by build | set by build | fly_env |
 | `HS_DEBUG` | config | core-service | false | false | false | fly_env |

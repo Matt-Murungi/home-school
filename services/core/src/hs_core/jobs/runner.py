@@ -38,6 +38,7 @@ from typing import Any
 
 from appwrite.query import Query
 
+from ..audit.context import job_scope
 from ..repository import Conflict, NotFound, Repository
 from .alerts import Alert, AlertSink, LogAlertSink
 from .idempotency import row_id, run_row_id
@@ -439,9 +440,13 @@ class Runner:
         box: dict[str, Any] = {}
         cv = contextvars.copy_context()
 
+        def in_scope() -> Done | Continue:
+            with job_scope(ctx):  # M06: audited writes made by the handler are actor `system`
+                return spec.handler(ctx)
+
         def target() -> None:
             try:
-                box["value"] = cv.run(spec.handler, ctx)
+                box["value"] = cv.run(in_scope)
             except BaseException as exc:  # noqa: BLE001 - re-raised in the caller
                 box["error"] = exc
 

@@ -34,18 +34,7 @@ Endpoints: `GET /health` (also `/healthz`, liveness: version + git SHA), `GET /r
 
 `src/hs_core/auth_otp/`: `POST /v1/auth/otp/request {phone, app}` and `POST /v1/auth/otp/verify {phone, code, app, device}`. The core service owns the code (Appwrite has no Africa's Talking provider): 6-digit CSPRNG code, only an HMAC(pepper, challenge, salt, code) is stored in `otp_challenge` (`appwrite/schema/auth.json`), 5 minute expiry, 5 tries per code, single use (deterministic-ID claim, 409 on the loser), caps per number and per IP (SEC-7), identical answers for known and unknown numbers, and a masked number only in logs (the F08 scrubber also masks codes). Codes are sent through the `SmsSender` interface (`sms.py`: fake, Africa's Talking adapter that is mock-tested only, unconfigured sender). A correct code finds or creates the Appwrite user, ensures the `user_profile` row and the `parent` or `teacher` label (the two self-service roles, bound to the challenge), and returns a custom token (`users.createToken`) for the app to exchange with `account.createSession`. `otp-cleanup` (hourly) deletes expired rows. Settings are the `OTP_*` and `AFRICASTALKING_*` variables in `.env.example`; `OTP_PEPPER` is required outside dev.
 
-## Row and file permissions (M05, ADR 0012)
 
-`src/hs_core/permissions/`: `rules.py` (`desired_permissions`, `desired_file_permissions`; one decision per table in `SPECS`), `context.py` (assignments, substitute windows, cases, guardians), `service.py` (`PermissionService`: events, diff, retry queue), `jobs.py` (`address-revoke`, `permission-reconcile`, `permission-audit`, bound at startup with `permissions.jobs.bind`), `audit.py` (drift report), `fake.py` (permission-aware fake of Appwrite for the role-played tests). Drift check: `uv run python scripts/permissions_check.py` (also in `make lint`). The write path for any feature that changes who may read something is `PermissionService.run(event, business_write)`. Details, failure modes and the unverified Appwrite assumptions: `docs/ops/permissions.md`.
+## Audit logging (M06, #41)
 
-## Not done here
-
-Fly.io app and deployment (owner-blocked, ADR 0003); seeing `heartbeat` run on staging (owner-blocked: needs F02 projects, Fly.io, the deployed function).
-
-## Travel time (X01)
-
-`src/hs_core/travel/`: zone-pair cached travel minutes for matching, with a provider interface (Google Routes adapter, unverified, plus a fake), cost guard, fallbacks and the `travel-cache-refresh` job. See `docs/ops/travel-time.md`.
-
-## Ledger (`hs_core.ledger`, $01 #76)
-
-Double-entry, append-only money ledger behind a `LedgerStore` interface (Appwrite adapter with a crash-safe write protocol, in-memory fake). Python API only; design, guarantees, key conventions and the Appwrite-vs-Postgres swap boundary: `docs/ops/ledger.md`. Tests: `uv run pytest -q tests/test_ledger_*.py`.
+`src/hs_core/audit/` (full description, protocol and limits: `docs/ops/audit.md`). `app.state.repository` is an `AuditedRepository`: every create/update/delete of an audited table (money, tiers, sessions and children, logs, safeguarding, settings, roles, approvals) needs an `AuditContext` (`Depends(audit_context)` from `hs_core.audit.api` in an endpoint; the runner supplies actor `system` plus the job name to job handlers) and is written **audit-first** (intent row, then the business write; a seen failure adds a `failed` row; `audit-recover`, every 10 minutes, settles crashes). Actions in `REASON_REQUIRED` raise `ReasonRequired` without a reason. Case reads go through `read_audited`/`list_audited`. `list_audit` is the cursor-paginated, role-checked read side for H08. Settings: `AUDIT_LEAD_BLANKET_READ`, `AUDIT_RECOVER_LOOKBACK_HOURS`, `AUDIT_RECOVER_GRACE_S`. The AST scans in `audit/tripwire.py` are tripwires for literal table names, not coverage.

@@ -53,14 +53,11 @@ export interface AuditSink {
   record(entry: AuditEntry): Promise<void>;
 }
 
+/** Test and local-development fake: keeps entries in memory. Deployed environments never get it
+ * (see audit-sink.ts `auditSinkFor`). */
 export class MemoryAuditSink implements AuditSink {
   entries: AuditEntry[] = [];
   async record(entry: AuditEntry) {
     this.entries.push(entry);
   }
-}
-
-/** Placeholder until M06 (audit log service) provides the real sink. Nothing is persisted. */
-export class UnwiredAuditSink implements AuditSink {
-  async record() {}
 }

@@ -30,7 +30,15 @@ SECRET_LIKE = re.compile(r"(?i)(SECRET|PASSWORD|PASSWD|PRIVATE|TOKEN|API_?KEY)")
 VALUE_LIKE = re.compile(
     r"standard_[0-9a-f]{20,}|-----BEGIN [A-Z ]*PRIVATE KEY|\b(AIza|fo1_|atsk_)[A-Za-z0-9_-]{20,}"
 )
-APP_BUILTINS = {"NODE_ENV", "CI", "PORT", "NEXT_RUNTIME", "VERCEL", "HOSTNAME"}
+APP_BUILTINS = {
+    "NODE_ENV",
+    "NEXT_PHASE",
+    "CI",
+    "PORT",
+    "NEXT_RUNTIME",
+    "VERCEL",
+    "HOSTNAME",
+}
 # a secret shared by several consumers must list every one (removing a row is a missing consumer)
 REQUIRED_CONSUMERS = {"JOB_TICK_SECRET": {"core-service", "job-tick-function"}}
 GEN = "<!-- BEGIN GENERATED:{n} -->", "<!-- END GENERATED:{n} -->"

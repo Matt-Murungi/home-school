@@ -29,6 +29,12 @@ OTP_RANGES: dict[str, tuple[int, int]] = {
     "otp_ip_verifies_per_hour": (1, 1000),
     "otp_dormant_days": (30, 3650),
 }
+# M06 audit: allowed (min, max) of the audit-recover tuning settings.
+AUDIT_RANGES: dict[str, tuple[int, int]] = {
+    "audit_recover_lookback_hours": (1, 720),
+    "audit_recover_grace_s": (30, 3600),
+    "admin_audit_rate_per_min": (1, 6000),
+}
 # N01: allowed (min, max) of each notification tuning setting.
 NOTIFY_RANGES: dict[str, tuple[int, int]] = {
     "notify_quiet_start_hour": (0, 23),
@@ -142,6 +148,13 @@ class Settings(BaseSettings):
     notify_lease_s: int = 120
     notify_escalate_after_min: int = 15
 
+    # M06 audit log. Owner question 12: the safeguarding lead reads the whole audit log (default
+    # on, as the ADR 0012 deviation); off = opsadmin and superadmin only.
+    audit_lead_blanket_read: bool = True
+    audit_recover_lookback_hours: int = 6  # how far back audit-recover looks for crashed changes
+    audit_recover_grace_s: int = 300  # in-flight changes younger than this are left alone
+    admin_audit_rate_per_min: int = 60  # admin-UI audit events per admin per minute (429 above)
+
     def problems(self) -> list[str]:
         """Variable-name-only list of what is wrong for this environment."""
         out: list[str] = []
@@ -157,6 +170,9 @@ class Settings(BaseSettings):
                 out.append(f"{name.upper()} must be between {lo} and {hi}")
         if self.notify_quiet_start_hour == self.notify_quiet_end_hour:
             out.append("NOTIFY_QUIET_START_HOUR and NOTIFY_QUIET_END_HOUR must differ")
+        for name, (lo, hi) in AUDIT_RANGES.items():
+            if not lo <= getattr(self, name) <= hi:
+                out.append(f"{name.upper()} must be between {lo} and {hi}")
         if self.hs_env == "dev":
             return out
         for name in REQUIRED_DEPLOYED:

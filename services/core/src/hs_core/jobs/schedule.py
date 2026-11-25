@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta
 
+from ..audit.recover import audit_recover
 from ..auth_otp.jobs import otp_cleanup
 from ..notifications.dispatch import notification_dispatch
 from ..permissions.jobs import address_revoke, permission_audit, permission_reconcile
@@ -73,5 +74,15 @@ JOBS: list[JobSpec] = [
         schedule=Schedule(timedelta(days=1), anchor=datetime(2026, 1, 1, 3, 0, tzinfo=KAMPALA)),
         max_attempts=3,
         catch_up=timedelta(days=1),
+    ),
+    # M06: settle audit intents left by a crash (compare entity with the intent, write
+    # `not_applied` when the change never landed). Idempotent, chunked.
+    JobSpec(
+        "audit-recover",
+        audit_recover,
+        schedule=Schedule(timedelta(minutes=10)),
+        max_attempts=3,
+        catch_up=timedelta(hours=1),
+        timeout=timedelta(seconds=15),
     ),
 ]
