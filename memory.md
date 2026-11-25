@@ -50,7 +50,9 @@ Suggested order: E00 decisions (D01–D03, D05; D04, D06 later/owner) → E01 fo
 ## Ticket log
 
 ### D01 · Admin dashboard framework (#21)
-- Status: **ready-for-review** (branch `d01-admin-framework`)
+- Status: **merged** (PR #156, squash commit 62e766b; issue #21 closed)
+- Review: in a clean worktree `npm ci`, `npx tsc --noEmit`, `npm run lint`, `npm run build` all pass. Timing/seed scripts not re-run (read-only rule); recorded numbers checked against script logic and pager code (5,000 cap handled). Form validation, Kampala UTC+3 handling, server-only API key, no secrets tracked (`.env.local` ignored): OK.
+- Follow-ups: link ADR 0004 from admin tickets; spike does not exercise Appwrite SSR auth/MFA (verify in F06/E03); owner sign-off on ADR still open.
 - Built: ADR `docs/adr/0004-admin-dashboard-framework.md`; spike `spikes/admin-appwrite/` (paginated table + validated form, seed/timing/cleanup scripts).
 - Evidence: 10,000 rows seeded into a temporary table in the live project's `main` database, timed (median 314–350 ms, worst 984 ms, every page <2 s), then the temp table was deleted; the 35 original tables untouched. **This was done before the read-only rule** — do not repeat it.
 - Finding: Appwrite caps list `total` at 5,000 (recorded in the ADR).
