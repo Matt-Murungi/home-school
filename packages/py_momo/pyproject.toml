@@ -1,0 +1,26 @@
+[project]
+name = "py-momo"
+version = "0.1.0"
+description = "MTN MoMo Collections and Disbursements client (no dependency on Home School code)"
+requires-python = ">=3.12"
+dependencies = []
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/py_momo"]
+
+[dependency-groups]
+dev = ["pytest>=8", "ruff>=0.6"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+src = ["src", "tests", "scripts"]
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]
