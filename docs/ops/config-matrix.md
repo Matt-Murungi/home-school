@@ -29,14 +29,19 @@ Which variable exists in which environment, what kind it is and where it lives. 
 | `GOOGLE_MAPS_IOS_KEY` | public client key | app-parent | build define | build define | build define | build_define |
 | `SENTRY_DSN_APP` | public client key | app-parent | build define | build define | build define | build_define |
 | `SENTRY_DSN_APP` | public client key | app-teacher | build define | build define | build define | build_define |
+| `ADMIN_ENV` | config | app-admin | local | staging | production | host_env |
 | `AFRICASTALKING_USERNAME` | config | core-service | sandbox in dev/staging | sandbox in dev/staging | sandbox in dev/staging | fly_env |
 | `APPWRITE_DATABASE_ID` | config | core-service | main | main | main | fly_env |
+| `APPWRITE_ENDPOINT` | config | app-admin | https://fra.cloud.appwrite.io/v1 | https://fra.cloud.appwrite.io/v1 | https://fra.cloud.appwrite.io/v1 | host_env |
 | `APPWRITE_ENDPOINT` | config | core-service | https://fra.cloud.appwrite.io/v1 | https://fra.cloud.appwrite.io/v1 | https://fra.cloud.appwrite.io/v1 | fly_env |
+| `APPWRITE_PROJECT_ID` | config | app-admin | own project id | own project id | own project id | host_env |
 | `APPWRITE_PROJECT_ID` | config | core-service | own project id | own project id | own project id | fly_env |
 | `APP_VERSION` | config | core-service | set by build | set by build | set by build | fly_env |
+| `CORE_SERVICE_URL` | config | job-tick-function | own core service URL | own core service URL | own core service URL | appwrite_function_variable |
 | `GIT_SHA` | config | core-service | set by build | set by build | set by build | fly_env |
 | `HS_DEBUG` | config | core-service | false | false | false | fly_env |
 | `HS_ENV` | config | core-service | dev | staging | production | fly_env |
+| `JOB_ALERT_AFTER_FAILURES` | config | core-service | 3 | 3 | 3 | fly_env |
 | `LOG_LEVEL` | config | core-service | DEBUG | INFO | INFO | fly_env |
 | `MOMO_COLLECTION_API_USER` | config | core-service | own user id | own user id | own user id | fly_env |
 | `MOMO_DISBURSEMENT_API_USER` | config | core-service | own user id | own user id | own user id | fly_env |

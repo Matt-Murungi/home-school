@@ -23,7 +23,7 @@ ENVS = ("development", "staging", "production")
 KINDS = {"server_secret", "public_client_key", "non_secret"}
 LOCATIONS = {
     "fly_secret", "appwrite_function_variable", "github_actions_secret", "provider_console",
-    "build_define", "fly_env", "github_actions_env",
+    "build_define", "fly_env", "github_actions_env", "host_env",
 }  # fmt: skip
 SECRET_LIKE = re.compile(r"(?i)(SECRET|PASSWORD|PASSWD|PRIVATE|TOKEN|API_?KEY)")
 VALUE_LIKE = re.compile(
