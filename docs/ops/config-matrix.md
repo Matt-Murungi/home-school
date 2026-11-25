@@ -54,15 +54,15 @@ Which variable exists in which environment, what kind it is and where it lives. 
 | `AUDIT_LEAD_BLANKET_READ` | config | core-service | true | true | true | fly_env |
 | `AUDIT_RECOVER_GRACE_S` | config | core-service | 300 | 300 | 300 | fly_env |
 | `AUDIT_RECOVER_LOOKBACK_HOURS` | config | core-service | 6 | 6 | 6 | fly_env |
-| `CATALOGUE_BUNDLE_MAX_BYTES` | config | core-service | 1048576 | 1048576 | 1048576 | fly_env |
-| `CATALOGUE_CACHE_ENTRIES` | config | core-service | 32 | 32 | 32 | fly_env |
-| `CATALOGUE_CURRENT_MAX_AGE_S` | config | core-service | 60 | 60 | 60 | fly_env |
-| `CATALOGUE_IMMUTABLE_MAX_AGE_S` | config | core-service | 31536000 | 31536000 | 31536000 | fly_env |
 | `BILLING_GRACE_DAYS` | config | core-service | 3 | 3 | 3 | fly_env |
 | `BILLING_MAX_PAUSE_DAYS` | config | core-service | 30 | 30 | 30 | fly_env |
 | `BILLING_PAST_DUE_CANCEL_DAYS` | config | core-service | 14 | 14 | 14 | fly_env |
 | `BILLING_RENEWAL_LEAD_DAYS` | config | core-service | 5 | 5 | 5 | fly_env |
 | `BILLING_ROLL_CHUNK_SIZE` | config | core-service | 20 | 20 | 20 | fly_env |
+| `CATALOGUE_BUNDLE_MAX_BYTES` | config | core-service | 1048576 | 1048576 | 1048576 | fly_env |
+| `CATALOGUE_CACHE_ENTRIES` | config | core-service | 32 | 32 | 32 | fly_env |
+| `CATALOGUE_CURRENT_MAX_AGE_S` | config | core-service | 60 | 60 | 60 | fly_env |
+| `CATALOGUE_IMMUTABLE_MAX_AGE_S` | config | core-service | 31536000 | 31536000 | 31536000 | fly_env |
 | `CORE_API_URL` | config | app-admin | http://localhost:8080 or unset | https URL of the staging core service | https URL of the production core service | host_env |
 | `CORE_SERVICE_URL` | config | job-tick-function | own core service URL | own core service URL | own core service URL | appwrite_function_variable |
 | `GIT_SHA` | config | core-service | set by build | set by build | set by build | fly_env |

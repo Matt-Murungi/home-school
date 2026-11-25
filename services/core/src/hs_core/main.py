@@ -22,10 +22,10 @@ from .auth_otp import build_otp_service
 from .auth_otp import jobs as otp_jobs
 from .auth_otp.api import client_ip
 from .auth_otp.api import router as otp_router
-from .catalogue import build_catalogue_service
-from .catalogue.api import router as catalogue_router
 from .billing import jobs as billing_jobs
 from .billing.wiring import BillingAdapters, build_billing_service
+from .catalogue import build_catalogue_service
+from .catalogue.api import router as catalogue_router
 from .jobs.alerts import Alert, AlertSink, LogAlertSink
 from .jobs.api import router as jobs_router
 from .jobs.runner import Runner
