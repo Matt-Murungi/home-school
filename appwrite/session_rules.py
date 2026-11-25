@@ -6,6 +6,8 @@ backstops (unique indexes over derived `*_key` columns). This module is the exec
 (service overlap check, then insert, with the unique `teacher_slot_key` index as the backstop for concurrent requests).
 It takes any client with `list_rows`, `create_row` and `update_row` (the fake in tests, the Appwrite adapter in production).
 
+Restore of a soft-deleted row: use schema_build.soft_restore_patch(row, with_*_keys) (recomputes the keys, 409 if taken).
+
 Known residual risk: the backstop catches two requests for the SAME start; two concurrent requests with different but
 overlapping starts can both pass the check. The core service must serialise per teacher (e.g. one writer per teacher key
 in the job runner/queue) or re-check after insert and void the later row; tracked as a W01 follow-up.
@@ -38,6 +40,10 @@ class InvalidTransition(ValueError):
     pass
 
 
+class InvalidSession(ValueError):
+    """A session with zero or negative length (end <= start)."""
+
+
 class SessionConflict(ValueError):
     """The teacher already has a session overlapping this one."""
 
@@ -56,6 +62,11 @@ def parse_utc(value: str) -> datetime:
 
 def _stamp(value: str) -> str:
     return parse_utc(value).strftime("%Y%m%dT%H%M%SZ")
+
+
+def check_session_times(start: str, end: str) -> None:
+    if parse_utc(end) <= parse_utc(start):
+        raise InvalidSession("scheduled_end_at must be after scheduled_start_at")
 
 
 def overlaps(a_start: str, a_end: str, b_start: str, b_end: str) -> bool:
@@ -127,6 +138,7 @@ def transition_patch(session: dict, new_status: str, now: str) -> dict:
 
 def create_session(client, row: dict, pause=None) -> dict:
     """Service check then insert. `pause` (tests) runs between the two to model a concurrent request."""
+    check_session_times(row["scheduled_start_at"], row["scheduled_end_at"])
     row = with_session_keys(row)
     if row["status"] in SLOT_RELEASED:
         raise InvalidTransition("a session is created as scheduled")
@@ -143,6 +155,7 @@ def substitute_session_row(original: dict, substitute_teacher_id: str, now: str 
     """New session for the same slot taught by a substitute: no assignment (the pairing stays with the original teacher)."""
     if original["status"] != "cancelled_by_teacher":
         raise InvalidTransition("a substitute is only found for a session cancelled by the teacher")
+    check_session_times(original["scheduled_start_at"], original["scheduled_end_at"])
     row = {k: original[k] for k in ("child_id", "subscription_id", "home_location_id", "scheduled_start_at", "scheduled_end_at")}
     row.update(teacher_id=substitute_teacher_id, status="scheduled", is_substitute=True,
                substitute_for_session_id=original["$id"], status_changed_at=now or original["status_changed_at"])

@@ -217,16 +217,68 @@ class SoftDeleteUniqueRule(unittest.TestCase):
             next(c for c in tbl(d, "assignment")["columns"] if c["key"] == "active_key")["required"] = True
         self.assertTrue(any("active_key" in e for e in mutated(f)))
 
-    def test_core_exemptions_are_explicit_and_exist(self):
+    def test_legacy_exemptions_are_pinned_to_the_exact_six(self):
+        # Adding an entry needs an owner decision: new soft tables must use derived *_key columns.
+        self.assertEqual(sb.SOFT_UNIQUE_LEGACY, frozenset({
+            ("user_profile", "unique_phone"), ("user_profile", "unique_email"), ("parent_profile", "unique_user"),
+            ("zone", "unique_name"), ("teacher_profile", "unique_user"), ("teacher_approval", "unique_teacher_curriculum_level")}))
+
+    def test_legacy_exemptions_are_minimal_core_soft_unique_indexes(self):
         core = next(d for d in DOMAINS if d["domain"] == "core")
-        existing = {(t["$id"], i["key"]) for t in core["tables"] for i in t["indexes"]}
-        self.assertTrue(sb.SOFT_UNIQUE_LEGACY)
-        self.assertLessEqual(set(sb.SOFT_UNIQUE_LEGACY), existing)
+        soft_unique = {(t["$id"], i["key"]) for t in core["tables"] for i in t["indexes"]
+                       if i["type"] == "unique" and core["meta"][t["$id"]]["deletion"] == "soft"}
+        self.assertLessEqual(sb.SOFT_UNIQUE_LEGACY, soft_unique)
+        without = sb.soft_unique_violations(DOMAINS, legacy=frozenset())
+        for table, index in sb.SOFT_UNIQUE_LEGACY:  # each exemption is needed: without it the rule is violated
+            self.assertTrue(any(e.startswith(f"{table}.{index}:") for e in without), (table, index))
+        # nothing else is violated, and no sessions-domain pair is exempt
+        self.assertEqual({tuple(e.split(":")[0].split(".")) for e in without}, set(sb.SOFT_UNIQUE_LEGACY))
+        self.assertFalse({t for t, _ in sb.SOFT_UNIQUE_LEGACY} & set(IDS))
         self.assertEqual(sb.soft_unique_violations(DOMAINS), [])
 
-    def test_m01_followup_tables_are_listed(self):
-        names = {t for t, _ in sb.SOFT_UNIQUE_LEGACY}
-        self.assertLessEqual({"user_profile", "parent_profile", "teacher_profile", "zone", "teacher_approval"}, names)
+    def test_sessions_domain_needs_no_exemption_and_a_new_one_fails_the_pin(self):
+        self.assertEqual(sb.soft_unique_violations([DOMAIN], legacy=frozenset()), [])
+
+    def test_restore_recomputes_keys_and_conflicts_with_a_newer_active_row(self):  # finding 1
+        client = fresh_client()
+        row = {"child_id": "c1", "teacher_id": "t1", "subscription_id": "s1", "start_at": T0, "is_trial": False}
+        a1 = client.create_row("assignment", rules.with_assignment_keys(row))
+        client.update_row("assignment", a1["$id"], sb.soft_delete_patch(TABLES["assignment"], T1))
+        client.create_row("assignment", rules.with_assignment_keys(dict(row, teacher_id="t2")))  # A2
+        patch = sb.soft_restore_patch(client.get_row("assignment", a1["$id"]), rules.with_assignment_keys)
+        self.assertEqual(patch, {"deleted_at": None, "active_key": "c1:s1"})
+        with self.assertRaises(UniqueViolation):  # 409: the value is taken
+            client.update_row("assignment", a1["$id"], patch)
+        # a bare deleted_at=None patch is the bug: it silently yields two active assignments
+        client.update_row("assignment", a1["$id"], {"deleted_at": None})
+        active = [r for r in client.list_rows("assignment", child_id="c1") if not r.get("deleted_at")]
+        self.assertEqual(len(active), 2)  # documents why the helper is mandatory
+
+    def test_restore_without_conflict_rebuilds_keys_for_every_table(self):
+        client = fresh_client()
+        row = rules.with_session_keys(session_row())
+        s = client.create_row("session", row)
+        client.update_row("session", s["$id"], sb.soft_delete_patch(TABLES["session"], T1))
+        self.assertIsNone(client.get_row("session", s["$id"])["teacher_slot_key"])
+        client.update_row("session", s["$id"], sb.soft_restore_patch(client.get_row("session", s["$id"]), rules.with_session_keys))
+        self.assertEqual(client.get_row("session", s["$id"])["teacher_slot_key"], s["teacher_slot_key"])
+        # a cancelled session restored stays released
+        c = client.create_row("session", session_row(teacher="t9", status="cancelled_by_teacher"))
+        self.assertIsNone(sb.soft_restore_patch(c, rules.with_session_keys)["teacher_slot_key"])
+
+    def test_no_code_clears_deleted_at_without_the_restore_helper(self):  # lint-style
+        import re
+        root = APPWRITE_DIR.parent
+        pattern = re.compile(r"""["']deleted_at["']\s*:\s*None|deleted_at\s*=\s*None""")
+        offenders = []
+        for base in (root / "appwrite", root / "services" / "core"):
+            for path in base.rglob("*.py"):
+                rel = path.relative_to(root).as_posix()
+                if "/tests/" in rel or "/.venv/" in rel or rel in ("appwrite/schema_build.py",):
+                    continue
+                if pattern.search(path.read_text()):
+                    offenders.append(rel)
+        self.assertEqual(offenders, [], "restore must go through schema_build.soft_restore_patch (recomputes *_key columns)")
 
     def test_soft_delete_patch_nulls_unique_keys(self):
         patch = sb.soft_delete_patch(TABLES["assignment"], "2026-12-02T00:00:00.000+00:00")
@@ -392,6 +444,16 @@ class OverlapAndConcurrency(unittest.TestCase):
         self.assertEqual(results.count("ok"), 1)
         self.assertEqual(len(c.list_rows("session", teacher_id="t1")), 1)
 
+    def test_zero_or_negative_length_session_is_rejected(self):  # finding 3
+        c = fresh_client()
+        with self.assertRaises(rules.InvalidSession):
+            rules.create_session(c, session_row(start=T1, end=T0))
+        with self.assertRaises(rules.InvalidSession):
+            rules.create_session(c, session_row(start=T0, end=T0))
+        self.assertEqual(c.list_rows("session", teacher_id="t1"), [])
+        with self.assertRaises(rules.InvalidSession):
+            rules.substitute_session_row({**session_row(start=T1, end=T0), "status": "cancelled_by_teacher", "$id": "x"}, "t2")
+
     def test_other_teacher_same_time_is_fine(self):
         c = fresh_client()
         rules.create_session(c, session_row(teacher="t1"))
@@ -489,6 +551,13 @@ class Convention(unittest.TestCase):
         for t in IDS:
             self.assertIn("note", DOMAIN["meta"][t])
         self.assertIn("overlap", DOMAIN["meta"]["session"]["note"].lower())
+        note = DOMAIN["meta"]["session"]["note"]
+        self.assertIn("different starts", note)  # finding 4: residual overlap risk is in the schema notes
+        self.assertIn("serialise", note)
+        readme = (APPWRITE_DIR / "README.md").read_text()
+        self.assertIn("different starts", readme)
+        self.assertIn("recompute", readme)  # finding 1: restore rule
+        self.assertIn("soft_restore_patch", readme)
 
 
 class Migration(unittest.TestCase):

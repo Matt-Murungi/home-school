@@ -194,16 +194,17 @@ def validate(domains: list[dict]) -> list[str]:
     return errors
 
 
-def soft_unique_violations(domains: list[dict]) -> list[str]:
+def soft_unique_violations(domains: list[dict], legacy=None) -> list[str]:
     """Unique indexes of `soft` tables must be over optional `*_key` columns (see SOFT_UNIQUE_LEGACY for M01)."""
     e = []
+    legacy = SOFT_UNIQUE_LEGACY if legacy is None else legacy
     for d in domains:
         for t in d["tables"]:
             if d.get("meta", {}).get(t["$id"], {}).get("deletion") != "soft":
                 continue
             by_key = {c["key"]: c for c in t["columns"]}
             for i in t["indexes"]:
-                if i["type"] != "unique" or (t["$id"], i["key"]) in SOFT_UNIQUE_LEGACY:
+                if i["type"] != "unique" or (t["$id"], i["key"]) in legacy:
                     continue
                 for c in i["columns"]:
                     col = by_key.get(c)
@@ -219,6 +220,17 @@ def soft_delete_patch(table: dict, now: str) -> dict:
     for i in table["indexes"]:
         if i["type"] == "unique":
             patch.update({c: None for c in i["columns"] if c.endswith("_key")})
+    return patch
+
+
+def soft_restore_patch(row: dict, with_keys) -> dict:
+    """Mirror of soft_delete_patch: the update that restores a soft-deleted row. `with_keys` is the table's key builder
+    (e.g. session_rules.with_assignment_keys). Every derived `*_key` column is recomputed from the restored row, so the
+    unique index answers 409 when the value was taken meanwhile. A bare `{"deleted_at": None}` patch is forbidden
+    (tests scan appwrite/ and services/core for it)."""
+    rebuilt = with_keys({**row, "deleted_at": None})
+    patch = {"deleted_at": None}
+    patch.update({k: v for k, v in rebuilt.items() if k.endswith("_key")})
     return patch
 
 
