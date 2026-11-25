@@ -1,0 +1,406 @@
+{
+ "_comment": "Processor register (C04, DP-9). Machine-readable twin of docs/legal/processor-register.md; validated by docs/legal/check-processors.py. No secrets or contract text here: DPA copies go to the owner's evidence folder. All Ugandan-law statements are unverified, for lawyer confirmation. agreement_status values: not signed, in negotiation, signed, risk-accepted, not required.",
+ "processors": [
+  {
+   "id": "appwrite-cloud",
+   "name": "Appwrite Cloud",
+   "role": "processor",
+   "phase": "MVP",
+   "sr_integration": "Backend platform (ADR 0012)",
+   "purpose": "Primary backend: authentication, database (all tables), file storage buckets (teacher documents, session evidence), realtime, functions (job tick).",
+   "data_categories": [
+    "child-data",
+    "parent-data",
+    "teacher-data",
+    "teacher-documents",
+    "phone",
+    "email",
+    "location",
+    "payment-data",
+    "safeguarding",
+    "credentials-tokens",
+    "logs-metadata"
+   ],
+   "regions": [
+    "EU (Frankfurt) per ADR 0012"
+   ],
+   "cross_border": true,
+   "cross_border_note": "Stored in the EU while users and the controller are in Uganda; whether this needs a transfer undertaking or consent under the Act is open (ADR 0006, ADR 0012 DP-7 note, lawyer brief Q20-Q23). Appwrite Inc. is a US-parented company, so onward access is also a question. Legal position: unverified, for lawyer confirmation.",
+   "secret_names": [
+    "APPWRITE_API_KEY",
+    "JOB_TICK_SECRET"
+   ],
+   "agreement_status": "not signed",
+   "owner_blocked": true,
+   "dpa_link": "TBD: link to the signed DPA copy (owner uploads to the evidence folder; never commit the PDF if it holds commercial terms)",
+   "sub_processors_note": "Obtain Appwrite's current sub-processor list and change-notice terms with the DPA; list not yet collected.",
+   "exit_procedure": [
+    "Export every table and bucket with the core service export tooling plus the Appwrite console export (nightly export job if no point-in-time recovery, see memory.md question 7).",
+    "Verify counts against the export, store the export encrypted in owner-controlled storage.",
+    "Delete projects and keys in the console; request written deletion confirmation from Appwrite and file it as evidence.",
+    "Revoke all API keys (docs/ops/secrets-inventory.json lists them) and rotate dependents."
+   ],
+   "if_dpa_refused": "Record the refusal on the ticket. Replace the provider (preferred) or write a dated risk acceptance signed by the owner after the lawyer's advice; status becomes 'risk-accepted' with risk_acceptance_ref. Fallback noted in ADR 0012 option C: self-hosted Appwrite on EU infrastructure.",
+   "breach_contact": "TBD: vendor security/breach contact address from the signed DPA"
+  },
+  {
+   "id": "fly-io",
+   "name": "Fly.io",
+   "role": "processor",
+   "phase": "MVP",
+   "sr_integration": "Core service hosting (ADR 0003)",
+   "purpose": "Hosts the core service (FastAPI) that processes API requests and jobs and holds runtime secrets.",
+   "data_categories": [
+    "child-data",
+    "parent-data",
+    "teacher-data",
+    "phone",
+    "email",
+    "location",
+    "payment-data",
+    "credentials-tokens",
+    "logs-metadata"
+   ],
+   "regions": [
+    "EU (fra) per ADR 0003"
+   ],
+   "cross_border": true,
+   "cross_border_note": "Requests are processed in Frankfurt; transient processing and logs only, no primary database (ADR 0003). Fly.io Inc. is US-parented. Legal position: unverified, for lawyer confirmation.",
+   "secret_names": [
+    "FLY_API_TOKEN"
+   ],
+   "agreement_status": "not signed",
+   "owner_blocked": true,
+   "dpa_link": "TBD: link to the signed DPA copy (owner uploads to the evidence folder; never commit the PDF if it holds commercial terms)",
+   "sub_processors_note": "Obtain Fly.io's sub-processor list with the DPA; list not yet collected.",
+   "exit_procedure": [
+    "Redeploy the core service to the replacement host from the container image (Dockerfile in services/core).",
+    "Move secrets (docs/ops/secrets-inventory.json) and repoint DNS; run readiness checks.",
+    "Destroy Fly apps and volumes; request deletion confirmation; revoke FLY_API_TOKEN."
+   ],
+   "if_dpa_refused": "Record the refusal on the ticket. Replace the provider (preferred) or write a dated risk acceptance signed by the owner after the lawyer's advice; status becomes 'risk-accepted' with risk_acceptance_ref.",
+   "breach_contact": "TBD: vendor security/breach contact address from the signed DPA"
+  },
+  {
+   "id": "resend",
+   "name": "Resend",
+   "role": "processor",
+   "phase": "MVP",
+   "sr_integration": "Email provider (ADR 0005)",
+   "purpose": "Transactional email (receipts, session notices, safeguarding notifications, account email).",
+   "data_categories": [
+    "parent-data",
+    "teacher-data",
+    "email",
+    "child-data",
+    "logs-metadata"
+   ],
+   "regions": [
+    "Region chosen at account creation (EU acceptable; owner picks, ADR 0005)"
+   ],
+   "cross_border": true,
+   "cross_border_note": "Email addresses, names and message content pass through the provider; region choice affects the transfer analysis. Resend is US-parented. Legal position: unverified, for lawyer confirmation.",
+   "secret_names": [
+    "RESEND_API_KEY",
+    "RESEND_WEBHOOK_SECRET"
+   ],
+   "agreement_status": "not signed",
+   "owner_blocked": true,
+   "dpa_link": "TBD: link to the signed DPA copy (owner uploads to the evidence folder; never commit the PDF if it holds commercial terms)",
+   "sub_processors_note": "Obtain Resend's sub-processor list (it is understood to use AWS; confirm).",
+   "exit_procedure": [
+    "Switch the email adapter to the fallback provider (ADR 0005 names Postmark); re-verify SPF/DKIM/DMARC on the sending subdomain.",
+    "Delete the domain, templates and logs in Resend; ask for deletion confirmation; revoke keys."
+   ],
+   "if_dpa_refused": "Record the refusal on the ticket. Replace the provider (preferred) or write a dated risk acceptance signed by the owner after the lawyer's advice; status becomes 'risk-accepted' with risk_acceptance_ref. ADR 0005 fallback: Postmark.",
+   "breach_contact": "TBD: vendor security/breach contact address from the signed DPA"
+  },
+  {
+   "id": "africas-talking",
+   "name": "Africa's Talking",
+   "role": "processor",
+   "phase": "MVP",
+   "sr_integration": "Africa's Talking SMS",
+   "purpose": "SMS for one-time passwords only (SR section 9).",
+   "data_categories": [
+    "phone",
+    "logs-metadata"
+   ],
+   "regions": [
+    "Not confirmed; vendor is Kenya-headquartered, delivery routes through Ugandan operators"
+   ],
+   "cross_border": true,
+   "cross_border_note": "Phone numbers and OTP text are processed outside Uganda (country to be confirmed). Legal position: unverified, for lawyer confirmation.",
+   "secret_names": [
+    "AFRICASTALKING_API_KEY"
+   ],
+   "agreement_status": "not signed",
+   "owner_blocked": true,
+   "dpa_link": "TBD: link to the signed DPA copy (owner uploads to the evidence folder; never commit the PDF if it holds commercial terms)",
+   "sub_processors_note": "Obtain the sub-processor and carrier list; carriers are separate controllers of their own network data.",
+   "exit_procedure": [
+    "Switch the SMS adapter to another gateway (or to email OTP, if the product allows).",
+    "Close the account, delete message logs; request confirmation; revoke the API key."
+   ],
+   "if_dpa_refused": "Record the refusal on the ticket. Replace the provider (preferred) or write a dated risk acceptance signed by the owner after the lawyer's advice; status becomes 'risk-accepted' with risk_acceptance_ref.",
+   "breach_contact": "TBD: vendor security/breach contact address from the signed DPA"
+  },
+  {
+   "id": "firebase-fcm-apns",
+   "name": "Firebase Cloud Messaging and Apple Push (APNs)",
+   "role": "processor",
+   "phase": "MVP",
+   "sr_integration": "Firebase Cloud Messaging, APNs",
+   "purpose": "Push notifications to the parent and teacher apps. Payloads must carry no child names, addresses or message bodies.",
+   "data_categories": [
+    "device-identifiers",
+    "parent-data",
+    "teacher-data",
+    "logs-metadata"
+   ],
+   "regions": [
+    "Global (Google; US and other regions)",
+    "Apple (global)"
+   ],
+   "cross_border": true,
+   "cross_border_note": "Device tokens and notification payloads transit Google and Apple infrastructure. Apple is not a signable processor for APNs; terms are fixed (note for the lawyer). Legal position: unverified, for lawyer confirmation.",
+   "secret_names": [
+    "FCM_SERVICE_ACCOUNT_JSON",
+    "APNS_AUTH_KEY"
+   ],
+   "agreement_status": "not signed",
+   "owner_blocked": true,
+   "dpa_link": "TBD: link to the signed DPA copy (owner uploads to the evidence folder; never commit the PDF if it holds commercial terms)",
+   "sub_processors_note": "Google Cloud/Firebase publishes a sub-processor list; accept via Google's data processing terms in the Firebase console. Apple's terms are non-negotiable.",
+   "exit_procedure": [
+    "Stop sending: unregister device tokens in Appwrite and the core service.",
+    "Delete the Firebase project; revoke the APNs key in the Apple developer account."
+   ],
+   "if_dpa_refused": "Google terms are accepted online (low refusal risk). If the lawyer objects, minimise payloads to 'you have an update' only and record risk acceptance for APNs, which cannot be negotiated.",
+   "breach_contact": "TBD: vendor security/breach contact address from the signed DPA"
+  },
+  {
+   "id": "google-maps",
+   "name": "Google Maps Platform",
+   "role": "processor",
+   "phase": "MVP",
+   "sr_integration": "Google Maps Platform",
+   "purpose": "Address pin, place search and travel-time estimates for matching.",
+   "data_categories": [
+    "location",
+    "child-data",
+    "parent-data",
+    "device-identifiers",
+    "logs-metadata"
+   ],
+   "regions": [
+    "Global (Google)"
+   ],
+   "cross_border": true,
+   "cross_border_note": "Home addresses/coordinates sent for geocoding and routing leave Uganda. Home address is sensitive for a child (safeguarding). Minimise: send coordinates not names, cache results (SR section 9), never send child names. Legal position: unverified, for lawyer confirmation.",
+   "secret_names": [
+    "GOOGLE_MAPS_SERVER_KEY",
+    "GOOGLE_MAPS_ANDROID_KEY",
+    "GOOGLE_MAPS_IOS_KEY"
+   ],
+   "agreement_status": "not signed",
+   "owner_blocked": true,
+   "dpa_link": "TBD: link to the signed DPA copy (owner uploads to the evidence folder; never commit the PDF if it holds commercial terms)",
+   "sub_processors_note": "Google Cloud publishes sub-processors; DPA via Google Cloud's data processing amendment, accepted in the console.",
+   "exit_procedure": [
+    "Replace the maps adapter (SR section 9 requires adapters) with another provider; purge cached results older than the retention rule.",
+    "Delete the Google Cloud project; revoke keys; remove client keys from app builds."
+   ],
+   "if_dpa_refused": "Google terms are accepted online. If the lawyer rejects them, restrict to coordinates only or choose another provider via the adapter.",
+   "breach_contact": "TBD: vendor security/breach contact address from the signed DPA"
+  },
+  {
+   "id": "sentry",
+   "name": "Sentry",
+   "role": "processor",
+   "phase": "MVP",
+   "sr_integration": "Sentry",
+   "purpose": "Error tracking with PII scrubbing before send (docs/ops/runbook.md PII rules).",
+   "data_categories": [
+    "logs-metadata",
+    "device-identifiers",
+    "credentials-tokens"
+   ],
+   "regions": [
+    "Choose the EU (Germany) region at project creation; US is the default if unchosen"
+   ],
+   "cross_border": true,
+   "cross_border_note": "Scrubbed events only: no request bodies, names, emails, phones or addresses by design (F08). Residual risk: free text in exceptions. Legal position: unverified, for lawyer confirmation.",
+   "secret_names": [
+    "SENTRY_DSN",
+    "SENTRY_AUTH_TOKEN",
+    "SENTRY_DSN_APP"
+   ],
+   "agreement_status": "not signed",
+   "owner_blocked": true,
+   "dpa_link": "TBD: link to the signed DPA copy (owner uploads to the evidence folder; never commit the PDF if it holds commercial terms)",
+   "sub_processors_note": "Sentry publishes a sub-processor list; obtain it with the DPA.",
+   "exit_procedure": [
+    "Remove the DSNs from Fly secrets and app builds (the error reporter adapter falls back to the no-op).",
+    "Delete the Sentry organisation/projects; request confirmation; revoke the auth token."
+   ],
+   "if_dpa_refused": "Record the refusal on the ticket. Replace the provider (preferred) or write a dated risk acceptance signed by the owner after the lawyer's advice; status becomes 'risk-accepted' with risk_acceptance_ref. The error reporter has a no-op adapter, so Sentry can be dropped without code change.",
+   "breach_contact": "TBD: vendor security/breach contact address from the signed DPA"
+  },
+  {
+   "id": "mtn-momo",
+   "name": "MTN Mobile Money (Collections and Disbursements)",
+   "role": "processor",
+   "phase": "MVP",
+   "sr_integration": "MTN MoMo Collections and Disbursements",
+   "purpose": "Subscription collections (request-to-pay) and teacher payouts. MTN is probably also an independent controller of its own transaction data (lawyer to confirm).",
+   "data_categories": [
+    "payment-data",
+    "phone",
+    "parent-data",
+    "teacher-data"
+   ],
+   "regions": [
+    "Uganda (MTN Uganda; MoMo platform location not confirmed)"
+   ],
+   "cross_border": false,
+   "cross_border_note": "Payer/payee MSISDN and amounts shared with MTN; likely domestic. If MTN's platform is hosted abroad that is outside our control. Legal position: unverified, for lawyer confirmation.",
+   "secret_names": [
+    "MOMO_COLLECTION_SUBSCRIPTION_KEY",
+    "MOMO_COLLECTION_API_KEY",
+    "MOMO_DISBURSEMENT_SUBSCRIPTION_KEY",
+    "MOMO_DISBURSEMENT_API_KEY"
+   ],
+   "agreement_status": "not signed",
+   "owner_blocked": true,
+   "dpa_link": "TBD: link to the signed DPA copy (owner uploads to the evidence folder; never commit the PDF if it holds commercial terms)",
+   "sub_processors_note": "Not applicable to us; MTN's API terms govern. Ask whether MTN will sign a DPA or only its standard API terms.",
+   "exit_procedure": [
+    "Stop calling the API (feature flag in the payment adapter); settle pending transactions and reconcile.",
+    "Close the product subscriptions; keep payment records per tax law (C03 retention)."
+   ],
+   "if_dpa_refused": "MTN is unlikely to negotiate. Record risk acceptance after the lawyer confirms the roles; the alternative is not to take mobile money, which is not viable for the pilot.",
+   "breach_contact": "TBD: vendor security/breach contact address from the signed DPA"
+  },
+  {
+   "id": "airtel-money",
+   "name": "Airtel Money",
+   "role": "processor",
+   "phase": "Phase 2",
+   "sr_integration": "Airtel Money",
+   "purpose": "Payments and payouts, Phase 2 only.",
+   "data_categories": [
+    "payment-data",
+    "phone",
+    "parent-data",
+    "teacher-data"
+   ],
+   "regions": [
+    "Uganda (Airtel Uganda; not confirmed)"
+   ],
+   "cross_border": false,
+   "cross_border_note": "Phase 2; same analysis as MTN MoMo. Legal position: unverified, for lawyer confirmation.",
+   "secret_names": [
+    "AIRTEL_CLIENT_SECRET"
+   ],
+   "agreement_status": "not signed",
+   "owner_blocked": true,
+   "dpa_link": "TBD: link to the signed DPA copy (owner uploads to the evidence folder; never commit the PDF if it holds commercial terms)",
+   "sub_processors_note": "Not applicable until Phase 2.",
+   "exit_procedure": [
+    "Not integrated yet: nothing to exit. Before Phase 2, sign/record the agreement."
+   ],
+   "if_dpa_refused": "Same as MTN MoMo; do not integrate until the position is recorded.",
+   "breach_contact": "TBD: vendor security/breach contact address from the signed DPA"
+  },
+  {
+   "id": "card-gateway",
+   "name": "Card gateway (provider to be chosen)",
+   "role": "processor",
+   "phase": "Phase 2",
+   "sr_integration": "Card gateway",
+   "purpose": "Card payments, Phase 2; provider to be chosen (SR section 9).",
+   "data_categories": [
+    "payment-data",
+    "parent-data",
+    "email"
+   ],
+   "regions": [
+    "TBD with provider choice"
+   ],
+   "cross_border": true,
+   "cross_border_note": "Unknown until a provider is picked. Prefer a PCI-compliant hosted checkout so we never store card data. Legal position: unverified, for lawyer confirmation.",
+   "secret_names": [
+    "CARD_GATEWAY_SECRET_KEY",
+    "CARD_GATEWAY_WEBHOOK_SECRET"
+   ],
+   "agreement_status": "not signed",
+   "owner_blocked": true,
+   "dpa_link": "TBD: link to the signed DPA copy (owner uploads to the evidence folder; never commit the PDF if it holds commercial terms)",
+   "sub_processors_note": "TBD with provider.",
+   "exit_procedure": [
+    "Not integrated yet: nothing to exit. At selection, add the provider's real name, region and exit steps here."
+   ],
+   "if_dpa_refused": "Choose a provider that signs a DPA; the DPA is a selection criterion.",
+   "breach_contact": "TBD: vendor security/breach contact address from the signed DPA"
+  },
+  {
+   "id": "uptime-vendor",
+   "name": "Uptime monitoring vendor (Better Stack or UptimeRobot, owner chooses)",
+   "role": "processor",
+   "phase": "MVP",
+   "sr_integration": "Uptime monitoring (F08)",
+   "purpose": "Uptime checks and job-tick heartbeat; alert delivery to owner contacts.",
+   "data_categories": [
+    "logs-metadata",
+    "email",
+    "phone"
+   ],
+   "regions": [
+    "Vendor default region; not confirmed"
+   ],
+   "cross_border": true,
+   "cross_border_note": "Checks hit health endpoints only (no personal data). The vendor holds the owner's alert contact details (email/phone), which are personal data of staff. Legal position: unverified, for lawyer confirmation.",
+   "secret_names": [],
+   "agreement_status": "not signed",
+   "owner_blocked": true,
+   "dpa_link": "TBD: link to the signed DPA copy (owner uploads to the evidence folder; never commit the PDF if it holds commercial terms)",
+   "sub_processors_note": "Obtain the vendor's sub-processor list.",
+   "exit_procedure": [
+    "Export the check list from ops/uptime.json (kept as code) and recreate in another vendor.",
+    "Delete the account; revoke heartbeat URLs."
+   ],
+   "if_dpa_refused": "Low risk: switch vendor (ops/uptime.json is vendor-neutral).",
+   "breach_contact": "TBD: vendor security/breach contact address from the signed DPA"
+  },
+  {
+   "id": "github",
+   "name": "GitHub (source, CI, project board)",
+   "role": "processor",
+   "phase": "MVP",
+   "sr_integration": "Source hosting and CI",
+   "purpose": "Source code, CI secrets store and issue tracking. Must hold no personal data of children or parents: only developer/owner identities and CI secrets.",
+   "data_categories": [
+    "source-code-only",
+    "credentials-tokens",
+    "teacher-data"
+   ],
+   "regions": [
+    "Global (GitHub/Microsoft)"
+   ],
+   "cross_border": true,
+   "cross_border_note": "By design no production personal data. Risk is an accidental commit of data or secrets, handled by docs/ops/secrets.md and the secret scan. Legal position: unverified, for lawyer confirmation.",
+   "secret_names": [],
+   "agreement_status": "not signed",
+   "owner_blocked": true,
+   "dpa_link": "TBD: link to the signed DPA copy (owner uploads to the evidence folder; never commit the PDF if it holds commercial terms)",
+   "sub_processors_note": "GitHub publishes a sub-processor list (Microsoft); the GitHub DPA is incorporated in its terms.",
+   "exit_procedure": [
+    "Mirror the repository and CI to another host; delete the repository after confirming the mirror.",
+    "Rotate every secret stored in GitHub environments (docs/ops/secrets-inventory.json)."
+   ],
+   "if_dpa_refused": "GitHub terms are standard; a refusal is not realistic. If the lawyer objects, self-host Git and CI.",
+   "breach_contact": "TBD: vendor security/breach contact address from the signed DPA"
+  }
+ ]
+}
