@@ -1,0 +1,258 @@
+# F07 (#33): CI for every package. Path-filtered: a job runs only when its package (or a shared file) changed.
+# Required status check for branch protection: `ci-ok` (the only name the owner has to configure).
+# Rules enforced by `python3 scripts/ci_lint.py` and scripts/tests/test_workflows.py. Nothing here uses secrets,
+# so fork PRs run the same jobs safely; there is no pull_request_target.
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  HS_STRICT: "1" # a missing tool (uv, flutter, node ...) fails the job instead of being skipped
+
+# Every package job runs its commands FROM packages.json via scripts/run_packages.py --only <id>, so the workflow
+# cannot drift from the manifest. Only tool setup lives here. HS_STRICT=1: a missing tool or dependency fails.
+jobs:
+  changes:
+    name: changes (path filter)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      core: ${{ steps.filter.outputs.core }}
+      appwrite: ${{ steps.filter.outputs.appwrite }}
+      ops: ${{ steps.filter.outputs.ops }}
+      momo: ${{ steps.filter.outputs.momo }}
+      scripts: ${{ steps.filter.outputs.scripts }}
+      admin: ${{ steps.filter.outputs.admin }}
+      docs: ${{ steps.filter.outputs.docs }}
+      flutter: ${{ steps.filter.outputs.flutter }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Which packages changed
+        id: filter
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: python3 scripts/ci_changes.py --base "$BASE_SHA" --head HEAD
+
+  repo-checks:
+    name: layout, secret scan, workflow lint, ruff on scripts
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d # v10.4.0
+        with:
+          enable-cache: true
+          cache-dependency-glob: services/core/uv.lock
+      - name: Layout guard and secret scan
+        run: make layout secrets
+      - name: Workflow rules (pins, permissions, deploy guards, ci-ok)
+        run: python3 scripts/ci_lint.py
+      - name: actionlint (workflow syntax and expression checks)
+        run: uvx --from actionlint-py==1.7.12.25 actionlint .github/workflows/*.yml
+      - name: ruff on scripts (HS_STRICT fails if ruff/uvx is missing)
+        run: make pylint
+
+  scripts:
+    name: scripts tests (root tooling)
+    needs: changes
+    if: needs.changes.outputs.scripts == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      HS_PACKAGES: root-tests
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d # v10.4.0
+        with:
+          enable-cache: true
+          cache-dependency-glob: services/core/uv.lock
+      # F01's Tooling tests assert the non-strict skip behaviour of run_packages.py, so this one step must not
+      # inherit HS_STRICT=1. Every package is tested strictly by its own job; the lint step below stays strict.
+      - name: test (command from packages.json)
+        env:
+          HS_STRICT: "0"
+        run: python3 scripts/run_packages.py test --only root-tests
+      - name: lint (command from packages.json)
+        run: python3 scripts/run_packages.py lint --only root-tests
+
+  docs:
+    name: ADR lint
+    needs: changes
+    if: needs.changes.outputs.docs == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    env:
+      HS_PACKAGES: docs
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: test (command from packages.json)
+        run: python3 scripts/run_packages.py test --only docs
+      - name: lint (command from packages.json)
+        run: python3 scripts/run_packages.py lint --only docs
+
+  core:
+    name: core service (uv, pytest, ruff)
+    needs: changes
+    if: needs.changes.outputs.core == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      HS_PACKAGES: core
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d # v10.4.0
+        with:
+          enable-cache: true
+          cache-dependency-glob: services/core/uv.lock
+      - name: test (command from packages.json)
+        run: python3 scripts/run_packages.py test --only core
+      - name: lint (command from packages.json)
+        run: python3 scripts/run_packages.py lint --only core
+
+  momo:
+    name: py-momo package (uv, pytest, ruff)
+    needs: changes
+    if: needs.changes.outputs.momo == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      HS_PACKAGES: py-momo
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d # v10.4.0
+        with:
+          enable-cache: true
+          cache-dependency-glob: packages/py_momo/uv.lock
+      - name: test (command from packages.json)
+        run: python3 scripts/run_packages.py test --only py-momo
+      - name: lint (command from packages.json)
+        run: python3 scripts/run_packages.py lint --only py-momo
+
+  appwrite:
+    name: appwrite (migration runner and schema checks)
+    needs: changes
+    if: needs.changes.outputs.appwrite == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      HS_PACKAGES: appwrite
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: test (command from packages.json)
+        run: python3 scripts/run_packages.py test --only appwrite
+      - name: lint (command from packages.json)
+        run: python3 scripts/run_packages.py lint --only appwrite
+
+  ops:
+    name: ops (monitoring config, F08)
+    needs: changes
+    if: needs.changes.outputs.ops == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      HS_PACKAGES: ops
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: test (command from packages.json)
+        run: python3 scripts/run_packages.py test --only ops
+      - name: lint (command from packages.json)
+        run: python3 scripts/run_packages.py lint --only ops
+
+  admin:
+    name: admin (npm ci, tsc, test, lint)
+    needs: changes
+    if: needs.changes.outputs.admin == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      HS_PACKAGES: app-admin
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/admin/package-lock.json
+      - name: test (command from packages.json)
+        run: python3 scripts/run_packages.py test --only app-admin
+      - name: lint (command from packages.json)
+        run: python3 scripts/run_packages.py lint --only app-admin
+      - name: production build
+        working-directory: apps/admin
+        run: npm run build
+
+  flutter:
+    name: flutter (${{ matrix.id }})
+    needs: changes
+    if: needs.changes.outputs.flutter != '[]'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      HS_PACKAGES: app-parent,app-teacher,flutter-shared
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.changes.outputs.flutter) }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
+        with:
+          channel: stable
+          flutter-version: 3.47.7 # keep in step with the local toolchain recorded in memory.md (F05)
+          cache: true
+          pub-cache-key: pub-${{ runner.os }}-${{ hashFiles('apps/*/pubspec.yaml', 'packages/*/pubspec.yaml') }}
+      - name: test (command from packages.json)
+        run: python3 scripts/run_packages.py test --only "$PKG_ID"
+        env:
+          PKG_ID: ${{ matrix.id }}
+      - name: lint (command from packages.json)
+        run: python3 scripts/run_packages.py lint --only "$PKG_ID"
+        env:
+          PKG_ID: ${{ matrix.id }}
+
+  ci-ok:
+    name: ci-ok
+    # The single required check. Jobs skipped by the path filter count as fine; failed or cancelled do not.
+    if: always()
+    needs: [changes, repo-checks, scripts, docs, core, momo, appwrite, ops, admin, flutter]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    steps:
+      - name: Fail if any needed job failed or was cancelled
+        if: contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')
+        run: |
+          echo "A required job failed or was cancelled."
+          exit 1
+      - name: All jobs passed or were skipped by the path filter
+        run: echo "ci-ok"

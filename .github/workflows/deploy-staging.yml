@@ -1,0 +1,153 @@
+# F07 (#33): deploy to STAGING on every merge to main. Order: schema first, API second (docs/ops/deploy.md).
+#
+# NOTHING DEPLOYS until the owner sets the repository variable DEPLOY_ENABLED=true. Every job and every
+# step that deploys or uses a secret carries `if: vars.DEPLOY_ENABLED == 'true'`; with the flag off the
+# run shows all jobs as skipped. Required owner setup: docs/ops/ci.md ("Owner checklist").
+#
+#   schema   appwrite/migrate.py --env staging (F02 runner)         -> output `promote`
+#   core     fly deploy services/core (after schema promoted)
+#   job-tick appwrite CLI push of the job-tick function (after core)
+#   admin    build the admin app; host not chosen yet (ADR 0004 names none), deploy step is a documented TBD
+#
+# Failure semantics (#33 "failed deploy does not leave staging half-migrated"): the runner stops at the first
+# failing migration script, prints PROMOTE=false and exits non-zero; every later job needs
+# schema.result == 'success' AND schema.outputs.promote == 'true', so the API is not touched. Re-running
+# the workflow retries only the pending scripts. Migrations are expand-only (docs/ops/deploy.md), so the
+# API that is still running keeps working against a partly advanced schema.
+name: deploy-staging
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# One staging deploy at a time; never cancel a run that may be mid-migration, queue it instead.
+concurrency:
+  group: deploy-staging
+  cancel-in-progress: false
+
+jobs:
+  schema:
+    name: appwrite schema (migrations)
+    if: vars.DEPLOY_ENABLED == 'true'
+    environment: staging
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    # Two schema runs must never overlap, even from other workflows against the same project.
+    concurrency:
+      group: appwrite-schema-staging
+      cancel-in-progress: false
+    outputs:
+      promote: ${{ steps.migrate.outputs.promote }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Write appwrite/environments.json (no keys in it; the key comes from the environment secret)
+        if: vars.DEPLOY_ENABLED == 'true'
+        env:
+          PROJECT_ID: ${{ vars.APPWRITE_PROJECT_ID }}
+        run: |
+          python3 - <<'PY'
+          import json, os
+          cfg = json.load(open("appwrite/environments.example.json"))
+          cfg["environments"]["staging"]["projectId"] = os.environ["PROJECT_ID"]
+          json.dump(cfg, open("appwrite/environments.json", "w"), indent=2)
+          PY
+      - name: Run migrations (exit code and the promote output both gate the API deploy)
+        id: migrate
+        if: vars.DEPLOY_ENABLED == 'true'
+        env:
+          APPWRITE_API_KEY_STAGING: ${{ secrets.APPWRITE_API_KEY }}
+        run: python3 appwrite/migrate.py --env staging
+
+  core:
+    name: core service (fly deploy)
+    needs: schema
+    if: vars.DEPLOY_ENABLED == 'true' && needs.schema.result == 'success' && needs.schema.outputs.promote == 'true'
+    environment: staging
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    concurrency:
+      group: deploy-staging-core
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: superfly/flyctl-actions/setup-flyctl@fc53c09e1bc3be6f54706524e3b82c4f462f77be # 1.5
+        if: vars.DEPLOY_ENABLED == 'true'
+      - name: fly deploy (rolling; fly.staging.toml health checks stop a bad release, the old one keeps serving)
+        if: vars.DEPLOY_ENABLED == 'true'
+        working-directory: services/core
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+          FLY_APP: ${{ vars.FLY_APP }}
+        run: flyctl deploy --config fly.staging.toml --app "$FLY_APP" --remote-only --build-arg "GIT_SHA=${GITHUB_SHA::7}"
+      - name: Smoke check /health on the deployed URL
+        if: vars.DEPLOY_ENABLED == 'true'
+        env:
+          CORE_URL: ${{ vars.STAGING_CORE_URL }}
+        run: curl --fail --silent --show-error --retry 6 --retry-delay 10 --retry-all-errors "$CORE_URL/health"
+
+  job-tick:
+    name: job-tick function (appwrite push)
+    needs: [schema, core]
+    if: vars.DEPLOY_ENABLED == 'true' && needs.schema.result == 'success' && needs.schema.outputs.promote == 'true' && needs.core.result == 'success'
+    environment: staging
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    concurrency:
+      group: deploy-staging-job-tick
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        if: vars.DEPLOY_ENABLED == 'true'
+        with:
+          node-version: 22
+      # UNVERIFIED: CLI flags written from the Appwrite CLI docs, never run (needs the staging project).
+      # The function variables CORE_SERVICE_URL and JOB_TICK_SECRET are set once in the Appwrite console.
+      - name: appwrite push functions
+        if: vars.DEPLOY_ENABLED == 'true'
+        working-directory: appwrite
+        env:
+          PROJECT_ID: ${{ vars.APPWRITE_PROJECT_ID }}
+          APPWRITE_API_KEY: ${{ secrets.APPWRITE_API_KEY }}
+        run: |
+          npx --yes appwrite-cli@28.16.0 client --endpoint "https://fra.cloud.appwrite.io/v1" --project-id "$PROJECT_ID" --key "$APPWRITE_API_KEY"
+          npx --yes appwrite-cli@28.16.0 push functions --function-id job-tick --force
+
+  admin:
+    name: admin dashboard (build; host TBD)
+    needs: schema
+    if: vars.DEPLOY_ENABLED == 'true' && needs.schema.result == 'success' && needs.schema.outputs.promote == 'true'
+    environment: staging
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    concurrency:
+      group: deploy-staging-admin
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        if: vars.DEPLOY_ENABLED == 'true'
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/admin/package-lock.json
+      - name: Build the admin app
+        if: vars.DEPLOY_ENABLED == 'true'
+        working-directory: apps/admin
+        run: npm ci && npm run build
+      - name: Deploy the admin app (TBD)
+        if: vars.DEPLOY_ENABLED == 'true'
+        run: |
+          echo "::notice::Admin host not chosen: ADR 0004 names none. Owner decision (docs/ops/deploy.md, 'Admin host'); add the deploy command here."

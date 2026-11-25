@@ -1,0 +1,45 @@
+# F07 (#33): dependency update PRs. Grouped so a week's minor/patch bumps arrive as one PR per ecosystem.
+# Dependabot PRs run the normal `ci` workflow (it needs no secrets, which Dependabot PRs do not receive).
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns: ["*"]
+  - package-ecosystem: uv
+    directory: /services/core
+    schedule:
+      interval: weekly
+    groups:
+      python-minor-patch:
+        update-types: [minor, patch]
+  - package-ecosystem: uv
+    directory: /packages/py_momo
+    schedule:
+      interval: weekly
+  - package-ecosystem: docker
+    directory: /services/core
+    schedule:
+      interval: weekly
+  - package-ecosystem: npm
+    directory: /apps/admin
+    schedule:
+      interval: weekly
+    groups:
+      npm-minor-patch:
+        update-types: [minor, patch]
+  - package-ecosystem: pub
+    directory: /apps/parent
+    schedule:
+      interval: weekly
+  - package-ecosystem: pub
+    directory: /apps/teacher
+    schedule:
+      interval: weekly
+  - package-ecosystem: pub
+    directory: /packages/flutter_shared
+    schedule:
+      interval: weekly
