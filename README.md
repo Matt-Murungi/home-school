@@ -11,10 +11,10 @@ Home tutoring platform for Uganda: parent and teacher mobile apps, an admin dash
 
 | Path | Purpose | Status |
 |---|---|---|
-| `apps/parent` | Parent app (Flutter) | planned (F05) |
-| `apps/teacher` | Teacher app (Flutter) | planned (F05) |
+| `apps/parent` | Parent app (Flutter) | scaffolded (F05) |
+| `apps/teacher` | Teacher app (Flutter) | scaffolded (F05) |
 | `apps/admin` | Admin dashboard (Next.js) | implemented (F06 scaffold) |
-| `packages/flutter_shared` | Shared Dart code | planned (F05) |
+| `packages/flutter_shared` | Shared Dart code | scaffolded (F05) |
 | `services/core` | Core service (FastAPI) | implemented (F03) |
 | `appwrite/` | Appwrite config, migrations, seed | foundation (F02); real projects owner-blocked |
 | `docs/` | ADRs (`docs/adr`), product docs placeholder (`docs/product`) | implemented |

@@ -187,14 +187,40 @@ class Tooling(unittest.TestCase):
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
 
     def test_planned_packages_skip_clearly(self):
-        r = run(
-            [sys.executable, "scripts/run_packages.py", "test"],
-            env={"HS_SKIP": "root-tests,spike-admin,spike-jobs"},
-        )
-        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
-        self.assertIn(
-            "SKIP apps/parent: not implemented yet (planned for F05)", r.stdout
-        )
+        # uses its own manifest so it does not depend on which tickets have landed
+        d = tempfile.mkdtemp()
+        try:
+            man = Path(d, "m.json")
+            man.write_text(
+                json.dumps(
+                    {
+                        "packages": [
+                            {
+                                "id": "x",
+                                "path": "apps/x",
+                                "status": "planned",
+                                "ticket": "F99",
+                                "test": "false",
+                            }
+                        ]
+                    }
+                )
+            )
+            r = run(
+                [
+                    sys.executable,
+                    "scripts/run_packages.py",
+                    "test",
+                    "--manifest",
+                    str(man),
+                ]
+            )
+            self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+            self.assertIn(
+                "SKIP apps/x: not implemented yet (planned for F99)", r.stdout
+            )
+        finally:
+            shutil.rmtree(d)
 
     def test_missing_tool_degrades_with_message(self):
         # empty PATH apart from python: required tool missing -> clear SKIP, exit 0
