@@ -58,6 +58,7 @@ Reviewer writes: commands run, results, criterion-by-criterion verdict, findings
 |---|---|
 | spikes/admin-appwrite | `cd spikes/admin-appwrite && npm ci && npx tsc --noEmit && npm run lint && npm run build` |
 | spikes/jobs-demo | `cd spikes/jobs-demo && uv run pytest -q` |
+| docs/adr (ADR lint; reuse for every decision ticket) | `python3 docs/adr/check-adrs.py` (all ADRs) or `python3 docs/adr/check-adrs.py docs/adr/00NN-x.md`. Needs `# ADR NNNN — title` (number = file name), `- **Status:**` (Proposed/Accepted/Superseded/Deprecated), `- **Date:**`, `- **Ticket:**`, and `## Context`, `## Decision`, `## Consequences`. Exit 1 on failure. Stdlib only. |
 
 (Add a row for each new package.)
 
@@ -84,9 +85,32 @@ Suggested order: E00 decisions (D01–D03, D05; D04, D06 later/owner) → E01 fo
 - Follow-ups for F04: ADR test table omits `test_signed_tick_runs_due_jobs` (13 of 14 listed); a claimer whose `job_run` update stalls longer than the 5 min lease could double-run (late write after takeover) - verify the attempt row after the update or use a conditional-style check; re-verify live `job_run`/`job_attempt` columns against F02 schema; materialise watermark; indexed claimable query.
 - Open: owner sign-off on ADR 0002; check Appwrite plan allows ~43,000 function runs/month.
 
+### D03 · Hosting decisions (#23)
+- Status: **ready-for-review** (branch `d03-hosting-adrs`, commit 517110f, pushed; PR not opened)
+- Built: `docs/adr/0003-core-service-hosting.md`, `docs/adr/0012-appwrite-cloud-and-permissions.md`, `docs/adr/check-adrs.py` (generic ADR lint). Each ADR has options, decision, consequences, cost estimate, unexecuted staging runbook (Fly half in 0003, Appwrite console half in 0012); 0003 has the Fly capability checklist; 0012 has the permission strings per SR 6.2 row, revocation, grant/business-write divergence table, drift check, ledger question, DP-7 lawyer/DPO brief.
+- Test: `python3 docs/adr/check-adrs.py` -> 4/4 pass (0002 and 0004 already conformed, no heading edits needed). Negative check: a file missing Date/Ticket/Decision/Consequences exits 1.
+- Latency (measured 25 Nov 2026 ~09:30 UTC, workstation IP geolocated to Kampala, AS36924, link type unverified, probably fixed line; 20 fresh-connection requests to the public `GET fra.cloud.appwrite.io/v1/health/version`, no credentials): TCP connect min/median/p95 = 70/83/97 ms; TLS done 144/167/199 ms; full response 393/420/518 ms. Raw table in ADR 0003.
+- Cost (estimates, 25 Nov 2026): Fly about $20/month (prod 2x shared-cpu-1x 1GB, staging 1x 512MB, one dedicated IPv4); Appwrite $25 per Pro project (third-party sources, they disagree on per-project vs per-member, official page not fully readable); stack total about $45 (staging on Free) to about $70 (both Pro), +$29 if Fly Standard support. Fly prices are iad/ewr list prices, fra not verified.
+
+| Acceptance criterion | Where / status |
+|---|---|
+| Both ADRs in docs/adr/ | Done, lint passes |
+| Latency Kampala to Appwrite and Fly fra (mobile and fibre) | Appwrite over one Kampala (probably fixed) network: done. Fly `fra`: BLOCKED (no account/app). Mobile networks: BLOCKED (needs phones on MTN/Airtel). Core-to-Appwrite hop: BLOCKED (needs deployed app) |
+| Monthly cost estimate | Done, labelled estimate with sources; Appwrite plan terms unconfirmed |
+| Fly supports containers, secrets, autoscaling, separate apps | Checklist in ADR 0003; items marked "verify" until a staging deploy. Built-in autoscaling is limited: year one is fixed 2 machines |
+| DP-7 note as open item | Lawyer/DPO brief with 9 questions in ADR 0012; owner must engage counsel |
+| Ledger open question | In ADR 0012, with recommended default (decide before automated payouts) |
+| Edge: latency unacceptable for check-in | Offline queue (Drift) is the mitigation, in ADR 0003 |
+| Edge: legal requires in-country hosting | Impact analysis in ADR 0012 (self-hosted Appwrite, region move) |
+| Staging from the ADRs alone | Runbooks in both ADRs, NOT executed |
+
+- Deviations: ADR 0003 and 0012 status "Proposed" pending owner sign-off (same as 0002, 0004). Latency to Fly and mobile not measurable by an agent.
+- Follow-ups: F02 builds schema from the table split in ADR 0012 and records the diff to the 35 live tables; F03 builds Dockerfile/fly.toml and does the Fly latency run; role-played access tests need a non-live Appwrite project.
+
 ## Blocked on owner (credentials / deployments / accounts)
 
 - D02: staging demo of the job tick (needs deployed core service + non-live Appwrite project).
+- D03: Fly.io account/org and billing; throwaway Fly app to measure Kampala to `fra`; mobile-network latency (MTN, Airtel) to Appwrite and Fly; a non-live Appwrite project (`hs-staging`, Frankfurt) with a scoped API key; Appwrite plan/cost confirmation; lawyer/DPO review of the DP-7 note (ADR 0012).
 
 ## Questions for the owner (collected; ask at the end)
 
@@ -95,8 +119,15 @@ Suggested order: E00 decisions (D01–D03, D05; D04, D06 later/owner) → E01 fo
 3. Appwrite plan: one database only; function execution allowance for a once-a-minute tick?
 4. Security: `general_variables.md` in iCloud holds a plaintext GitHub token — revoke/rotate it.
 5. SR cites ADR 0013 (reduced pilot scope, 18 Jan 2027); no ticket and no ADR exist for it.
+6. (D03) Sign off ADRs 0003 and 0012. Default: accept.
+7. (D03) Appwrite plan: is Pro $25 per project or per member; do we need Pro for staging? Does the plan give point-in-time recovery (NFR-6)? Default: Pro for prod and staging; ask Appwrite in writing; if no PITR, add a nightly export job.
+8. (D03) Engage a Ugandan lawyer/DPO on the DP-7 brief (9 questions in ADR 0012). Default: before the pilot if real children's data is used, otherwise before public launch. If in-country hosting is required, ADRs 0003/0012 are revisited (self-hosted Appwrite).
+9. (D03) Create a Fly.io account and a throwaway app, and run the latency script from Kampala on fibre and on MTN and Airtel phones. Default: do it with the F03 staging deploy.
+10. (D03) Ledger in Appwrite or Postgres (SR 14 item 2)? Default: keep behind a `LedgerStore` interface on Appwrite for the pilot, decide before automated payouts after a crash-between-postings spike (leaning Postgres).
+11. (D03) Fly Standard support ($29/month)? Default: skip for the pilot.
 
 ## Session log
 
 - 2026-11-25: D01 merged (PR #156). D02 merged (PR #157) after round 2.
 - 2026-11-25: Repo bootstrapped; backlog (135 tickets) imported and updated for Appwrite; D01, D02 built; two-agent workflow agreed.
+- 2026-11-25: D03 built (ADRs 0003, 0012, ADR lint), ready-for-review on `d03-hosting-adrs`.
