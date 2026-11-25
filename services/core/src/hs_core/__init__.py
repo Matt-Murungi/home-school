@@ -1,0 +1,1 @@
+"""Home School core service."""
