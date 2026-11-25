@@ -58,6 +58,7 @@ Reviewer writes: commands run, results, criterion-by-criterion verdict, findings
 |---|---|
 | spikes/admin-appwrite | `cd spikes/admin-appwrite && npm ci && npx tsc --noEmit && npm run lint && npm run build` |
 | spikes/jobs-demo | `cd spikes/jobs-demo && uv run pytest -q` |
+| services/core (F03) | `cd services/core && uv run pytest -q` (lint: `uv run ruff check . && uv run ruff format --check .`); offline, no Docker needed |
 | docs/legal (policy inventory) | `python3 docs/legal/check-policy-inventory.py` (fails on missing purpose/consumer ticket/owner/status or unknown ticket #) |
 | docs/adr (ADR lint; reuse for every decision ticket) | `python3 docs/adr/check-adrs.py` (all ADRs) or `python3 docs/adr/check-adrs.py docs/adr/00NN-x.md`. Needs `# ADR NNNN — title` (number = file name), `- **Status:**` (Proposed/Accepted/Superseded/Deprecated), `- **Date:**`, `- **Ticket:**`, and `## Context`, `## Decision`, `## Consequences`. Exit 1 on failure. Stdlib only. |
 | root tooling (F01) | `make test` (every implemented package per `packages.json`; planned ones skip with a message; `HS_STRICT=1` fails on missing tools, `HS_SKIP=id,id`) and `make lint` (layout guard + secret scan + package lint). F01 tests alone: `python3 -m unittest discover -s scripts/tests -v`. Stdlib only. |
@@ -215,6 +216,34 @@ Suggested order: E00 decisions (D01–D03, D05; D04, D06 later/owner) → E01 fo
 | Edge: lawyer advises against holiday packages | ADR option D2 (remove); no dependent ticket found |
 | Edge: registration slower than build | Declared launch blocker in ADR 0006; track in R07 #155 |
 
+### F03 · Scaffold core service (FastAPI) (#29)
+
+- **Status:** ready-for-review · Branch `f03-core-service` (pushed, no PR; 2 commits `F03:`) · Blocked-by #23 satisfied.
+- **Built (`services/core/`):** `src/hs_core/` `settings.py` (pydantic-settings, env only, dev/staging/production, `ConfigError` names variables never values; production/staging refuse missing vars, placeholder or <32-char key, non-https or localhost endpoint, HS_DEBUG in production), `logging_setup.py` (JSON lines, `request_id` contextvar), `errors.py` (`{"error":{code,message,request_id}}`), `repository.py` (`Repository` protocol, `InMemoryRepository` fake with `available` toggle, `AppwriteRepository` over SDK `TablesDB` + `/health` ping, `build_repository`), `auth.py` (`TokenVerifier`, `FakeTokenVerifier`, `AppwriteJwtVerifier` = Appwrite `GET /account` with the caller's JWT, labels -> roles per ADR 0012, `current_principal`, `require_roles`), `main.py` (`create_app`, `app_factory`, request-ID middleware, `/health`,`/healthz`,`/ready`,`/readyz`, demo `/v1/me`, `/v1/admin/ping`). Plus `Dockerfile` (multi-stage, uid 10001, HEALTHCHECK, no secrets), `.dockerignore`, `.env.example` (empty values), README, `pyproject.toml`/`uv.lock`; `packages.json` core -> implemented; root README row.
+- **Tests:** `cd services/core && uv run pytest -q` -> 73 passed; ruff check + format clean. `make test`: core passes; the root run still fails on **pre-existing** main issue: secret scan flags `memory.md:145` (example password string in an F01 finding; the reviewer should reword it, not part of F03).
+- **Deviations:** issue says `/health` and `/ready`; the owner brief says `/healthz` and `/readyz`; both are served (aliases). Dev with no Appwrite config uses the in-memory repository; staging/production require real config. No idempotency helper (issue does not ask). Scheduler/job tick not built (F04). `appwrite` SDK pinned `>=9` resolves to 28.0.0; TablesDB method names were read from the installed SDK, not run against a service.
+- **Criterion -> test map:**
+
+| Criterion / edge case | Test |
+|---|---|
+| GET /health 200 with version + git SHA | `test_health.py::test_health_returns_version_and_sha` |
+| GET /ready checks DB connectivity | `test_health.py::test_ready_ok_when_repository_up`, `test_repository.py::test_adapter_ping_ok`, `test_adapter_ping_failure_maps_to_unavailable` |
+| Env-only config; missing var fails startup clearly | `test_settings.py::test_missing_required_variable_fails_with_clear_error` (8 cases), `test_blank_values_count_as_missing`, `test_dev_loads_with_no_variables` |
+| Production refuses insecure defaults | `test_production_refuses_insecure_values`, `test_unknown_environment_rejected`, `test_error_does_not_leak_secret_values`, `test_api_key_is_secret_in_repr` |
+| No secrets in repo | `test_env_example_has_only_empty_values`, `test_dockerfile.py::test_no_secrets_in_env_or_arg` |
+| JSON logs with request_id on every line | `test_logging.py::test_json_log_lines_carry_request_id`, `test_request_id_propagated_into_handler_logs`, `test_formatter_*` |
+| X-Request-ID in/out | `test_request_id_generated_and_returned`, `test_incoming_request_id_echoed`, `test_unsafe_request_id_replaced` |
+| DB unreachable: /ready 503, process keeps running, retries | `test_health.py::test_ready_503_when_repository_down_and_recovers`, `test_app_starts_with_unreachable_repository`, `test_ready_503_when_ping_raises` (no detail leak) |
+| JWT missing / malformed / forged / expired | `test_auth.py::test_missing_header_401`, `test_malformed_header_401`, `test_forged_token_401`, `test_expired_token_401`; real verifier: `test_appwrite_verifier.py` (401 -> invalid, blocked user, oversized token, 5xx/network -> 503) |
+| Wrong role / no label / superadmin not implicit | `test_wrong_role_403`, `test_no_labels_403_on_guarded`, `test_superadmin_alone_does_not_pass_opsadmin_guard`, `test_labels_map_to_roles_alphanumeric_only` |
+| Verifier outage is not a 500 | `test_verifier_failure_is_401_not_500` (asserts 503 `auth_unavailable`) |
+| Consistent error format | `test_errors.py` (404, 405, 422, unhandled 500 with no leak) |
+| Repository layer + fake + mocked adapter | `test_repository.py` (CRUD, copies, duplicate/missing, 404 -> NotFound, 5xx -> Unavailable, `build_repository`) |
+| Dockerfile: multi-stage, non-root, healthcheck, .dockerignore | `test_dockerfile.py` (lint-style parse) |
+| Unit test and lint run in CI | `packages.json` entry (root `make test`/`make lint`); CI wiring is F01/F-CI |
+
+- **Unverified:** actual `docker build` / container run (docker not installed here); real Appwrite calls (read-only live project, nothing contacted); "container runs on staging, /health reachable on staging URL" and "deployed to staging" (owner-blocked, below).
+
 ## Blocked on owner (credentials / deployments / accounts)
 
 - F02: create the three Appwrite projects, keys and secrets-manager entries; run `appwrite push` and the runner against dev; staging push from CI (F07). Steps in the F02 ticket block.
@@ -223,6 +252,7 @@ Suggested order: E00 decisions (D01–D03, D05; D04, D06 later/owner) → E01 fo
 - D05: sending domain; Resend account (Free ok for staging); DNS access to add SPF/DKIM/MX/DMARC records for `mail.<domain>`; Resend API key + webhook secret into staging Fly secrets; DPA signed (DP-9); then the inbox test (Gmail, Yahoo, a Ugandan host). Exact steps: owner checklist in ADR 0005.
 - F01: GitHub branch protection on `main` (Settings > Branches > rule for `main`): require a pull request before merging (1 approval can stay 0 because the reviewer agent posts comment reviews under the owner's account; enable "Dismiss stale approvals" off), require status checks to pass and branch up to date, the checks being the F07 (#33) job names (suggest `lint` and `test`, running `make lint` and `HS_STRICT=1 make test`), restrict force-push and deletion, and allow squash merge only. Optionally a CODEOWNERS review requirement and a GitHub team in `.github/CODEOWNERS` (currently `@Matt-Murungi`). Can only be applied once F07 CI exists.
 - D06: engage a Ugandan lawyer; choose positioning; approve pilot registration route; do the PDPO registration, pay fee, sign DPAs; lawyer to deliver the written note and final policy texts.
+- F03: Fly.io app `fly.toml`, staging deploy and secrets (`APPWRITE_API_KEY`, project/database IDs) per ADR 0003; non-live Appwrite project for staging; Docker image build/run proof (docker not installed on the build machine); AppwriteJwtVerifier and AppwriteRepository against a real non-live project.
 
 ## Questions for the owner (collected; ask at the end)
 
