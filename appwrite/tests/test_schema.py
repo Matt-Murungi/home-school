@@ -373,7 +373,7 @@ class Migration(unittest.TestCase):
         client = FakeAppwriteClient()
         result, out = self.run_migrations(client)
         self.assertEqual(result.exit_code, 0, out)
-        self.assertEqual(result.applied, [1, 2])
+        self.assertEqual(result.applied[:2], [1, 2])  # later schema tickets append their own versions
         self.assertTrue(set(CORE_IDS) <= set(client.tables))
         for tid in CORE_IDS:
             self.assertEqual(set(client.tables[tid]["columns"]), set(cols(tid)), tid)
@@ -388,7 +388,7 @@ class Migration(unittest.TestCase):
         before = (copy.deepcopy(client.tables), len(client.log), copy.deepcopy(client.specs))
         result, out = self.run_migrations(client)
         self.assertEqual(result.applied, [])
-        self.assertEqual(result.skipped, [1, 2])
+        self.assertEqual(result.skipped[:2], [1, 2])
         self.assertEqual((client.tables, len(client.log), client.specs), before)
 
     def test_ensure_table_is_convergent_and_adds_only_missing_columns(self):

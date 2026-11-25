@@ -1319,6 +1319,1101 @@
           ]
         }
       ]
+    },
+    {
+      "$id": "plan",
+      "databaseId": "main",
+      "name": "plan",
+      "enabled": true,
+      "rowSecurity": true,
+      "$permissions": [],
+      "columns": [
+        {
+          "key": "curriculum_id",
+          "type": "varchar",
+          "size": 36,
+          "required": true
+        },
+        {
+          "key": "sessions_per_week",
+          "type": "integer",
+          "required": true,
+          "min": 1,
+          "max": 7
+        },
+        {
+          "key": "price_ugx",
+          "type": "integer",
+          "required": true,
+          "min": 0
+        },
+        {
+          "key": "currency",
+          "type": "varchar",
+          "size": 3,
+          "required": false,
+          "default": "UGX"
+        },
+        {
+          "key": "active",
+          "type": "boolean",
+          "required": false,
+          "default": true
+        },
+        {
+          "key": "active_key",
+          "type": "varchar",
+          "size": 60,
+          "required": false
+        },
+        {
+          "key": "deleted_at",
+          "type": "datetime",
+          "required": false
+        }
+      ],
+      "indexes": [
+        {
+          "key": "by_curriculum",
+          "type": "key",
+          "columns": [
+            "curriculum_id",
+            "active"
+          ],
+          "orders": [
+            "ASC",
+            "ASC"
+          ]
+        },
+        {
+          "key": "unique_active_plan",
+          "type": "unique",
+          "columns": [
+            "active_key"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        }
+      ]
+    },
+    {
+      "$id": "subscription",
+      "databaseId": "main",
+      "name": "subscription",
+      "enabled": true,
+      "rowSecurity": true,
+      "$permissions": [],
+      "columns": [
+        {
+          "key": "child_id",
+          "type": "varchar",
+          "size": 36,
+          "required": true
+        },
+        {
+          "key": "parent_id",
+          "type": "varchar",
+          "size": 36,
+          "required": true
+        },
+        {
+          "key": "plan_id",
+          "type": "varchar",
+          "size": 36,
+          "required": true
+        },
+        {
+          "key": "status",
+          "type": "string",
+          "format": "enum",
+          "elements": [
+            "pending_payment",
+            "matching",
+            "active",
+            "paused",
+            "past_due",
+            "cancelled"
+          ],
+          "required": true
+        },
+        {
+          "key": "period_start_at",
+          "type": "datetime",
+          "required": false
+        },
+        {
+          "key": "period_end_at",
+          "type": "datetime",
+          "required": false
+        },
+        {
+          "key": "preferred_slots",
+          "type": "text",
+          "required": false
+        },
+        {
+          "key": "paused_at",
+          "type": "datetime",
+          "required": false
+        },
+        {
+          "key": "cancelled_at",
+          "type": "datetime",
+          "required": false
+        },
+        {
+          "key": "cancel_reason",
+          "type": "varchar",
+          "size": 200,
+          "required": false
+        },
+        {
+          "key": "deleted_at",
+          "type": "datetime",
+          "required": false
+        }
+      ],
+      "indexes": [
+        {
+          "key": "by_child",
+          "type": "key",
+          "columns": [
+            "child_id",
+            "status"
+          ],
+          "orders": [
+            "ASC",
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_parent",
+          "type": "key",
+          "columns": [
+            "parent_id"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_plan",
+          "type": "key",
+          "columns": [
+            "plan_id"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_status_period_end",
+          "type": "key",
+          "columns": [
+            "status",
+            "period_end_at"
+          ],
+          "orders": [
+            "ASC",
+            "ASC"
+          ]
+        }
+      ]
+    },
+    {
+      "$id": "match_request",
+      "databaseId": "main",
+      "name": "match_request",
+      "enabled": true,
+      "rowSecurity": true,
+      "$permissions": [],
+      "columns": [
+        {
+          "key": "subscription_id",
+          "type": "varchar",
+          "size": 36,
+          "required": true
+        },
+        {
+          "key": "session_id",
+          "type": "varchar",
+          "size": 36,
+          "required": false
+        },
+        {
+          "key": "type",
+          "type": "string",
+          "format": "enum",
+          "elements": [
+            "new",
+            "rematch",
+            "substitute"
+          ],
+          "required": true
+        },
+        {
+          "key": "status",
+          "type": "string",
+          "format": "enum",
+          "elements": [
+            "open",
+            "offering",
+            "matched",
+            "admin_queue",
+            "cancelled",
+            "expired"
+          ],
+          "required": true
+        },
+        {
+          "key": "attempts",
+          "type": "integer",
+          "required": true,
+          "min": 0,
+          "max": 1000
+        },
+        {
+          "key": "closed_at",
+          "type": "datetime",
+          "required": false
+        },
+        {
+          "key": "deleted_at",
+          "type": "datetime",
+          "required": false
+        }
+      ],
+      "indexes": [
+        {
+          "key": "by_subscription",
+          "type": "key",
+          "columns": [
+            "subscription_id"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_session",
+          "type": "key",
+          "columns": [
+            "session_id"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_status_type",
+          "type": "key",
+          "columns": [
+            "status",
+            "type"
+          ],
+          "orders": [
+            "ASC",
+            "ASC"
+          ]
+        }
+      ]
+    },
+    {
+      "$id": "match_offer",
+      "databaseId": "main",
+      "name": "match_offer",
+      "enabled": true,
+      "rowSecurity": true,
+      "$permissions": [],
+      "columns": [
+        {
+          "key": "match_request_id",
+          "type": "varchar",
+          "size": 36,
+          "required": true
+        },
+        {
+          "key": "teacher_id",
+          "type": "varchar",
+          "size": 36,
+          "required": true
+        },
+        {
+          "key": "rank",
+          "type": "integer",
+          "required": true,
+          "min": 1,
+          "max": 1000
+        },
+        {
+          "key": "rank_score",
+          "type": "integer",
+          "required": true,
+          "min": 0,
+          "max": 10000
+        },
+        {
+          "key": "score_breakdown",
+          "type": "text",
+          "required": false
+        },
+        {
+          "key": "offered_at",
+          "type": "datetime",
+          "required": true
+        },
+        {
+          "key": "expires_at",
+          "type": "datetime",
+          "required": true
+        },
+        {
+          "key": "responded_at",
+          "type": "datetime",
+          "required": false
+        },
+        {
+          "key": "response",
+          "type": "string",
+          "format": "enum",
+          "elements": [
+            "pending",
+            "accepted",
+            "declined",
+            "expired",
+            "withdrawn"
+          ],
+          "required": false,
+          "default": "pending"
+        },
+        {
+          "key": "decline_reason",
+          "type": "varchar",
+          "size": 200,
+          "required": false
+        },
+        {
+          "key": "active_key",
+          "type": "varchar",
+          "size": 80,
+          "required": false
+        },
+        {
+          "key": "deleted_at",
+          "type": "datetime",
+          "required": false
+        }
+      ],
+      "indexes": [
+        {
+          "key": "by_request_rank",
+          "type": "key",
+          "columns": [
+            "match_request_id",
+            "rank"
+          ],
+          "orders": [
+            "ASC",
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_teacher",
+          "type": "key",
+          "columns": [
+            "teacher_id",
+            "response"
+          ],
+          "orders": [
+            "ASC",
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_response_expiry",
+          "type": "key",
+          "columns": [
+            "response",
+            "expires_at"
+          ],
+          "orders": [
+            "ASC",
+            "ASC"
+          ]
+        },
+        {
+          "key": "unique_active_offer",
+          "type": "unique",
+          "columns": [
+            "active_key"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        }
+      ]
+    },
+    {
+      "$id": "assignment",
+      "databaseId": "main",
+      "name": "assignment",
+      "enabled": true,
+      "rowSecurity": true,
+      "$permissions": [],
+      "columns": [
+        {
+          "key": "child_id",
+          "type": "varchar",
+          "size": 36,
+          "required": true
+        },
+        {
+          "key": "teacher_id",
+          "type": "varchar",
+          "size": 36,
+          "required": true
+        },
+        {
+          "key": "subscription_id",
+          "type": "varchar",
+          "size": 36,
+          "required": true
+        },
+        {
+          "key": "start_at",
+          "type": "datetime",
+          "required": true
+        },
+        {
+          "key": "end_at",
+          "type": "datetime",
+          "required": false
+        },
+        {
+          "key": "is_trial",
+          "type": "boolean",
+          "required": false,
+          "default": false
+        },
+        {
+          "key": "end_reason",
+          "type": "string",
+          "format": "enum",
+          "elements": [
+            "rematch_requested",
+            "teacher_withdrew",
+            "parent_cancelled",
+            "trial_not_continued",
+            "trial_converted",
+            "subscription_ended",
+            "admin"
+          ],
+          "required": false
+        },
+        {
+          "key": "active_key",
+          "type": "varchar",
+          "size": 80,
+          "required": false
+        },
+        {
+          "key": "deleted_at",
+          "type": "datetime",
+          "required": false
+        }
+      ],
+      "indexes": [
+        {
+          "key": "by_child",
+          "type": "key",
+          "columns": [
+            "child_id"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_teacher",
+          "type": "key",
+          "columns": [
+            "teacher_id",
+            "end_at"
+          ],
+          "orders": [
+            "ASC",
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_subscription",
+          "type": "key",
+          "columns": [
+            "subscription_id"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        },
+        {
+          "key": "unique_active_assignment",
+          "type": "unique",
+          "columns": [
+            "active_key"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        }
+      ]
+    },
+    {
+      "$id": "session",
+      "databaseId": "main",
+      "name": "session",
+      "enabled": true,
+      "rowSecurity": true,
+      "$permissions": [],
+      "columns": [
+        {
+          "key": "assignment_id",
+          "type": "varchar",
+          "size": 36,
+          "required": false
+        },
+        {
+          "key": "child_id",
+          "type": "varchar",
+          "size": 36,
+          "required": true
+        },
+        {
+          "key": "teacher_id",
+          "type": "varchar",
+          "size": 36,
+          "required": true
+        },
+        {
+          "key": "subscription_id",
+          "type": "varchar",
+          "size": 36,
+          "required": true
+        },
+        {
+          "key": "home_location_id",
+          "type": "varchar",
+          "size": 36,
+          "required": true
+        },
+        {
+          "key": "substitute_for_session_id",
+          "type": "varchar",
+          "size": 36,
+          "required": false
+        },
+        {
+          "key": "scheduled_start_at",
+          "type": "datetime",
+          "required": true
+        },
+        {
+          "key": "scheduled_end_at",
+          "type": "datetime",
+          "required": true
+        },
+        {
+          "key": "status",
+          "type": "string",
+          "format": "enum",
+          "elements": [
+            "scheduled",
+            "checked_in",
+            "checked_out",
+            "awaiting_confirmation",
+            "confirmed",
+            "disputed",
+            "void",
+            "incomplete",
+            "cancelled_by_parent_late",
+            "cancelled_by_parent_ontime",
+            "cancelled_by_teacher",
+            "no_show"
+          ],
+          "required": true
+        },
+        {
+          "key": "status_changed_at",
+          "type": "datetime",
+          "required": true
+        },
+        {
+          "key": "is_substitute",
+          "type": "boolean",
+          "required": false,
+          "default": false
+        },
+        {
+          "key": "teacher_slot_key",
+          "type": "varchar",
+          "size": 64,
+          "required": false
+        },
+        {
+          "key": "deleted_at",
+          "type": "datetime",
+          "required": false
+        }
+      ],
+      "indexes": [
+        {
+          "key": "by_teacher_day",
+          "type": "key",
+          "columns": [
+            "teacher_id",
+            "scheduled_start_at"
+          ],
+          "orders": [
+            "ASC",
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_child_period",
+          "type": "key",
+          "columns": [
+            "child_id",
+            "scheduled_start_at"
+          ],
+          "orders": [
+            "ASC",
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_assignment",
+          "type": "key",
+          "columns": [
+            "assignment_id"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_subscription",
+          "type": "key",
+          "columns": [
+            "subscription_id"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_home_location",
+          "type": "key",
+          "columns": [
+            "home_location_id"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_substitute_for",
+          "type": "key",
+          "columns": [
+            "substitute_for_session_id"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_status_changed",
+          "type": "key",
+          "columns": [
+            "status",
+            "status_changed_at"
+          ],
+          "orders": [
+            "ASC",
+            "ASC"
+          ]
+        },
+        {
+          "key": "unique_teacher_slot",
+          "type": "unique",
+          "columns": [
+            "teacher_slot_key"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        }
+      ]
+    },
+    {
+      "$id": "session_checkin",
+      "databaseId": "main",
+      "name": "session_checkin",
+      "enabled": true,
+      "rowSecurity": true,
+      "$permissions": [],
+      "columns": [
+        {
+          "key": "session_id",
+          "type": "varchar",
+          "size": 36,
+          "required": true
+        },
+        {
+          "key": "type",
+          "type": "string",
+          "format": "enum",
+          "elements": [
+            "in",
+            "out"
+          ],
+          "required": true
+        },
+        {
+          "key": "lat_e6",
+          "type": "integer",
+          "required": true,
+          "min": -90000000,
+          "max": 90000000
+        },
+        {
+          "key": "lng_e6",
+          "type": "integer",
+          "required": true,
+          "min": -180000000,
+          "max": 180000000
+        },
+        {
+          "key": "accuracy_m",
+          "type": "integer",
+          "required": false,
+          "min": 0,
+          "max": 100000
+        },
+        {
+          "key": "device_time_at",
+          "type": "datetime",
+          "required": true
+        },
+        {
+          "key": "server_time_at",
+          "type": "datetime",
+          "required": true
+        },
+        {
+          "key": "within_geofence",
+          "type": "boolean",
+          "required": false
+        },
+        {
+          "key": "distance_m",
+          "type": "integer",
+          "required": false,
+          "min": 0,
+          "max": 40000000
+        },
+        {
+          "key": "flagged",
+          "type": "boolean",
+          "required": false,
+          "default": false
+        },
+        {
+          "key": "mock_location",
+          "type": "boolean",
+          "required": false
+        }
+      ],
+      "indexes": [
+        {
+          "key": "unique_session_type",
+          "type": "unique",
+          "columns": [
+            "session_id",
+            "type"
+          ],
+          "orders": [
+            "ASC",
+            "ASC"
+          ]
+        }
+      ]
+    },
+    {
+      "$id": "session_confirmation",
+      "databaseId": "main",
+      "name": "session_confirmation",
+      "enabled": true,
+      "rowSecurity": true,
+      "$permissions": [],
+      "columns": [
+        {
+          "key": "session_id",
+          "type": "varchar",
+          "size": 36,
+          "required": true
+        },
+        {
+          "key": "parent_response",
+          "type": "string",
+          "format": "enum",
+          "elements": [
+            "confirmed",
+            "disputed"
+          ],
+          "required": true
+        },
+        {
+          "key": "responded_at",
+          "type": "datetime",
+          "required": false
+        },
+        {
+          "key": "auto_confirmed",
+          "type": "boolean",
+          "required": false,
+          "default": false
+        },
+        {
+          "key": "responded_by_id",
+          "type": "varchar",
+          "size": 36,
+          "required": false
+        }
+      ],
+      "indexes": [
+        {
+          "key": "unique_session",
+          "type": "unique",
+          "columns": [
+            "session_id"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_responder",
+          "type": "key",
+          "columns": [
+            "responded_by_id"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        }
+      ]
+    },
+    {
+      "$id": "cancellation",
+      "databaseId": "main",
+      "name": "cancellation",
+      "enabled": true,
+      "rowSecurity": true,
+      "$permissions": [],
+      "columns": [
+        {
+          "key": "session_id",
+          "type": "varchar",
+          "size": 36,
+          "required": true
+        },
+        {
+          "key": "by_role",
+          "type": "string",
+          "format": "enum",
+          "elements": [
+            "parent",
+            "teacher",
+            "admin"
+          ],
+          "required": true
+        },
+        {
+          "key": "cancelled_by_id",
+          "type": "varchar",
+          "size": 36,
+          "required": false
+        },
+        {
+          "key": "reason",
+          "type": "varchar",
+          "size": 500,
+          "required": false
+        },
+        {
+          "key": "is_late",
+          "type": "boolean",
+          "required": false,
+          "default": false
+        },
+        {
+          "key": "cancelled_at",
+          "type": "datetime",
+          "required": true
+        }
+      ],
+      "indexes": [
+        {
+          "key": "unique_session",
+          "type": "unique",
+          "columns": [
+            "session_id"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_cancelled_by",
+          "type": "key",
+          "columns": [
+            "cancelled_by_id"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        }
+      ]
+    },
+    {
+      "$id": "dispute",
+      "databaseId": "main",
+      "name": "dispute",
+      "enabled": true,
+      "rowSecurity": true,
+      "$permissions": [],
+      "columns": [
+        {
+          "key": "session_id",
+          "type": "varchar",
+          "size": 36,
+          "required": true
+        },
+        {
+          "key": "raised_by_id",
+          "type": "varchar",
+          "size": 36,
+          "required": true
+        },
+        {
+          "key": "reason",
+          "type": "varchar",
+          "size": 1000,
+          "required": true
+        },
+        {
+          "key": "status",
+          "type": "string",
+          "format": "enum",
+          "elements": [
+            "open",
+            "under_review",
+            "resolved"
+          ],
+          "required": false,
+          "default": "open"
+        },
+        {
+          "key": "resolution",
+          "type": "string",
+          "format": "enum",
+          "elements": [
+            "confirmed",
+            "void"
+          ],
+          "required": false
+        },
+        {
+          "key": "resolution_note",
+          "type": "varchar",
+          "size": 1000,
+          "required": false
+        },
+        {
+          "key": "resolved_by_id",
+          "type": "varchar",
+          "size": 36,
+          "required": false
+        },
+        {
+          "key": "resolved_at",
+          "type": "datetime",
+          "required": false
+        },
+        {
+          "key": "open_key",
+          "type": "varchar",
+          "size": 36,
+          "required": false
+        },
+        {
+          "key": "deleted_at",
+          "type": "datetime",
+          "required": false
+        }
+      ],
+      "indexes": [
+        {
+          "key": "by_session",
+          "type": "key",
+          "columns": [
+            "session_id"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_raised_by",
+          "type": "key",
+          "columns": [
+            "raised_by_id"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_resolved_by",
+          "type": "key",
+          "columns": [
+            "resolved_by_id"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_status",
+          "type": "key",
+          "columns": [
+            "status"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        },
+        {
+          "key": "unique_open_dispute",
+          "type": "unique",
+          "columns": [
+            "open_key"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        }
+      ]
     }
   ],
   "buckets": [

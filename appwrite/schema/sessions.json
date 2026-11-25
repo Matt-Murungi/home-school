@@ -1,0 +1,1236 @@
+{
+  "domain": "sessions",
+  "description": "M02 (#37): plans, subscriptions, matching, assignments and sessions (SR 5.2, 7.2-7.4). Money integer UGX, instants UTC, coordinates integer micro-degrees. Unique constraints use derived *_key columns (soft-delete convention in appwrite/README.md).",
+  "tables": [
+    {
+      "$id": "plan",
+      "name": "plan",
+      "enabled": true,
+      "rowSecurity": true,
+      "$permissions": [],
+      "columns": [
+        {
+          "key": "curriculum_id",
+          "type": "varchar",
+          "size": 36,
+          "required": true
+        },
+        {
+          "key": "sessions_per_week",
+          "type": "integer",
+          "required": true,
+          "min": 1,
+          "max": 7
+        },
+        {
+          "key": "price_ugx",
+          "type": "integer",
+          "required": true,
+          "min": 0
+        },
+        {
+          "key": "currency",
+          "type": "varchar",
+          "size": 3,
+          "required": false,
+          "default": "UGX"
+        },
+        {
+          "key": "active",
+          "type": "boolean",
+          "required": false,
+          "default": true
+        },
+        {
+          "key": "active_key",
+          "type": "varchar",
+          "size": 60,
+          "required": false
+        },
+        {
+          "key": "deleted_at",
+          "type": "datetime",
+          "required": false
+        }
+      ],
+      "indexes": [
+        {
+          "key": "by_curriculum",
+          "type": "key",
+          "columns": [
+            "curriculum_id",
+            "active"
+          ],
+          "orders": [
+            "ASC",
+            "ASC"
+          ]
+        },
+        {
+          "key": "unique_active_plan",
+          "type": "unique",
+          "columns": [
+            "active_key"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        }
+      ]
+    },
+    {
+      "$id": "subscription",
+      "name": "subscription",
+      "enabled": true,
+      "rowSecurity": true,
+      "$permissions": [],
+      "columns": [
+        {
+          "key": "child_id",
+          "type": "varchar",
+          "size": 36,
+          "required": true
+        },
+        {
+          "key": "parent_id",
+          "type": "varchar",
+          "size": 36,
+          "required": true
+        },
+        {
+          "key": "plan_id",
+          "type": "varchar",
+          "size": 36,
+          "required": true
+        },
+        {
+          "key": "status",
+          "type": "string",
+          "format": "enum",
+          "elements": [
+            "pending_payment",
+            "matching",
+            "active",
+            "paused",
+            "past_due",
+            "cancelled"
+          ],
+          "required": true
+        },
+        {
+          "key": "period_start_at",
+          "type": "datetime",
+          "required": false
+        },
+        {
+          "key": "period_end_at",
+          "type": "datetime",
+          "required": false
+        },
+        {
+          "key": "preferred_slots",
+          "type": "text",
+          "required": false
+        },
+        {
+          "key": "paused_at",
+          "type": "datetime",
+          "required": false
+        },
+        {
+          "key": "cancelled_at",
+          "type": "datetime",
+          "required": false
+        },
+        {
+          "key": "cancel_reason",
+          "type": "varchar",
+          "size": 200,
+          "required": false
+        },
+        {
+          "key": "deleted_at",
+          "type": "datetime",
+          "required": false
+        }
+      ],
+      "indexes": [
+        {
+          "key": "by_child",
+          "type": "key",
+          "columns": [
+            "child_id",
+            "status"
+          ],
+          "orders": [
+            "ASC",
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_parent",
+          "type": "key",
+          "columns": [
+            "parent_id"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_plan",
+          "type": "key",
+          "columns": [
+            "plan_id"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_status_period_end",
+          "type": "key",
+          "columns": [
+            "status",
+            "period_end_at"
+          ],
+          "orders": [
+            "ASC",
+            "ASC"
+          ]
+        }
+      ]
+    },
+    {
+      "$id": "match_request",
+      "name": "match_request",
+      "enabled": true,
+      "rowSecurity": true,
+      "$permissions": [],
+      "columns": [
+        {
+          "key": "subscription_id",
+          "type": "varchar",
+          "size": 36,
+          "required": true
+        },
+        {
+          "key": "session_id",
+          "type": "varchar",
+          "size": 36,
+          "required": false
+        },
+        {
+          "key": "type",
+          "type": "string",
+          "format": "enum",
+          "elements": [
+            "new",
+            "rematch",
+            "substitute"
+          ],
+          "required": true
+        },
+        {
+          "key": "status",
+          "type": "string",
+          "format": "enum",
+          "elements": [
+            "open",
+            "offering",
+            "matched",
+            "admin_queue",
+            "cancelled",
+            "expired"
+          ],
+          "required": true
+        },
+        {
+          "key": "attempts",
+          "type": "integer",
+          "required": true,
+          "min": 0,
+          "max": 1000
+        },
+        {
+          "key": "closed_at",
+          "type": "datetime",
+          "required": false
+        },
+        {
+          "key": "deleted_at",
+          "type": "datetime",
+          "required": false
+        }
+      ],
+      "indexes": [
+        {
+          "key": "by_subscription",
+          "type": "key",
+          "columns": [
+            "subscription_id"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_session",
+          "type": "key",
+          "columns": [
+            "session_id"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_status_type",
+          "type": "key",
+          "columns": [
+            "status",
+            "type"
+          ],
+          "orders": [
+            "ASC",
+            "ASC"
+          ]
+        }
+      ]
+    },
+    {
+      "$id": "match_offer",
+      "name": "match_offer",
+      "enabled": true,
+      "rowSecurity": true,
+      "$permissions": [],
+      "columns": [
+        {
+          "key": "match_request_id",
+          "type": "varchar",
+          "size": 36,
+          "required": true
+        },
+        {
+          "key": "teacher_id",
+          "type": "varchar",
+          "size": 36,
+          "required": true
+        },
+        {
+          "key": "rank",
+          "type": "integer",
+          "required": true,
+          "min": 1,
+          "max": 1000
+        },
+        {
+          "key": "rank_score",
+          "type": "integer",
+          "required": true,
+          "min": 0,
+          "max": 10000
+        },
+        {
+          "key": "score_breakdown",
+          "type": "text",
+          "required": false
+        },
+        {
+          "key": "offered_at",
+          "type": "datetime",
+          "required": true
+        },
+        {
+          "key": "expires_at",
+          "type": "datetime",
+          "required": true
+        },
+        {
+          "key": "responded_at",
+          "type": "datetime",
+          "required": false
+        },
+        {
+          "key": "response",
+          "type": "string",
+          "format": "enum",
+          "elements": [
+            "pending",
+            "accepted",
+            "declined",
+            "expired",
+            "withdrawn"
+          ],
+          "required": false,
+          "default": "pending"
+        },
+        {
+          "key": "decline_reason",
+          "type": "varchar",
+          "size": 200,
+          "required": false
+        },
+        {
+          "key": "active_key",
+          "type": "varchar",
+          "size": 80,
+          "required": false
+        },
+        {
+          "key": "deleted_at",
+          "type": "datetime",
+          "required": false
+        }
+      ],
+      "indexes": [
+        {
+          "key": "by_request_rank",
+          "type": "key",
+          "columns": [
+            "match_request_id",
+            "rank"
+          ],
+          "orders": [
+            "ASC",
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_teacher",
+          "type": "key",
+          "columns": [
+            "teacher_id",
+            "response"
+          ],
+          "orders": [
+            "ASC",
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_response_expiry",
+          "type": "key",
+          "columns": [
+            "response",
+            "expires_at"
+          ],
+          "orders": [
+            "ASC",
+            "ASC"
+          ]
+        },
+        {
+          "key": "unique_active_offer",
+          "type": "unique",
+          "columns": [
+            "active_key"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        }
+      ]
+    },
+    {
+      "$id": "assignment",
+      "name": "assignment",
+      "enabled": true,
+      "rowSecurity": true,
+      "$permissions": [],
+      "columns": [
+        {
+          "key": "child_id",
+          "type": "varchar",
+          "size": 36,
+          "required": true
+        },
+        {
+          "key": "teacher_id",
+          "type": "varchar",
+          "size": 36,
+          "required": true
+        },
+        {
+          "key": "subscription_id",
+          "type": "varchar",
+          "size": 36,
+          "required": true
+        },
+        {
+          "key": "start_at",
+          "type": "datetime",
+          "required": true
+        },
+        {
+          "key": "end_at",
+          "type": "datetime",
+          "required": false
+        },
+        {
+          "key": "is_trial",
+          "type": "boolean",
+          "required": false,
+          "default": false
+        },
+        {
+          "key": "end_reason",
+          "type": "string",
+          "format": "enum",
+          "elements": [
+            "rematch_requested",
+            "teacher_withdrew",
+            "parent_cancelled",
+            "trial_not_continued",
+            "trial_converted",
+            "subscription_ended",
+            "admin"
+          ],
+          "required": false
+        },
+        {
+          "key": "active_key",
+          "type": "varchar",
+          "size": 80,
+          "required": false
+        },
+        {
+          "key": "deleted_at",
+          "type": "datetime",
+          "required": false
+        }
+      ],
+      "indexes": [
+        {
+          "key": "by_child",
+          "type": "key",
+          "columns": [
+            "child_id"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_teacher",
+          "type": "key",
+          "columns": [
+            "teacher_id",
+            "end_at"
+          ],
+          "orders": [
+            "ASC",
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_subscription",
+          "type": "key",
+          "columns": [
+            "subscription_id"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        },
+        {
+          "key": "unique_active_assignment",
+          "type": "unique",
+          "columns": [
+            "active_key"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        }
+      ]
+    },
+    {
+      "$id": "session",
+      "name": "session",
+      "enabled": true,
+      "rowSecurity": true,
+      "$permissions": [],
+      "columns": [
+        {
+          "key": "assignment_id",
+          "type": "varchar",
+          "size": 36,
+          "required": false
+        },
+        {
+          "key": "child_id",
+          "type": "varchar",
+          "size": 36,
+          "required": true
+        },
+        {
+          "key": "teacher_id",
+          "type": "varchar",
+          "size": 36,
+          "required": true
+        },
+        {
+          "key": "subscription_id",
+          "type": "varchar",
+          "size": 36,
+          "required": true
+        },
+        {
+          "key": "home_location_id",
+          "type": "varchar",
+          "size": 36,
+          "required": true
+        },
+        {
+          "key": "substitute_for_session_id",
+          "type": "varchar",
+          "size": 36,
+          "required": false
+        },
+        {
+          "key": "scheduled_start_at",
+          "type": "datetime",
+          "required": true
+        },
+        {
+          "key": "scheduled_end_at",
+          "type": "datetime",
+          "required": true
+        },
+        {
+          "key": "status",
+          "type": "string",
+          "format": "enum",
+          "elements": [
+            "scheduled",
+            "checked_in",
+            "checked_out",
+            "awaiting_confirmation",
+            "confirmed",
+            "disputed",
+            "void",
+            "incomplete",
+            "cancelled_by_parent_late",
+            "cancelled_by_parent_ontime",
+            "cancelled_by_teacher",
+            "no_show"
+          ],
+          "required": true
+        },
+        {
+          "key": "status_changed_at",
+          "type": "datetime",
+          "required": true
+        },
+        {
+          "key": "is_substitute",
+          "type": "boolean",
+          "required": false,
+          "default": false
+        },
+        {
+          "key": "teacher_slot_key",
+          "type": "varchar",
+          "size": 64,
+          "required": false
+        },
+        {
+          "key": "deleted_at",
+          "type": "datetime",
+          "required": false
+        }
+      ],
+      "indexes": [
+        {
+          "key": "by_teacher_day",
+          "type": "key",
+          "columns": [
+            "teacher_id",
+            "scheduled_start_at"
+          ],
+          "orders": [
+            "ASC",
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_child_period",
+          "type": "key",
+          "columns": [
+            "child_id",
+            "scheduled_start_at"
+          ],
+          "orders": [
+            "ASC",
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_assignment",
+          "type": "key",
+          "columns": [
+            "assignment_id"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_subscription",
+          "type": "key",
+          "columns": [
+            "subscription_id"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_home_location",
+          "type": "key",
+          "columns": [
+            "home_location_id"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_substitute_for",
+          "type": "key",
+          "columns": [
+            "substitute_for_session_id"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_status_changed",
+          "type": "key",
+          "columns": [
+            "status",
+            "status_changed_at"
+          ],
+          "orders": [
+            "ASC",
+            "ASC"
+          ]
+        },
+        {
+          "key": "unique_teacher_slot",
+          "type": "unique",
+          "columns": [
+            "teacher_slot_key"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        }
+      ]
+    },
+    {
+      "$id": "session_checkin",
+      "name": "session_checkin",
+      "enabled": true,
+      "rowSecurity": true,
+      "$permissions": [],
+      "columns": [
+        {
+          "key": "session_id",
+          "type": "varchar",
+          "size": 36,
+          "required": true
+        },
+        {
+          "key": "type",
+          "type": "string",
+          "format": "enum",
+          "elements": [
+            "in",
+            "out"
+          ],
+          "required": true
+        },
+        {
+          "key": "lat_e6",
+          "type": "integer",
+          "required": true,
+          "min": -90000000,
+          "max": 90000000
+        },
+        {
+          "key": "lng_e6",
+          "type": "integer",
+          "required": true,
+          "min": -180000000,
+          "max": 180000000
+        },
+        {
+          "key": "accuracy_m",
+          "type": "integer",
+          "required": false,
+          "min": 0,
+          "max": 100000
+        },
+        {
+          "key": "device_time_at",
+          "type": "datetime",
+          "required": true
+        },
+        {
+          "key": "server_time_at",
+          "type": "datetime",
+          "required": true
+        },
+        {
+          "key": "within_geofence",
+          "type": "boolean",
+          "required": false
+        },
+        {
+          "key": "distance_m",
+          "type": "integer",
+          "required": false,
+          "min": 0,
+          "max": 40000000
+        },
+        {
+          "key": "flagged",
+          "type": "boolean",
+          "required": false,
+          "default": false
+        },
+        {
+          "key": "mock_location",
+          "type": "boolean",
+          "required": false
+        }
+      ],
+      "indexes": [
+        {
+          "key": "unique_session_type",
+          "type": "unique",
+          "columns": [
+            "session_id",
+            "type"
+          ],
+          "orders": [
+            "ASC",
+            "ASC"
+          ]
+        }
+      ]
+    },
+    {
+      "$id": "session_confirmation",
+      "name": "session_confirmation",
+      "enabled": true,
+      "rowSecurity": true,
+      "$permissions": [],
+      "columns": [
+        {
+          "key": "session_id",
+          "type": "varchar",
+          "size": 36,
+          "required": true
+        },
+        {
+          "key": "parent_response",
+          "type": "string",
+          "format": "enum",
+          "elements": [
+            "confirmed",
+            "disputed"
+          ],
+          "required": true
+        },
+        {
+          "key": "responded_at",
+          "type": "datetime",
+          "required": false
+        },
+        {
+          "key": "auto_confirmed",
+          "type": "boolean",
+          "required": false,
+          "default": false
+        },
+        {
+          "key": "responded_by_id",
+          "type": "varchar",
+          "size": 36,
+          "required": false
+        }
+      ],
+      "indexes": [
+        {
+          "key": "unique_session",
+          "type": "unique",
+          "columns": [
+            "session_id"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_responder",
+          "type": "key",
+          "columns": [
+            "responded_by_id"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        }
+      ]
+    },
+    {
+      "$id": "cancellation",
+      "name": "cancellation",
+      "enabled": true,
+      "rowSecurity": true,
+      "$permissions": [],
+      "columns": [
+        {
+          "key": "session_id",
+          "type": "varchar",
+          "size": 36,
+          "required": true
+        },
+        {
+          "key": "by_role",
+          "type": "string",
+          "format": "enum",
+          "elements": [
+            "parent",
+            "teacher",
+            "admin"
+          ],
+          "required": true
+        },
+        {
+          "key": "cancelled_by_id",
+          "type": "varchar",
+          "size": 36,
+          "required": false
+        },
+        {
+          "key": "reason",
+          "type": "varchar",
+          "size": 500,
+          "required": false
+        },
+        {
+          "key": "is_late",
+          "type": "boolean",
+          "required": false,
+          "default": false
+        },
+        {
+          "key": "cancelled_at",
+          "type": "datetime",
+          "required": true
+        }
+      ],
+      "indexes": [
+        {
+          "key": "unique_session",
+          "type": "unique",
+          "columns": [
+            "session_id"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_cancelled_by",
+          "type": "key",
+          "columns": [
+            "cancelled_by_id"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        }
+      ]
+    },
+    {
+      "$id": "dispute",
+      "name": "dispute",
+      "enabled": true,
+      "rowSecurity": true,
+      "$permissions": [],
+      "columns": [
+        {
+          "key": "session_id",
+          "type": "varchar",
+          "size": 36,
+          "required": true
+        },
+        {
+          "key": "raised_by_id",
+          "type": "varchar",
+          "size": 36,
+          "required": true
+        },
+        {
+          "key": "reason",
+          "type": "varchar",
+          "size": 1000,
+          "required": true
+        },
+        {
+          "key": "status",
+          "type": "string",
+          "format": "enum",
+          "elements": [
+            "open",
+            "under_review",
+            "resolved"
+          ],
+          "required": false,
+          "default": "open"
+        },
+        {
+          "key": "resolution",
+          "type": "string",
+          "format": "enum",
+          "elements": [
+            "confirmed",
+            "void"
+          ],
+          "required": false
+        },
+        {
+          "key": "resolution_note",
+          "type": "varchar",
+          "size": 1000,
+          "required": false
+        },
+        {
+          "key": "resolved_by_id",
+          "type": "varchar",
+          "size": 36,
+          "required": false
+        },
+        {
+          "key": "resolved_at",
+          "type": "datetime",
+          "required": false
+        },
+        {
+          "key": "open_key",
+          "type": "varchar",
+          "size": 36,
+          "required": false
+        },
+        {
+          "key": "deleted_at",
+          "type": "datetime",
+          "required": false
+        }
+      ],
+      "indexes": [
+        {
+          "key": "by_session",
+          "type": "key",
+          "columns": [
+            "session_id"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_raised_by",
+          "type": "key",
+          "columns": [
+            "raised_by_id"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_resolved_by",
+          "type": "key",
+          "columns": [
+            "resolved_by_id"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_status",
+          "type": "key",
+          "columns": [
+            "status"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        },
+        {
+          "key": "unique_open_dispute",
+          "type": "unique",
+          "columns": [
+            "open_key"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        }
+      ]
+    }
+  ],
+  "meta": {
+    "plan": {
+      "deletion": "soft",
+      "note": "price_ugx is integer UGX per billing period (SR 5.4/5.5), currency kept for future multi-currency. active_key = '<curriculum_id>:<sessions_per_week>' while active, null when inactive or soft-deleted: one active plan per curriculum and frequency; price changes = deactivate and add a new plan."
+    },
+    "subscription": {
+      "deletion": "soft",
+      "note": "One per child and plan; parent_id denormalised for 'my subscriptions' lists. Status machine pending_payment/matching/active/paused/past_due/cancelled is enforced by the core service. period_* are UTC instants of the billing period. preferred_slots is JSON text [{weekday 1-7, start_minute, end_minute}] in Africa/Kampala wall-clock minutes (same convention as availability_slot). No unique (child) because a child may hold several subscriptions; duplicates are a core-service check."
+    },
+    "match_request": {
+      "deletion": "soft",
+      "note": "type new|rematch|substitute (SR 7.2/7.3); session_id is set for substitute requests. attempts counts offers made; after 5 failures status becomes admin_queue. Teachers already rematched away from a child are derived from assignments with end_reason rematch_requested."
+    },
+    "match_offer": {
+      "deletion": "soft",
+      "note": "Sequential offers (SR 7.2). rank is the position, rank_score is integer basis points 0-10000 (no floats), score_breakdown is JSON text {factor: basis points, weights_version} for transparency and tuning. active_key = '<match_request_id>:<teacher_id>' while response is pending, null once resolved or soft-deleted: unique index = one active offer per teacher per request, offers are idempotent."
+    },
+    "assignment": {
+      "deletion": "soft",
+      "note": "Current teacher-child pairing. start_at/end_at UTC; is_trial marks a trial pairing; end_reason set when it ends. active_key = '<child_id>:<subscription_id>' while end_at is null and not soft-deleted: one active assignment per child per subscription (a trial counts; converting ends the trial with end_reason trial_converted and creates the regular one)."
+    },
+    "session": {
+      "deletion": "soft",
+      "note": "Status is an enum of exactly the SR 7.4 states; allowed transitions are enforced by the core service, not the schema (reference table: appwrite/session_rules.py ALLOWED_TRANSITIONS). Overlap rule: Appwrite has no exclusion constraint, so the core service checks the teacher's sessions for time overlap in the write path (session_rules.create_session) and the unique index on teacher_slot_key ('<teacher_id>|<UTC start>' while the session holds the slot, null for cancelled/no_show/void/soft-deleted) is the backstop for concurrent requests with the same start. Deviation from the ticket wording: derived key instead of raw (teacher_id, scheduled_start_at) so a cancelled session does not block re-booking the slot (soft-delete/unique convention). Substitute: a NEW session row for the same slot, is_substitute true, substitute_for_session_id = the session the teacher cancelled, assignment_id null. Indexes: by_teacher_day (teacher sessions by day), by_child_period (child sessions by period), by_status_changed (auto-confirmation job). Residual risk: the unique teacher_slot_key only catches the same start; two overlapping sessions with different starts can both insert, so the core service (W01 #97 / S01 #93) must serialise writes per teacher or re-check after insert."
+    },
+    "session_checkin": {
+      "deletion": "immutable",
+      "note": "Insert-only evidence. lat_e6/lng_e6 integer micro-degrees (M01 convention), accuracy_m metres, device_time_at is the device clock, server_time_at is authoritative (VRF), distance_m to the home pin computed server-side, within_geofence null when not computed, flagged requires parent confirmation to count. Unique (session_id, type): one check-in and one check-out per session."
+    },
+    "session_confirmation": {
+      "deletion": "immutable",
+      "note": "Parent response after check-out; auto_confirmed true when the hourly job confirms after 48 h without dispute (responded_by_id then null). One per session."
+    },
+    "cancellation": {
+      "deletion": "immutable",
+      "note": "One per cancelled session. by_role parent|teacher|admin; is_late decides cancelled_by_parent_late vs cancelled_by_parent_ontime on the session (threshold is a core-service setting)."
+    },
+    "dispute": {
+      "deletion": "soft",
+      "note": "Raised by the parent after check-out (SR 7.4 disputed -> confirmed|void). open_key = session_id while status is not resolved, null after resolution or soft-delete: one open dispute per session."
+    }
+  },
+  "relations": [
+    {
+      "from": "plan.curriculum_id",
+      "to": "curriculum",
+      "deferred": "catalogue tables arrive with the curriculum ticket"
+    },
+    {
+      "from": "subscription.child_id",
+      "to": "child"
+    },
+    {
+      "from": "subscription.parent_id",
+      "to": "parent_profile"
+    },
+    {
+      "from": "subscription.plan_id",
+      "to": "plan"
+    },
+    {
+      "from": "match_request.subscription_id",
+      "to": "subscription"
+    },
+    {
+      "from": "match_request.session_id",
+      "to": "session"
+    },
+    {
+      "from": "match_offer.match_request_id",
+      "to": "match_request"
+    },
+    {
+      "from": "match_offer.teacher_id",
+      "to": "teacher_profile"
+    },
+    {
+      "from": "assignment.child_id",
+      "to": "child"
+    },
+    {
+      "from": "assignment.teacher_id",
+      "to": "teacher_profile"
+    },
+    {
+      "from": "assignment.subscription_id",
+      "to": "subscription"
+    },
+    {
+      "from": "session.assignment_id",
+      "to": "assignment"
+    },
+    {
+      "from": "session.child_id",
+      "to": "child"
+    },
+    {
+      "from": "session.teacher_id",
+      "to": "teacher_profile"
+    },
+    {
+      "from": "session.subscription_id",
+      "to": "subscription"
+    },
+    {
+      "from": "session.home_location_id",
+      "to": "home_location"
+    },
+    {
+      "from": "session.substitute_for_session_id",
+      "to": "session"
+    },
+    {
+      "from": "session_checkin.session_id",
+      "to": "session"
+    },
+    {
+      "from": "session_confirmation.session_id",
+      "to": "session"
+    },
+    {
+      "from": "session_confirmation.responded_by_id",
+      "to": "user_profile"
+    },
+    {
+      "from": "cancellation.session_id",
+      "to": "session"
+    },
+    {
+      "from": "cancellation.cancelled_by_id",
+      "to": "user_profile"
+    },
+    {
+      "from": "dispute.session_id",
+      "to": "session"
+    },
+    {
+      "from": "dispute.raised_by_id",
+      "to": "user_profile"
+    },
+    {
+      "from": "dispute.resolved_by_id",
+      "to": "user_profile"
+    }
+  ]
+}

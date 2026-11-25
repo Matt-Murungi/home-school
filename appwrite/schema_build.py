@@ -49,6 +49,14 @@ TYPES = {"varchar", "text", "integer", "boolean", "datetime", "string"}  # strin
 INDEX_TYPES = {"key", "unique", "fulltext"}
 DELETION = {"soft", "history", "immutable", "join", "hard"}
 MONEY_WORDS = re.compile(r"(amount|price|rate|fee|cost|balance|ugx|salary|payout)")
+# Soft-delete vs unique rule (M02, convention for ALL domains; see README "Soft delete and unique values"):
+# on a `soft` table every unique index must be over derived, optional `*_key` columns, which the core service sets
+# to NULL when it soft-deletes the row (NULLs never collide), so a soft-deleted row cannot block re-creation.
+# M01 tables created before the rule; each needs the derived-key treatment in a follow-up (not done here):
+SOFT_UNIQUE_LEGACY = frozenset({
+    ("user_profile", "unique_phone"), ("user_profile", "unique_email"), ("parent_profile", "unique_user"),
+    ("zone", "unique_name"), ("teacher_profile", "unique_user"), ("teacher_approval", "unique_teacher_curriculum_level"),
+})
 FORBIDDEN_PERMS = re.compile(r'^(create|update|delete|write)\(|\((\\?")?(any|users)(\\?")?\)')
 
 
@@ -182,7 +190,48 @@ def validate(domains: list[dict]) -> list[str]:
         for r in d.get("relations", []):
             errors += _validate_relation(r, all_tables)
         errors += _validate_fk_like_columns(d)
+    errors += soft_unique_violations(domains)
     return errors
+
+
+def soft_unique_violations(domains: list[dict], legacy=None) -> list[str]:
+    """Unique indexes of `soft` tables must be over optional `*_key` columns (see SOFT_UNIQUE_LEGACY for M01)."""
+    e = []
+    legacy = SOFT_UNIQUE_LEGACY if legacy is None else legacy
+    for d in domains:
+        for t in d["tables"]:
+            if d.get("meta", {}).get(t["$id"], {}).get("deletion") != "soft":
+                continue
+            by_key = {c["key"]: c for c in t["columns"]}
+            for i in t["indexes"]:
+                if i["type"] != "unique" or (t["$id"], i["key"]) in legacy:
+                    continue
+                for c in i["columns"]:
+                    col = by_key.get(c)
+                    if not c.endswith("_key") or (col and col.get("required")):
+                        e.append(f"{t['$id']}.{i['key']}: unique index on soft-delete table must use optional derived *_key columns "
+                                 f"(soft-deleted rows would block re-creation); {c} is not")
+    return e
+
+
+def soft_delete_patch(table: dict, now: str) -> dict:
+    """The update the core service writes to soft-delete a row: deleted_at plus every unique `*_key` column set to null."""
+    patch = {"deleted_at": now}
+    for i in table["indexes"]:
+        if i["type"] == "unique":
+            patch.update({c: None for c in i["columns"] if c.endswith("_key")})
+    return patch
+
+
+def soft_restore_patch(row: dict, with_keys) -> dict:
+    """Mirror of soft_delete_patch: the update that restores a soft-deleted row. `with_keys` is the table's key builder
+    (e.g. session_rules.with_assignment_keys). Every derived `*_key` column is recomputed from the restored row, so the
+    unique index answers 409 when the value was taken meanwhile. A bare `{"deleted_at": None}` patch is forbidden
+    (tests scan appwrite/ and services/core for it)."""
+    rebuilt = with_keys({**row, "deleted_at": None})
+    patch = {"deleted_at": None}
+    patch.update({k: v for k, v in rebuilt.items() if k.endswith("_key")})
+    return patch
 
 
 def _validate_fk_like_columns(d: dict) -> list[str]:
