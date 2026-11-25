@@ -16,6 +16,7 @@ void main() {
         env: 'staging',
         endpoint: 'https://s.example/v1',
         projectId: 'p',
+        coreUrl: 'https://core.example',
       ).env,
       AppEnv.staging,
     );
@@ -24,6 +25,7 @@ void main() {
         env: 'prod',
         endpoint: 'https://p.example/v1',
         projectId: 'p',
+        coreUrl: 'https://core.example',
       ).env,
       AppEnv.prod,
     );
@@ -56,6 +58,38 @@ void main() {
         projectId: '',
       ),
       throwsFormatException,
+    );
+  });
+
+  test('core service URL: https outside dev, trailing slash trimmed (A01)', () {
+    expect(
+      AppConfig.parse(
+        env: 'staging',
+        endpoint: 'https://x/v1',
+        projectId: 'p',
+        coreUrl: 'https://core.example/',
+      ).coreUrl,
+      'https://core.example',
+    );
+    for (final bad in ['', 'http://core.example']) {
+      expect(
+        () => AppConfig.parse(
+          env: 'prod',
+          endpoint: 'https://x/v1',
+          projectId: 'p',
+          coreUrl: bad,
+        ),
+        throwsFormatException,
+      );
+    }
+    expect(
+      AppConfig.parse(
+        env: 'dev',
+        endpoint: '',
+        projectId: '',
+        coreUrl: 'http://10.0.2.2:8080',
+      ).coreUrl,
+      'http://10.0.2.2:8080',
     );
   });
 

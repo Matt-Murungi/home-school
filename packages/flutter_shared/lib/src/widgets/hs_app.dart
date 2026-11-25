@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../l10n/gen/hs_strings.dart';
 import '../theme/hs_theme.dart';
+import 'session_refresher.dart';
 
 /// MaterialApp.router wired with theme and localisation; used by both apps.
 class HsApp extends StatelessWidget {
@@ -14,17 +15,19 @@ class HsApp extends StatelessWidget {
   final TransitionBuilder? builder;
 
   @override
-  Widget build(BuildContext context) => MaterialApp.router(
-    onGenerateTitle: (c) => HsStrings.of(c).appName,
-    theme: buildHsTheme(),
-    routerConfig: router,
-    builder: builder,
-    localizationsDelegates: const [
-      HsStrings.delegate,
-      GlobalMaterialLocalizations.delegate,
-      GlobalWidgetsLocalizations.delegate,
-      GlobalCupertinoLocalizations.delegate,
-    ],
-    supportedLocales: HsStrings.supportedLocales,
+  Widget build(BuildContext context) => SessionRefresher(
+    child: MaterialApp.router(
+      onGenerateTitle: (c) => HsStrings.of(c).appName,
+      theme: buildHsTheme(),
+      routerConfig: router,
+      builder: builder,
+      localizationsDelegates: const [
+        HsStrings.delegate,
+        GlobalMaterialLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+      ],
+      supportedLocales: HsStrings.supportedLocales,
+    ),
   );
 }

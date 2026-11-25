@@ -11,10 +11,14 @@ class WelcomeScreen extends ConsumerWidget {
     super.key,
     required this.body,
     required this.onGetStarted,
+    this.onSignIn,
   });
 
   final String body;
   final VoidCallback onGetStarted;
+
+  /// P-01 "I already have an account" (same phone flow); hidden when null.
+  final VoidCallback? onSignIn;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -49,6 +53,14 @@ class WelcomeScreen extends ConsumerWidget {
                     onPressed: onGetStarted,
                     child: Text(s.getStarted),
                   ),
+                  if (onSignIn != null) ...[
+                    const SizedBox(height: HsSpace.sm),
+                    TextButton(
+                      key: const Key('welcome-sign-in'),
+                      onPressed: onSignIn,
+                      child: Text(s.signInExisting),
+                    ),
+                  ],
                   const SizedBox(height: HsSpace.lg),
                   Text(
                     s.environmentLabel(env.name),
