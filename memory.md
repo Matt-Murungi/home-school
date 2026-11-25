@@ -59,6 +59,7 @@ Reviewer writes: commands run, results, criterion-by-criterion verdict, findings
 | spikes/admin-appwrite | `cd spikes/admin-appwrite && npm ci && npx tsc --noEmit && npm run lint && npm run build` |
 | spikes/jobs-demo | `cd spikes/jobs-demo && uv run pytest -q` |
 | docs/adr (ADR lint; reuse for every decision ticket) | `python3 docs/adr/check-adrs.py` (all ADRs) or `python3 docs/adr/check-adrs.py docs/adr/00NN-x.md`. Needs `# ADR NNNN — title` (number = file name), `- **Status:**` (Proposed/Accepted/Superseded/Deprecated), `- **Date:**`, `- **Ticket:**`, and `## Context`, `## Decision`, `## Consequences`. Exit 1 on failure. Stdlib only. |
+| root tooling (F01) | `make test` (every implemented package per `packages.json`; planned ones skip with a message; `HS_STRICT=1` fails on missing tools, `HS_SKIP=id,id`) and `make lint` (layout guard + secret scan + package lint). F01 tests alone: `python3 -m unittest discover -s scripts/tests -v`. Stdlib only. |
 
 (Add a row for each new package.)
 
@@ -135,11 +136,34 @@ Suggested order: E00 decisions (D01–D03, D05; D04, D06 later/owner) → E01 fo
 | Test email from staging lands in inbox for 3 providers | BLOCKED on owner (domain, Resend account, DNS); procedure in ADR |
 | ADR merged / linked from dependent tickets | After review; link from #127 and #44 at merge |
 
+### F01 · Monorepo structure, tooling and contribution rules (#27)
+- Status: **ready-for-review** (branch `f01-monorepo`, commit 537ec1b, pushed, no PR). Blocker #21 (D01) was merged. Partly blocked on owner: branch protection (see below).
+- Built: layout dirs each with README (`## Purpose`, `## Test command`): apps/parent, apps/teacher, apps/admin, packages/flutter_shared, services/core, appwrite, docs (+`docs/product` placeholder), scripts. `packages.json` manifest (implemented vs planned + ticket, requires, test, lint); `scripts/run_packages.py` (runs manifest commands; planned -> `SKIP ... not implemented yet (planned for F0x)`; missing tool -> `SKIP ... tool missing`; `HS_STRICT=1` makes that fail); `scripts/check_layout.py` (layout guard); `scripts/secret_scan.py` (+ `.gitleaks.toml`); `Makefile` (test, lint, layout, secrets, hooks, tools, help); `.editorconfig`; `.pre-commit-config.yaml` (dart format, ruff, prettier, eslint, gitleaks, make lint); `CLAUDE.md`, `CONTRIBUTING.md`; `.github/CODEOWNERS` (`* @Matt-Murungi`), `.github/pull_request_template.md` (Closes #, 🤖 line); root README layout. `spikes/` untouched; both spikes are in the manifest as implemented (admin spike's `make test` does `npm ci` + tsc + lint + build, needs network).
+- Tests: `scripts/tests/test_layout.py` (23 tests). Written before the code; I did not capture a separate red run. Result on branch: `python3 -m unittest discover -s scripts/tests` OK 23; `make lint` OK; full `make test` exit 0 (4 ran: docs ADR lint, root-tests, both spikes; 6 planned skipped with messages), in a fresh worktree (spikes installed from scratch).
+- Tools on this machine: flutter, dart, node, npm, uv, make, python3 present; pre-commit and gitleaks missing (not installed; hooks config is untested here, `make lint` covers the same checks).
+
+| Criterion / edge case | Evidence |
+|---|---|
+| Folder layout with README per package | `Layout.test_directories_exist_with_readme`, `test_docs_subfolders`, `test_manifest_covers_every_package`, `test_root_readme_lists_layout` |
+| README states purpose and test command | `test_each_readme_states_purpose_and_test_command` |
+| CLAUDE.md: stack, commands, branch/PR rules, positioning copy rule, agent rules (tests-first, adapters/fakes, secrets, read-only, UGX, UTC/Kampala, ADR caps, memory.md) | `Docs.test_claude_md`, `test_contributing` (checks each rule phrase present) |
+| Pre-commit hooks per language | `test_precommit_has_each_language` (config content only; hooks not executed, pre-commit not installed) |
+| Branch protection on main | OWNER-BLOCKED, see below |
+| Edge: package outside layout -> lint fails clearly | `LayoutGuard.test_unknown_top_level_dir_fails`, `test_unregistered_package_under_apps_fails`, `test_missing_readme_fails`, `test_repo_passes` (`make lint` runs the guard) |
+| Fresh clone runs every package's test command | `Tooling.test_make_test_and_lint_exit_zero`; planned packages skip honestly (`test_planned_packages_skip_clearly`); missing tools degrade (`test_missing_tool_degrades_with_message`); failure propagates (`test_failing_package_fails_run`); full run done by hand |
+| Secret scan flags planted secret, repo clean, never echoes the value | `SecretScan.test_flags_planted_secrets`, `test_clean_dir_and_placeholders_pass`, `test_repo_is_clean` |
+| CODEOWNERS, PR template/issue-link | `test_codeowners_owner`, `test_pr_template` |
+| CI green / staging deploy | Out of scope here: CI is F07 (#33). Make F07 run `HS_STRICT=1 make test && make lint`. |
+
+- Deviations: no CI workflow (F07). Planned packages have no placeholder test (honest skip instead). `gitleaks`/`pre-commit` not run locally.
+- Follow-ups: each scaffolding ticket (F02 appwrite, F03 core, F05 apps/shared, F06 admin) flips its `packages.json` status to `implemented` and adds its row to "How to run tests"; add a lint command for the spikes only if wanted.
+
 ## Blocked on owner (credentials / deployments / accounts)
 
 - D02: staging demo of the job tick (needs deployed core service + non-live Appwrite project).
 - D03: Fly.io account/org and billing; throwaway Fly app to measure Kampala to `fra`; mobile-network latency (MTN, Airtel) to Appwrite and Fly; a non-live Appwrite project (`hs-staging`, Frankfurt) with a scoped API key; Appwrite plan/cost confirmation; lawyer/DPO review of the DP-7 note (ADR 0012).
 - D05: sending domain; Resend account (Free ok for staging); DNS access to add SPF/DKIM/MX/DMARC records for `mail.<domain>`; Resend API key + webhook secret into staging Fly secrets; DPA signed (DP-9); then the inbox test (Gmail, Yahoo, a Ugandan host). Exact steps: owner checklist in ADR 0005.
+- F01: GitHub branch protection on `main` (Settings > Branches > rule for `main`): require a pull request before merging (1 approval can stay 0 because the reviewer agent posts comment reviews under the owner's account; enable "Dismiss stale approvals" off), require status checks to pass and branch up to date, the checks being the F07 (#33) job names (suggest `lint` and `test`, running `make lint` and `HS_STRICT=1 make test`), restrict force-push and deletion, and allow squash merge only. Optionally a CODEOWNERS review requirement and a GitHub team in `.github/CODEOWNERS` (currently `@Matt-Murungi`). Can only be applied once F07 CI exists.
 
 ## Questions for the owner (collected; ask at the end)
 
@@ -167,3 +191,4 @@ Suggested order: E00 decisions (D01–D03, D05; D04, D06 later/owner) → E01 fo
 - 2026-11-25: D03 round 2 reviewed, PR #158 merged, status blocked-foundation-merged.
 - 2026-11-25: D05 built (ADR 0005), ready-for-review on `d05-email-adr`.
 - 2026-11-25: D05 reviewed, PR #159 merged, status blocked-foundation-merged.
+- 2026-11-25: F01 built, ready-for-review on `f01-monorepo`.
