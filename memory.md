@@ -59,15 +59,10 @@ Suggested order: E00 decisions (D01–D03, D05; D04, D06 later/owner) → E01 fo
 - Open: owner sign-off on the ADR (status "Proposed"); spike's table-timing step needs a throwaway project to re-run.
 
 ### D02 · Job runner (#22)
-- Status: **ready-for-review** (branch `d02-job-runner`, fix commit a82b4db; main agent 2026-11-25, round 2)
-- Round 1 reviewer verdict: changes-requested (findings 1-5 below). Round 2 fixes:
-  1. **Stranded run (bug) fixed.** `Runner._claim` now treats a `job_attempt` row older than LEASE whose run never advanced as an orphaned claim and takes over with a next-generation attempt ID `(run, chunk, attempt, generation)`; still an atomic create so one taker wins. Tests: `test_claim_orphaned_by_crash_between_the_two_writes_is_recovered_once`, `test_orphan_takeover_is_atomic_across_concurrent_ticks`. Verified both FAIL on the previous runner and pass now.
-  2. Added `test_lease_expiry_on_final_attempt_fails_and_alerts_without_rerunning`; ADR test count/table corrected (now 14 tests, table lists all).
-  3. Concurrency test strengthened: `BarrierStore` makes 8 threads take the same snapshot then race; handler sleeps 5 ms; asserts exactly 7 effects and `lost_claims == 7*(8-1)`. Ran 25x: 25/25 pass.
-  4. ADR now says the live `job_run`/`job_attempt` columns and `by_status_run_at` index come from a read-only inspection on 25 Nov and **must be re-verified in F04**.
-  5. Cheap minor items done: non-ASCII signature -> 401 (bytes compare; test added); `tick` runs in a threadpool. Remaining minor items recorded as F04 follow-ups in the ADR (materialise watermark, indexed claimable query).
-- Test command: `cd spikes/jobs-demo && uv run pytest -q` -> 14 passed.
-- Acceptance: ADR + demo meet the criteria except "hello-world job on staging" which is **Blocked on owner** (needs F03 + F02 + non-live Appwrite project). Reviewer accepted that for a decision ADR plus tested demo.
+- Status: **merged** (PR #157, squash commit 9eab5fc; issue #22 closed)
+- Round 2 review: in a clean worktree `uv run pytest -q` -> 14 passed; `-k "concurrent or atomic"` x25 -> 25/25. Both orphan tests fail on ad19ad4 and pass now. Own repros (orphan younger than lease, two generations, orphan then handler failure then retry, orphan on attempt 2, chunk 1 after Continue, final-attempt orphan) all run the handler exactly once. All round-1 findings resolved.
+- Acceptance: all met except staging hello-world (Blocked on owner).
+- Follow-ups for F04: ADR test table omits `test_signed_tick_runs_due_jobs` (13 of 14 listed); a claimer whose `job_run` update stalls longer than the 5 min lease could double-run (late write after takeover) - verify the attempt row after the update or use a conditional-style check; re-verify live `job_run`/`job_attempt` columns against F02 schema; materialise watermark; indexed claimable query.
 - Open: owner sign-off on ADR 0002; check Appwrite plan allows ~43,000 function runs/month.
 
 ## Blocked on owner (credentials / deployments / accounts)
@@ -84,5 +79,5 @@ Suggested order: E00 decisions (D01–D03, D05; D04, D06 later/owner) → E01 fo
 
 ## Session log
 
-- 2026-11-25: D01 merged (PR #156). D02 round 1 changes-requested, round 2 ready-for-review.
+- 2026-11-25: D01 merged (PR #156). D02 merged (PR #157) after round 2.
 - 2026-11-25: Repo bootstrapped; backlog (135 tickets) imported and updated for Appwrite; D01, D02 built; two-agent workflow agreed.
