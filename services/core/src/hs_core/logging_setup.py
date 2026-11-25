@@ -8,10 +8,23 @@ import sys
 from contextvars import ContextVar
 from datetime import UTC, datetime
 
-from .observability.scrub import scrub_text
+from .observability.scrub import FILTERED, _sensitive, scrub_data, scrub_text
 
 request_id_var: ContextVar[str] = ContextVar("request_id", default="-")
 _RESERVED = set(logging.LogRecord("", 0, "", 0, "", (), None).__dict__) | {"message", "asctime"}
+
+
+def _safe_extra(key: str, value: object) -> object:
+    """`extra=` fields are scrubbed like event data: sensitive keys masked, text patterns applied.
+
+    Fail closed: anything that cannot be scrubbed within the caps is replaced, never logged raw.
+    """
+    if _sensitive(key):
+        return FILTERED
+    try:
+        return scrub_data(value)
+    except Exception:  # noqa: BLE001
+        return FILTERED
 
 
 class JsonFormatter(logging.Formatter):
@@ -25,7 +38,7 @@ class JsonFormatter(logging.Formatter):
         }
         for k, v in record.__dict__.items():
             if k not in _RESERVED and k not in d:
-                d[k] = v
+                d[k] = _safe_extra(k, v)
         if record.exc_info:
             d["exc"] = scrub_text(self.formatException(record.exc_info))
         return json.dumps(d, default=str)

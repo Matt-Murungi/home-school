@@ -5,7 +5,8 @@ auth headers, local variables, user email/IP/name, phone numbers, emails or bear
 look personal are masked at any depth; free text is masked by pattern. Names and addresses cannot be
 found reliably in free text, so the rules are: never put them in exception messages (use ids) and
 rely on key masking + dropped request bodies + dropped frame variables. If scrubbing fails the
-event is dropped, never sent raw.
+event is dropped, never sent raw. Structures are walked with cycle detection and node/size caps
+(cap exhaustion = scrub failure = drop). Log `extra=` fields get the same treatment (logging_setup).
 
 The same rules are mirrored for the Flutter apps and the admin app (docs/ops/integration.md).
 """
@@ -55,22 +56,69 @@ SENSITIVE_KEYS = (
 _EXACT_KEYS = {"name", "username", "nin", "dob"}
 # Request keys dropped entirely.
 _DROP_REQUEST = ("data", "cookies", "env")
+
+# Resource caps: one event may not stall the request path or balloon.
+MAX_NODES = 50_000  # containers + scalars visited per scrub call
+MAX_CHARS = 1_000_000  # total characters of output strings per scrub call
+MAX_TEXT = 256_000  # a single string is truncated beyond this
+MAX_DEPTH = 30
+CIRCULAR = "[Circular]"
+
 _JWT = re.compile(r"\beyJ[A-Za-z0-9_-]{5,}\.[A-Za-z0-9_-]{5,}\.[A-Za-z0-9_-]*")
 _BEARER = re.compile(r"(?i)\b(bearer|basic)\s+[A-Za-z0-9._~+/=-]{6,}")
-_EMAIL = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+")
-# +CC numbers, Uganda national (07xx/03xx) and 256-prefixed numbers, with space/dash/dot separators.
+# Header lines: the whole value up to end of line is a secret.
+_HEADER_LINE = re.compile(
+    r"(?i)\b(set-cookie|cookie|proxy-authorization|authorization|x-appwrite-key"
+    r"|x-appwrite-jwt|x-appwrite-session|x-api-key)([ \t]*:[ \t]*)[^\r\n]+"
+)
+_APPWRITE_KEY = re.compile(r"(?i)\bstandard_[0-9a-f]{6,}")
+# Names whose value is a secret. `key` only as a whole word or `_key`/`-key` suffix.
+_SECRET_NAME = (
+    r"[\w.-]*(?:token|secret|passw(?:or)?d|pwd|apikey|api[_-]key|jwt|session|signature)[\w.-]*"
+    r"|(?:[\w.]*[_-])?key"
+)
+# name=value (query strings, forms, env style); value ends at whitespace/&/;/quote/bracket.
+_KV_EQ = re.compile(
+    r"(?i)(?<![\w.-])(" + _SECRET_NAME + r")(\s*=\s*)(\"[^\"]*\"|'[^']*'|[^\s&;,\"')\]}]+)"
+)
+# "name": "value" (JSON / dict repr inside strings). Quoted name required.
+_KV_JSON = re.compile(
+    r"(?i)([\"'])(" + _SECRET_NAME + r")\1(\s*:\s*)(\"[^\"]*\"|'[^']*'|[^\s,}\]]+)"
+)
+# Emails, also percent-encoded (`%40`, `%2E`). The lookbehind keeps matching linear.
+_EMAIL = re.compile(
+    r"(?<![A-Za-z0-9._%+-])[A-Za-z0-9._%+-]+(?:@|%40)[A-Za-z0-9-]+(?:(?:\.|%2[Ee])[A-Za-z0-9-]+)+"
+)
+# Phones. SEP = space/dot/dash/plus/%20. Forms: +CC (with optional "(0)" trunk, optional brackets),
+# bare 256..., Uganda national 07xx/03xx. The lookbehind stops matches starting mid-number.
+_SEP = r"(?:[\s.+-]|%20)?"
 _PHONE = re.compile(
-    r"(?<![\w.])(?:\+\d{1,3}[\s.-]?\(?\d{2,4}\)?(?:[\s.-]?\d{2,4}){2,3}"
-    r"|256[\s.-]?\d{2,3}(?:[\s.-]?\d{3}){2}"
-    r"|0[37]\d{2}(?:[\s.-]?\d{3}){2})(?!\w)"
+    r"(?:\((?=(?:\+|%2[Bb])\d{1,3}\))|(?<![\w.]))(?:\+|%2[Bb])\d{1,3}\)?"
+    + _SEP
+    + r"(?:\(0\)"
+    + _SEP
+    + r")?"
+    r"\(?\d{2,4}\)?(?:" + _SEP + r"\d{2,4}){2,3}(?!\w)"
+    r"|(?<![\w.])256" + _SEP + r"(?:\(0\)" + _SEP + r")?\d{2,3}(?:" + _SEP + r"\d{3}){2}(?!\w)"
+    r"|(?<![\w.])0[37]\d{2}(?:" + _SEP + r"\d{3}){2}(?!\w)"
 )
 
 
 def scrub_text(s: str) -> str:
+    if len(s) > MAX_TEXT:
+        s = s[:MAX_TEXT] + "[Truncated]"
+    s = _HEADER_LINE.sub(lambda m: f"{m.group(1)}{m.group(2)}{FILTERED}", s)
     s = _JWT.sub(FILTERED, s)
     s = _BEARER.sub(lambda m: f"{m.group(1)} {FILTERED}", s)
+    s = _APPWRITE_KEY.sub(FILTERED, s)
+    s = _KV_EQ.sub(lambda m: f"{m.group(1)}{m.group(2)}{FILTERED}", s)
+    s = _KV_JSON.sub(lambda m: f'{m.group(1)}{m.group(2)}{m.group(1)}{m.group(3)}"{FILTERED}"', s)
     s = _EMAIL.sub(FILTERED, s)
     return _PHONE.sub(FILTERED, s)
+
+
+def _decode(b: bytes | bytearray | memoryview) -> str:
+    return bytes(b[:MAX_TEXT]).decode("utf-8", errors="replace")
 
 
 def _sensitive(key: str) -> bool:
@@ -82,19 +130,78 @@ def _sensitive(key: str) -> bool:
     return any(w in k for w in SENSITIVE_KEYS if len(w) > 3)
 
 
-def _walk(v: Any, depth: int = 0) -> Any:
-    if depth > 30:
+class ScrubLimitExceeded(Exception):
+    """Structure too large or too branched to scrub within the caps (callers fail closed)."""
+
+
+class _State:
+    __slots__ = ("nodes", "chars")
+
+    def __init__(self) -> None:
+        self.nodes = 0
+        self.chars = 0
+
+    def text(self, s: str) -> str:
+        if self.chars + min(len(s), MAX_TEXT) > MAX_CHARS:
+            raise ScrubLimitExceeded("output size cap")  # before spending regex time
+        out = scrub_text(s)
+        self.chars += len(out)
+        if self.chars > MAX_CHARS:
+            raise ScrubLimitExceeded("output size cap")
+        return out
+
+
+def _key(k: Any, st: _State) -> Any:
+    if isinstance(k, (bytes, bytearray)):
+        k = _decode(k)
+    if isinstance(k, str):
+        return st.text(k)
+    if k is None or isinstance(k, (int, float, bool)):
+        return k
+    return st.text(str(k))
+
+
+def _walk(v: Any, depth: int = 0, st: _State | None = None, path: set[int] | None = None) -> Any:
+    st = st or _State()
+    path = set() if path is None else path
+    st.nodes += 1
+    if st.nodes > MAX_NODES:
+        raise ScrubLimitExceeded("node cap")
+    if depth > MAX_DEPTH:
         return FILTERED
+    if v is None or isinstance(v, (bool, int, float)):
+        return v
     if isinstance(v, str):
-        return scrub_text(v)
-    if isinstance(v, dict):
-        return {
-            k: (FILTERED if isinstance(k, str) and _sensitive(k) else _walk(x, depth + 1))
-            for k, x in v.items()
-        }
-    if isinstance(v, (list, tuple)):
-        return [_walk(x, depth + 1) for x in v]
-    return v
+        return st.text(v)
+    if isinstance(v, (bytes, bytearray, memoryview)):
+        return st.text(_decode(v))
+    if isinstance(v, (dict, list, tuple, set, frozenset)):
+        if id(v) in path:
+            return CIRCULAR
+        path.add(id(v))
+        try:
+            if isinstance(v, dict):
+                out = {}
+                for k, x in v.items():
+                    name = _decode(k) if isinstance(k, (bytes, bytearray)) else k
+                    masked = isinstance(name, str) and _sensitive(name)
+                    out[_key(k, st)] = FILTERED if masked else _walk(x, depth + 1, st, path)
+                    st.nodes += 1
+                    if st.nodes > MAX_NODES:
+                        raise ScrubLimitExceeded("node cap")
+                return out
+            return [_walk(x, depth + 1, st, path) for x in v]
+        finally:
+            path.discard(id(v))
+    return st.text(str(v))
+
+
+def scrub_data(v: Any) -> Any:
+    """Scrub any value with the event rules (keys masked, text patterns, bytes, cycles, caps).
+
+    Raises `ScrubLimitExceeded` (or another error) when it cannot; callers must then drop the data.
+    """
+    return _walk(v)
 
 
 def _scrub_frames(ev: dict) -> None:
