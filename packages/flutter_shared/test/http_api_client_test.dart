@@ -8,12 +8,18 @@ void main() {
   late HttpServer server;
   late HttpApiClient client;
   final seen = <String>[];
+  final headersSeen = <Map<String, String>>[];
 
   setUp(() async {
     seen.clear();
+    headersSeen.clear();
     server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
     server.listen((req) async {
       final body = await utf8.decoder.bind(req).join();
+      headersSeen.add({
+        'auth': req.headers.value('authorization') ?? '',
+        'idem': req.headers.value('idempotency-key') ?? '',
+      });
       seen.add('${req.method} ${req.uri.path} $body');
       if (req.uri.path == '/ok') {
         req.response
@@ -71,6 +77,51 @@ void main() {
         throwsA(isA<SocketException>()),
       );
       dead.close();
+    },
+  );
+
+  test(
+    'sends extra headers and a bearer token when a provider is set',
+    () async {
+      final authed = HttpApiClient(
+        'http://127.0.0.1:${server.port}',
+        bearerToken: () async => 'jwt-123',
+      );
+      addTearDown(authed.close);
+      await authed.send(
+        const ApiRequest('POST', '/ok', headers: {'Idempotency-Key': 'k-1'}),
+      );
+      expect(headersSeen.last, {'auth': 'Bearer jwt-123', 'idem': 'k-1'});
+      await client.send(const ApiRequest('GET', '/ok'));
+      expect(headersSeen.last, {'auth': '', 'idem': ''}); // no token, no extras
+    },
+  );
+
+  test(
+    'a 401 drops the cached token and retries once with a fresh one',
+    () async {
+      var n = 0;
+      final cache = CachedTokenProvider(() async => 'tok-${++n}');
+      final s2 = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+      final auths = <String>[];
+      s2.listen((req) async {
+        auths.add(req.headers.value('authorization') ?? '');
+        req.response.statusCode = auths.length == 1 ? 401 : 200;
+        req.response.write('{}');
+        await req.response.close();
+      });
+      final c = HttpApiClient(
+        'http://127.0.0.1:${s2.port}',
+        bearerToken: cache.call,
+        invalidateToken: cache.invalidate,
+      );
+      addTearDown(() async {
+        c.close();
+        await s2.close(force: true);
+      });
+      final r = await c.send(const ApiRequest('GET', '/x'));
+      expect(r.statusCode, 200);
+      expect(auths, ['Bearer tok-1', 'Bearer tok-2']);
     },
   );
 }

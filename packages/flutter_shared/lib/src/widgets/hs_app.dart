@@ -8,11 +8,19 @@ import 'session_refresher.dart';
 
 /// MaterialApp.router wired with theme and localisation; used by both apps.
 class HsApp extends StatelessWidget {
-  const HsApp({super.key, required this.router, this.builder});
+  const HsApp({
+    super.key,
+    required this.router,
+    this.builder,
+    this.extraDelegates = const [],
+  });
   final GoRouter router;
 
   /// Optional app-level wrapper (used by tests to force text scale).
   final TransitionBuilder? builder;
+
+  /// App-specific string tables (the teacher app adds its own).
+  final List<LocalizationsDelegate<dynamic>> extraDelegates;
 
   @override
   Widget build(BuildContext context) => SessionRefresher(
@@ -21,8 +29,9 @@ class HsApp extends StatelessWidget {
       theme: buildHsTheme(),
       routerConfig: router,
       builder: builder,
-      localizationsDelegates: const [
+      localizationsDelegates: [
         HsStrings.delegate,
+        ...extraDelegates,
         GlobalMaterialLocalizations.delegate,
         GlobalWidgetsLocalizations.delegate,
         GlobalCupertinoLocalizations.delegate,

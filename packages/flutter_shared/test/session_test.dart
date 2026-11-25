@@ -54,6 +54,7 @@ class FakeGateway implements SessionGateway {
 }
 
 void main() {
+  jwtCacheTests();
   late FakeApiClient api;
   late FakeGateway gateway;
   late InMemorySecureStore store;
@@ -256,5 +257,132 @@ void main() {
 
   test('the app uses secure storage, not shared preferences', () {
     expect(const FlutterSecureKeyValueStore(), isA<SecureKeyValueStore>());
+  });
+}
+
+/// Reviewer round 2, blocker: the cached core JWT must not outlive the session.
+void jwtCacheTests() {
+  group('JWT cache and session changes', () {
+    late FakeApiClient api;
+    late FakeGateway gateway;
+    late InMemorySecureStore store;
+    var minted = 0;
+    late CachedTokenProvider cache;
+    late AppwriteAuthService auth;
+    final user = <String>[];
+
+    setUp(() {
+      api = FakeApiClient()
+        ..stub('POST', '/v1/auth/otp/verify', {
+          'user_id': 'u1',
+          'secret': 'tok',
+          'is_new_user': false,
+        });
+      gateway = FakeGateway();
+      store = InMemorySecureStore();
+      minted = 0;
+      user
+        ..clear()
+        ..add('u1');
+      // The token names whoever is signed in right now.
+      cache = CachedTokenProvider(() async => 'jwt-${user.last}-${++minted}');
+      auth = AppwriteAuthService(
+        Client()
+          ..setEndpoint('http://localhost/v1')
+          ..setProject('test'),
+        otp: CoreOtpApi(api, role: AppRole.teacher),
+        gateway: gateway,
+        vault: SessionVault(store),
+        clock: () => _t0,
+        onSessionChanged: cache.invalidate,
+      );
+    });
+
+    test(
+      'sign out, then another user signs in: a FRESH token, never the old one',
+      () async {
+        await auth.verifyOtp(_phone, '123456');
+        expect(await cache(), 'jwt-u1-1');
+        expect(await cache(), 'jwt-u1-1'); // cached while the same user stays
+        await auth.signOut();
+        user.add('u2');
+        api.stub('POST', '/v1/auth/otp/verify', {
+          'user_id': 'u2',
+          'secret': 'tok2',
+          'is_new_user': false,
+        });
+        await auth.verifyOtp('+256701234567', '123456');
+        expect(await cache(), 'jwt-u2-2');
+      },
+    );
+
+    test('signing out alone drops the token', () async {
+      await auth.verifyOtp(_phone, '123456');
+      await cache();
+      await auth.signOut();
+      user.add('u2');
+      expect(await cache(), 'jwt-u2-2');
+    });
+
+    test('a fetch that started before sign-out is discarded, not cached for the next user', () async {
+      var n = 0;
+      final slow = CachedTokenProvider(() async {
+        await Future<void>.delayed(const Duration(milliseconds: 20));
+        return 'old-${++n}';
+      });
+      final a2 = AppwriteAuthService(
+        Client()
+          ..setEndpoint('http://localhost/v1')
+          ..setProject('test'),
+        otp: CoreOtpApi(api, role: AppRole.teacher),
+        gateway: gateway,
+        vault: SessionVault(store),
+        clock: () => _t0,
+        onSessionChanged: slow.invalidate,
+      );
+      await a2.verifyOtp(_phone, '123456');
+      final inFlight = slow();
+      await a2.signOut();
+      expect(
+        await inFlight,
+        'old-1',
+      ); // the caller that asked before sign-out gets its answer
+      expect(await slow(), 'old-2'); // but the next caller never sees it
+    });
+
+    test('a failed sign-out call still drops the token', () async {
+      await auth.verifyOtp(_phone, '123456');
+      await cache();
+      gateway.currentThrows = null;
+      await auth.signOut();
+      expect(await cache(), isNot('jwt-u1-1'));
+    });
+
+    test('a session found revoked on start drops the token', () async {
+      await auth.verifyOtp(_phone, '123456');
+      await cache();
+      gateway.server = null; // revoked server-side
+      expect(await auth.refreshSession(), isNull);
+      expect(await cache(), 'jwt-u1-2');
+    });
+
+    test('clock skew and concurrent callers: one token per window, never an expired one', () async {
+      var now = _t0;
+      var count = 0;
+      final c = CachedTokenProvider(
+        () async => 'tok-${++count}',
+        clock: () => now,
+      );
+      final first = await Future.wait([c(), c(), c()]);
+      expect(first.toSet(), {'tok-1'});
+      now = now.subtract(const Duration(minutes: 30)); // clock jumps backwards
+      expect(await c(), 'tok-2'); // negative age is not trusted
+      now = now.add(const Duration(minutes: 5));
+      expect(await c(), 'tok-2');
+      now = now.add(
+        const Duration(minutes: 9, seconds: 40),
+      ); // past reuse minus margin
+      expect(await c(), 'tok-3');
+    });
   });
 }

@@ -1,0 +1,1148 @@
+{
+ "_comment": "Contract shared by services/core/tests/test_teacher_application_rules.py and apps/teacher/test/application_rules_test.dart. Each case patches the valid content (or replaces it) and lists the exact set of issues (path:code) the rules must report. final=false is draft mode.",
+ "today": "2026-11-25",
+ "own_phone": "+256772123456",
+ "min_weekly_hours": 6,
+ "zone_ids": [
+  "zone_ntinda",
+  "zone_kira",
+  "zone_kololo",
+  "zone_muyenga"
+ ],
+ "cases": [
+  {
+   "id": "valid_full",
+   "patch": {},
+   "issues": []
+  },
+  {
+   "id": "name_missing",
+   "patch": {},
+   "issues": [
+    "personal.full_name:required"
+   ],
+   "remove": [
+    "personal.full_name"
+   ]
+  },
+  {
+   "id": "name_one_char",
+   "patch": {
+    "personal": {
+     "full_name": "A"
+    }
+   },
+   "issues": [
+    "personal.full_name:too_short"
+   ]
+  },
+  {
+   "id": "name_unicode_ok",
+   "patch": {
+    "personal": {
+     "full_name": "Nakató Njéri 王小明"
+    }
+   },
+   "issues": []
+  },
+  {
+   "id": "name_digits_only",
+   "patch": {
+    "personal": {
+     "full_name": "12345"
+    }
+   },
+   "issues": [
+    "personal.full_name:invalid"
+   ]
+  },
+  {
+   "id": "name_zero_width",
+   "patch": {
+    "personal": {
+     "full_name": "Gra​ce"
+    }
+   },
+   "issues": [
+    "personal.full_name:invalid"
+   ]
+  },
+  {
+   "id": "name_100_ok",
+   "patch": {
+    "personal": {
+     "full_name": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+    }
+   },
+   "issues": []
+  },
+  {
+   "id": "name_101",
+   "patch": {
+    "personal": {
+     "full_name": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+    }
+   },
+   "issues": [
+    "personal.full_name:too_long"
+   ]
+  },
+  {
+   "id": "title_unknown",
+   "patch": {
+    "personal": {
+     "title": "dr"
+    }
+   },
+   "issues": [
+    "personal.title:unknown_choice"
+   ]
+  },
+  {
+   "id": "gender_missing",
+   "patch": {},
+   "issues": [
+    "personal.gender:required"
+   ],
+   "remove": [
+    "personal.gender"
+   ]
+  },
+  {
+   "id": "dob_exactly_18",
+   "patch": {
+    "personal": {
+     "date_of_birth": "2008-11-25"
+    }
+   },
+   "issues": []
+  },
+  {
+   "id": "dob_17",
+   "patch": {
+    "personal": {
+     "date_of_birth": "2008-11-26"
+    }
+   },
+   "issues": [
+    "personal.date_of_birth:under_age"
+   ]
+  },
+  {
+   "id": "dob_not_a_date",
+   "patch": {
+    "personal": {
+     "date_of_birth": "1992-02-30"
+    }
+   },
+   "issues": [
+    "personal.date_of_birth:invalid"
+   ]
+  },
+  {
+   "id": "dob_future",
+   "patch": {
+    "personal": {
+     "date_of_birth": "2027-01-01"
+    }
+   },
+   "issues": [
+    "personal.date_of_birth:invalid"
+   ]
+  },
+  {
+   "id": "dob_81",
+   "patch": {
+    "personal": {
+     "date_of_birth": "1945-01-01"
+    }
+   },
+   "issues": [
+    "personal.date_of_birth:invalid"
+   ]
+  },
+  {
+   "id": "languages_empty",
+   "patch": {
+    "personal": {
+     "languages": []
+    }
+   },
+   "issues": [
+    "personal.languages:required"
+   ]
+  },
+  {
+   "id": "languages_unknown",
+   "patch": {
+    "personal": {
+     "languages": [
+      "en",
+      "xx"
+     ]
+    }
+   },
+   "issues": [
+    "personal.languages:unknown_choice"
+   ]
+  },
+  {
+   "id": "languages_duplicate",
+   "patch": {
+    "personal": {
+     "languages": [
+      "en",
+      "en"
+     ]
+    }
+   },
+   "issues": [
+    "personal.languages:duplicate"
+   ]
+  },
+  {
+   "id": "photo_missing",
+   "patch": {},
+   "issues": [
+    "personal.photo:required"
+   ],
+   "remove": [
+    "personal.photo"
+   ]
+  },
+  {
+   "id": "photo_state_uploaded_without_id",
+   "patch": {
+    "personal": {
+     "photo": {
+      "state": "uploaded"
+     }
+    }
+   },
+   "issues": [
+    "personal.photo:file_not_allowed"
+   ]
+  },
+  {
+   "id": "photo_with_someone_elses_file_id",
+   "patch": {
+    "personal": {
+     "photo": {
+      "state": "chosen",
+      "file_id": "someone_elses_file"
+     }
+    }
+   },
+   "issues": [
+    "personal.photo:file_not_allowed"
+   ]
+  },
+  {
+   "id": "photo_uploaded_with_file_id",
+   "patch": {
+    "personal": {
+     "photo": {
+      "state": "uploaded",
+      "file_id": "someone_elses_file",
+      "crop": {
+       "x": 0.1,
+       "y": 0.1,
+       "size": 0.8
+      }
+     }
+    }
+   },
+   "issues": [
+    "personal.photo:file_not_allowed"
+   ]
+  },
+  {
+   "id": "photo_file_id_refused_in_a_draft_too",
+   "patch": {
+    "personal": {
+     "photo": {
+      "state": "chosen",
+      "file_id": "f1"
+     }
+    }
+   },
+   "issues": [
+    "personal.photo:file_not_allowed"
+   ],
+   "final": false,
+   "replace": true
+  },
+  {
+   "id": "photo_unknown_state",
+   "patch": {
+    "personal": {
+     "photo": {
+      "state": "approved"
+     }
+    }
+   },
+   "issues": [
+    "personal.photo:file_not_allowed"
+   ]
+  },
+  {
+   "id": "type_missing",
+   "patch": {},
+   "issues": [
+    "qualifications.teacher_type:required"
+   ],
+   "remove": [
+    "qualifications.teacher_type"
+   ]
+  },
+  {
+   "id": "registered_without_number",
+   "patch": {},
+   "issues": [
+    "qualifications.registration_number:required"
+   ],
+   "remove": [
+    "qualifications.registration_number"
+   ]
+  },
+  {
+   "id": "graduate_without_number",
+   "patch": {
+    "qualifications": {
+     "teacher_type": "graduate"
+    }
+   },
+   "issues": [],
+   "remove": [
+    "qualifications.registration_number"
+   ]
+  },
+  {
+   "id": "graduate_with_number",
+   "patch": {
+    "qualifications": {
+     "teacher_type": "graduate"
+    }
+   },
+   "issues": []
+  },
+  {
+   "id": "registration_bad_chars",
+   "patch": {
+    "qualifications": {
+     "registration_number": "<script>"
+    }
+   },
+   "issues": [
+    "qualifications.registration_number:invalid"
+   ]
+  },
+  {
+   "id": "registration_too_short",
+   "patch": {
+    "qualifications": {
+     "registration_number": "A1"
+    }
+   },
+   "issues": [
+    "qualifications.registration_number:invalid"
+   ]
+  },
+  {
+   "id": "qualification_unknown",
+   "patch": {
+    "qualifications": {
+     "highest_qualification": "wizard"
+    }
+   },
+   "issues": [
+    "qualifications.highest_qualification:unknown_choice"
+   ]
+  },
+  {
+   "id": "institution_missing",
+   "patch": {},
+   "issues": [
+    "qualifications.institution:required"
+   ],
+   "remove": [
+    "qualifications.institution"
+   ]
+  },
+  {
+   "id": "years_zero_ok",
+   "patch": {
+    "qualifications": {
+     "years_teaching": 0
+    }
+   },
+   "issues": []
+  },
+  {
+   "id": "years_60_ok",
+   "patch": {
+    "qualifications": {
+     "years_teaching": 60
+    }
+   },
+   "issues": []
+  },
+  {
+   "id": "years_61",
+   "patch": {
+    "qualifications": {
+     "years_teaching": 61
+    }
+   },
+   "issues": [
+    "qualifications.years_teaching:out_of_range"
+   ]
+  },
+  {
+   "id": "years_negative",
+   "patch": {
+    "qualifications": {
+     "years_teaching": -1
+    }
+   },
+   "issues": [
+    "qualifications.years_teaching:out_of_range"
+   ]
+  },
+  {
+   "id": "years_missing",
+   "patch": {},
+   "issues": [
+    "qualifications.years_teaching:required"
+   ],
+   "remove": [
+    "qualifications.years_teaching"
+   ]
+  },
+  {
+   "id": "current_school_optional",
+   "patch": {},
+   "issues": [],
+   "remove": [
+    "qualifications.current_school"
+   ]
+  },
+  {
+   "id": "current_school_too_long",
+   "patch": {
+    "qualifications": {
+     "current_school": "SSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSS"
+    }
+   },
+   "issues": [
+    "qualifications.current_school:too_long"
+   ]
+  },
+  {
+   "id": "no_curricula",
+   "patch": {
+    "curricula": []
+   },
+   "issues": [
+    "curricula:required"
+   ]
+  },
+  {
+   "id": "curriculum_unknown",
+   "patch": {
+    "curricula": [
+     {
+      "curriculum_id": "cur_x",
+      "level_ids": [
+       "a"
+      ],
+      "subject_ids": [
+       "b"
+      ]
+     }
+    ]
+   },
+   "issues": [
+    "curricula[0].curriculum_id:unknown_choice"
+   ]
+  },
+  {
+   "id": "curriculum_no_levels",
+   "patch": {
+    "curricula": [
+     {
+      "curriculum_id": "cur_ug",
+      "level_ids": [],
+      "subject_ids": [
+       "sub_math"
+      ]
+     }
+    ]
+   },
+   "issues": [
+    "curricula[0].level_ids:required"
+   ]
+  },
+  {
+   "id": "curriculum_no_subjects",
+   "patch": {
+    "curricula": [
+     {
+      "curriculum_id": "cur_ug",
+      "level_ids": [
+       "lvl_p1"
+      ],
+      "subject_ids": []
+     }
+    ]
+   },
+   "issues": [
+    "curricula[0].subject_ids:required"
+   ]
+  },
+  {
+   "id": "level_of_other_curriculum",
+   "patch": {
+    "curricula": [
+     {
+      "curriculum_id": "cur_ug",
+      "level_ids": [
+       "lvl_cp1"
+      ],
+      "subject_ids": [
+       "sub_math"
+      ]
+     }
+    ]
+   },
+   "issues": [
+    "curricula[0].level_ids:unknown_choice"
+   ]
+  },
+  {
+   "id": "subject_of_other_curriculum",
+   "patch": {
+    "curricula": [
+     {
+      "curriculum_id": "cur_ug",
+      "level_ids": [
+       "lvl_p1"
+      ],
+      "subject_ids": [
+       "sub_cmath"
+      ]
+     }
+    ]
+   },
+   "issues": [
+    "curricula[0].subject_ids:unknown_choice"
+   ]
+  },
+  {
+   "id": "two_curricula_ok",
+   "patch": {
+    "curricula": [
+     {
+      "curriculum_id": "cur_ug",
+      "level_ids": [
+       "lvl_p1"
+      ],
+      "subject_ids": [
+       "sub_math"
+      ]
+     },
+     {
+      "curriculum_id": "cur_cam",
+      "level_ids": [
+       "lvl_cp1"
+      ],
+      "subject_ids": [
+       "sub_cmath"
+      ]
+     }
+    ]
+   },
+   "issues": []
+  },
+  {
+   "id": "curriculum_twice",
+   "patch": {
+    "curricula": [
+     {
+      "curriculum_id": "cur_ug",
+      "level_ids": [
+       "lvl_p1"
+      ],
+      "subject_ids": [
+       "sub_math"
+      ]
+     },
+     {
+      "curriculum_id": "cur_ug",
+      "level_ids": [
+       "lvl_p2"
+      ],
+      "subject_ids": [
+       "sub_math"
+      ]
+     }
+    ]
+   },
+   "issues": [
+    "curricula[1].curriculum_id:duplicate"
+   ]
+  },
+  {
+   "id": "one_referee",
+   "patch": {
+    "referees": [
+     {
+      "name": "Peter Okello",
+      "phone": "0701234567",
+      "relationship": "colleague",
+      "years_known": 3
+     }
+    ]
+   },
+   "issues": [
+    "referees:wrong_count"
+   ]
+  },
+  {
+   "id": "three_referees",
+   "patch": {
+    "referees": [
+     {
+      "name": "A B",
+      "phone": "0701234567",
+      "relationship": "colleague",
+      "years_known": 3
+     },
+     {
+      "name": "C D",
+      "phone": "0702234567",
+      "relationship": "colleague",
+      "years_known": 3
+     },
+     {
+      "name": "E F",
+      "phone": "0703234567",
+      "relationship": "colleague",
+      "years_known": 3
+     }
+    ]
+   },
+   "issues": [
+    "referees:wrong_count"
+   ]
+  },
+  {
+   "id": "referee_phone_invalid",
+   "patch": {
+    "referees": [
+     {
+      "name": "Peter Okello",
+      "phone": "12345",
+      "relationship": "colleague",
+      "years_known": 3
+     },
+     {
+      "name": "Sarah Namuli",
+      "phone": "0755000111",
+      "relationship": "colleague",
+      "years_known": 2
+     }
+    ]
+   },
+   "issues": [
+    "referees[0].phone:invalid"
+   ]
+  },
+  {
+   "id": "referee_phone_foreign",
+   "patch": {
+    "referees": [
+     {
+      "name": "Peter Okello",
+      "phone": "+254712345678",
+      "relationship": "colleague",
+      "years_known": 3
+     },
+     {
+      "name": "Sarah Namuli",
+      "phone": "0755000111",
+      "relationship": "colleague",
+      "years_known": 2
+     }
+    ]
+   },
+   "issues": [
+    "referees[0].phone:invalid"
+   ]
+  },
+  {
+   "id": "referee_phones_same_after_normalising",
+   "patch": {
+    "referees": [
+     {
+      "name": "Peter Okello",
+      "phone": "0701234567",
+      "relationship": "colleague",
+      "years_known": 3
+     },
+     {
+      "name": "Sarah Namuli",
+      "phone": "+256 701-234-567",
+      "relationship": "colleague",
+      "years_known": 2
+     }
+    ]
+   },
+   "issues": [
+    "referees[1].phone:duplicate"
+   ]
+  },
+  {
+   "id": "referee_is_the_teacher",
+   "patch": {
+    "referees": [
+     {
+      "name": "Peter Okello",
+      "phone": "0772123456",
+      "relationship": "colleague",
+      "years_known": 3
+     },
+     {
+      "name": "Sarah Namuli",
+      "phone": "0755000111",
+      "relationship": "colleague",
+      "years_known": 2
+     }
+    ]
+   },
+   "issues": [
+    "referees[0].phone:own_number"
+   ]
+  },
+  {
+   "id": "referee_name_missing",
+   "patch": {
+    "referees": [
+     {
+      "phone": "0701234567",
+      "relationship": "colleague",
+      "years_known": 3
+     },
+     {
+      "name": "Sarah Namuli",
+      "phone": "0755000111",
+      "relationship": "colleague",
+      "years_known": 2
+     }
+    ]
+   },
+   "issues": [
+    "referees[0].name:required"
+   ]
+  },
+  {
+   "id": "referee_relationship_unknown",
+   "patch": {
+    "referees": [
+     {
+      "name": "Peter Okello",
+      "phone": "0701234567",
+      "relationship": "cousin",
+      "years_known": 3
+     },
+     {
+      "name": "Sarah Namuli",
+      "phone": "0755000111",
+      "relationship": "colleague",
+      "years_known": 2
+     }
+    ]
+   },
+   "issues": [
+    "referees[0].relationship:unknown_choice"
+   ]
+  },
+  {
+   "id": "referee_years_zero",
+   "patch": {
+    "referees": [
+     {
+      "name": "Peter Okello",
+      "phone": "0701234567",
+      "relationship": "colleague",
+      "years_known": 0
+     },
+     {
+      "name": "Sarah Namuli",
+      "phone": "0755000111",
+      "relationship": "colleague",
+      "years_known": 2
+     }
+    ]
+   },
+   "issues": [
+    "referees[0].years_known:out_of_range"
+   ]
+  },
+  {
+   "id": "referee_email_bad",
+   "patch": {
+    "referees": [
+     {
+      "name": "Peter Okello",
+      "phone": "0701234567",
+      "relationship": "colleague",
+      "years_known": 3,
+      "email": "not-an-email"
+     },
+     {
+      "name": "Sarah Namuli",
+      "phone": "0755000111",
+      "relationship": "colleague",
+      "years_known": 2
+     }
+    ]
+   },
+   "issues": [
+    "referees[0].email:invalid"
+   ]
+  },
+  {
+   "id": "referee_email_optional",
+   "patch": {
+    "referees": [
+     {
+      "name": "Peter Okello",
+      "phone": "0701234567",
+      "relationship": "colleague",
+      "years_known": 3
+     },
+     {
+      "name": "Sarah Namuli",
+      "phone": "0755000111",
+      "relationship": "colleague",
+      "years_known": 2
+     }
+    ]
+   },
+   "issues": []
+  },
+  {
+   "id": "consent_missing",
+   "patch": {},
+   "issues": [
+    "referee_consent:required"
+   ],
+   "remove": [
+    "referee_consent"
+   ]
+  },
+  {
+   "id": "consent_false",
+   "patch": {
+    "referee_consent": false
+   },
+   "issues": [
+    "referee_consent:required"
+   ]
+  },
+  {
+   "id": "no_zones",
+   "patch": {
+    "zone_ids": []
+   },
+   "issues": [
+    "zone_ids:required"
+   ]
+  },
+  {
+   "id": "zone_unknown",
+   "patch": {
+    "zone_ids": [
+     "zone_nowhere"
+    ]
+   },
+   "issues": [
+    "zone_ids:unknown_choice"
+   ]
+  },
+  {
+   "id": "zone_duplicate",
+   "patch": {
+    "zone_ids": [
+     "zone_kira",
+     "zone_kira"
+    ]
+   },
+   "issues": [
+    "zone_ids:duplicate"
+   ]
+  },
+  {
+   "id": "radius_missing",
+   "patch": {},
+   "issues": [
+    "travel_radius_km:required"
+   ],
+   "remove": [
+    "travel_radius_km"
+   ]
+  },
+  {
+   "id": "radius_zero",
+   "patch": {
+    "travel_radius_km": 0
+   },
+   "issues": [
+    "travel_radius_km:out_of_range"
+   ]
+  },
+  {
+   "id": "radius_51",
+   "patch": {
+    "travel_radius_km": 51
+   },
+   "issues": [
+    "travel_radius_km:out_of_range"
+   ]
+  },
+  {
+   "id": "radius_50_ok",
+   "patch": {
+    "travel_radius_km": 50
+   },
+   "issues": []
+  },
+  {
+   "id": "no_availability",
+   "patch": {
+    "availability": []
+   },
+   "issues": [
+    "availability:required"
+   ]
+  },
+  {
+   "id": "slot_off_grid",
+   "patch": {
+    "availability": [
+     {
+      "weekday": 1,
+      "start_minute": 905,
+      "end_minute": 1200
+     }
+    ]
+   },
+   "issues": [
+    "availability[0]:invalid"
+   ]
+  },
+  {
+   "id": "slot_backwards",
+   "patch": {
+    "availability": [
+     {
+      "weekday": 1,
+      "start_minute": 1200,
+      "end_minute": 900
+     }
+    ]
+   },
+   "issues": [
+    "availability[0]:invalid"
+   ]
+  },
+  {
+   "id": "slot_before_6am",
+   "patch": {
+    "availability": [
+     {
+      "weekday": 1,
+      "start_minute": 300,
+      "end_minute": 900
+     }
+    ]
+   },
+   "issues": [
+    "availability[0]:invalid"
+   ]
+  },
+  {
+   "id": "slot_after_9pm",
+   "patch": {
+    "availability": [
+     {
+      "weekday": 1,
+      "start_minute": 1200,
+      "end_minute": 1290
+     }
+    ]
+   },
+   "issues": [
+    "availability[0]:invalid"
+   ]
+  },
+  {
+   "id": "slot_weekday_8",
+   "patch": {
+    "availability": [
+     {
+      "weekday": 8,
+      "start_minute": 900,
+      "end_minute": 1200
+     }
+    ]
+   },
+   "issues": [
+    "availability[0]:invalid"
+   ]
+  },
+  {
+   "id": "slots_overlap",
+   "patch": {
+    "availability": [
+     {
+      "weekday": 1,
+      "start_minute": 900,
+      "end_minute": 1200
+     },
+     {
+      "weekday": 1,
+      "start_minute": 1140,
+      "end_minute": 1260
+     }
+    ]
+   },
+   "issues": [
+    "availability[1]:overlap"
+   ]
+  },
+  {
+   "id": "slots_adjacent_ok",
+   "patch": {
+    "availability": [
+     {
+      "weekday": 1,
+      "start_minute": 900,
+      "end_minute": 1020
+     },
+     {
+      "weekday": 1,
+      "start_minute": 1020,
+      "end_minute": 1260
+     }
+    ]
+   },
+   "issues": []
+  },
+  {
+   "id": "slots_same_time_other_day_ok",
+   "patch": {
+    "availability": [
+     {
+      "weekday": 1,
+      "start_minute": 900,
+      "end_minute": 1200
+     },
+     {
+      "weekday": 2,
+      "start_minute": 900,
+      "end_minute": 1200
+     }
+    ]
+   },
+   "issues": []
+  },
+  {
+   "id": "below_minimum_hours",
+   "patch": {
+    "availability": [
+     {
+      "weekday": 1,
+      "start_minute": 900,
+      "end_minute": 1200
+     }
+    ]
+   },
+   "issues": [
+    "availability:too_few_hours"
+   ]
+  },
+  {
+   "id": "exactly_minimum_hours",
+   "patch": {
+    "availability": [
+     {
+      "weekday": 1,
+      "start_minute": 900,
+      "end_minute": 1260
+     },
+     {
+      "weekday": 2,
+      "start_minute": 900,
+      "end_minute": 1260
+     }
+    ]
+   },
+   "issues": []
+  },
+  {
+   "id": "draft_empty_ok",
+   "patch": {},
+   "issues": [],
+   "final": false,
+   "replace": true
+  },
+  {
+   "id": "draft_partial_ok",
+   "patch": {
+    "personal": {
+     "full_name": "Gr"
+    }
+   },
+   "issues": [],
+   "final": false,
+   "replace": true
+  },
+  {
+   "id": "draft_reports_present_bad_field",
+   "patch": {
+    "personal": {
+     "date_of_birth": "2015-01-01"
+    }
+   },
+   "issues": [
+    "personal.date_of_birth:under_age"
+   ],
+   "final": false,
+   "replace": true
+  },
+  {
+   "id": "draft_overlap_still_reported",
+   "patch": {
+    "availability": [
+     {
+      "weekday": 1,
+      "start_minute": 900,
+      "end_minute": 1200
+     },
+     {
+      "weekday": 1,
+      "start_minute": 960,
+      "end_minute": 1080
+     }
+    ]
+   },
+   "issues": [
+    "availability[1]:overlap"
+   ],
+   "final": false,
+   "replace": true
+  }
+ ]
+}

@@ -608,7 +608,15 @@ void main() {
       t,
     ) async {
       final auth = FakeAuthService();
-      await t.pumpWidget(flowApp(auth, spec: AppSpec.teacher));
+      // The teacher app sends new teachers on to the application flow
+      // (postSignInPath, V01); the shared flow itself still lands on the
+      // first tab when no such path is set.
+      final spec = AppSpec(
+        tabs: AppSpec.teacher.tabs,
+        welcomeBody: AppSpec.teacher.welcomeBody,
+      );
+      expect(AppSpec.teacher.postSignInPath, '/apply');
+      await t.pumpWidget(flowApp(auth, spec: spec));
       await t.pumpAndSettle();
       await enterPhone(t, '0752000111');
       await tapKey(t, 'otp-send');

@@ -1,0 +1,254 @@
+{
+  "@@locale": "en",
+  "applyTitle": "Apply to teach",
+  "loading": "Loading",
+  "loadFailed": "We could not load your application and there is no copy on this phone yet. Check your connection and try again.",
+  "tryAgain": "Try again",
+  "back": "Back",
+  "next": "Next",
+  "edit": "Edit",
+  "goHome": "Go to the app",
+  "stepOf": "Step {step} of {total}",
+  "@stepOf": {
+    "placeholders": {
+      "step": {
+        "type": "int"
+      },
+      "total": {
+        "type": "int"
+      }
+    }
+  },
+  "progressSemantic": "Step {step} of {total}: {title}",
+  "@progressSemantic": {
+    "placeholders": {
+      "step": {
+        "type": "int"
+      },
+      "total": {
+        "type": "int"
+      },
+      "title": {
+        "type": "String"
+      }
+    }
+  },
+  "stepPersonal": "Personal details",
+  "stepQualifications": "Qualifications and curricula",
+  "stepDocuments": "Documents",
+  "stepReferees": "Referees",
+  "stepZones": "Zones and availability",
+  "stepReview": "Review and submit",
+  "syncSaved": "Saved. You can leave and come back later.",
+  "syncSaving": "Saving...",
+  "syncOffline": "Saved on this phone. We will send it when you are online.",
+  "syncRateLimited": "Saved on this phone. Too many saves; we will retry shortly.",
+  "syncConflict": "This application was changed somewhere else. Choose which version to keep.",
+  "syncLocked": "This application can no longer be edited.",
+  "conflictTitle": "Two versions of your application",
+  "conflictBody": "You made changes on this phone while the saved version changed elsewhere. Keep the version on this phone, or use the saved one.",
+  "conflictKeepMine": "Keep this phone's version",
+  "conflictUseTheirs": "Use the saved version",
+  "fieldFullName": "Full name",
+  "fieldTitle": "Preferred title",
+  "titleMr": "Mr",
+  "titleMs": "Ms",
+  "titleTeacher": "Teacher",
+  "fieldGender": "Gender",
+  "genderFemale": "Female",
+  "genderMale": "Male",
+  "fieldDob": "Date of birth",
+  "dobHelp": "You must be at least 18. Only our team sees this.",
+  "dobPlaceholder": "Choose a date",
+  "fieldLanguages": "Languages you speak",
+  "langEnglish": "English",
+  "langLuganda": "Luganda",
+  "langSwahili": "Swahili",
+  "langRunyankole": "Runyankole / Rukiga",
+  "langLusoga": "Lusoga",
+  "langAteso": "Ateso",
+  "langAcholi": "Acholi",
+  "langOther": "Other",
+  "photoTitle": "Your photo",
+  "photoGuidanceTitle": "A good photo",
+  "photoGuide1": "Plain, light background.",
+  "photoGuide2": "Shoulders up, facing the camera.",
+  "photoGuide3": "Good light on your face; no sunglasses or hat.",
+  "photoGuide4": "Just you in the photo.",
+  "photoTake": "Take a photo",
+  "photoChoose": "Choose from phone",
+  "photoAdjust": "Adjust crop",
+  "photoRemove": "Remove photo",
+  "photoPickFailed": "We could not open the camera or photos. Check the app's permissions and try again.",
+  "photoPreviewLabel": "Your chosen photo",
+  "photoAdded": "Photo added",
+  "photoMissing": "Photo missing",
+  "cropTitle": "Crop your photo",
+  "cropHelp": "Zoom and move the square so your face and shoulders are in the middle.",
+  "cropZoom": "Zoom",
+  "cropLeftRight": "Move left or right",
+  "cropUpDown": "Move up or down",
+  "cropDone": "Use this crop",
+  "fieldTeacherType": "I am a",
+  "typeRegistered": "Registered teacher",
+  "typeGraduate": "Graduate",
+  "fieldRegistration": "Teacher registration number",
+  "fieldRegistrationOptional": "Registration number (optional)",
+  "registrationGraduateHelp": "Graduates can leave this empty.",
+  "fieldHighestQualification": "Highest qualification",
+  "qualCertificate": "Certificate",
+  "qualDiploma": "Diploma",
+  "qualDegree": "Degree",
+  "qualPostgraduate": "Postgraduate diploma",
+  "qualMasters": "Master's degree",
+  "qualDoctorate": "Doctorate",
+  "fieldInstitution": "Institution",
+  "fieldYearsTeaching": "Years of teaching",
+  "fieldCurrentSchool": "Current school (optional)",
+  "currentSchoolHelp": "Only our admin team sees this. It is never shown to families.",
+  "curriculaTitle": "Curricula you want to teach",
+  "curriculaHelp": "Pick each curriculum, then the levels and subjects you can teach. Our team approves them after review.",
+  "levelsTitle": "Levels",
+  "subjectsTitle": "Subjects",
+  "levelsAndSubjects": "{levels} levels, {subjects} subjects",
+  "@levelsAndSubjects": {
+    "placeholders": {
+      "levels": {
+        "type": "int"
+      },
+      "subjects": {
+        "type": "int"
+      }
+    }
+  },
+  "catalogueUnavailable": "We could not load the list of curricula and zones. Connect once to download it; it is then kept on this phone.",
+  "loadingCatalogue": "Loading curricula",
+  "loadingZones": "Loading zones",
+  "documentsIntro": "You will need these documents. Uploading them comes next.",
+  "docNationalId": "National ID (front and back)",
+  "docCertificates": "Academic certificates",
+  "docRegistration": "Teaching certificate or registration",
+  "docPolice": "Police Certificate of Good Conduct (or tell us you have applied)",
+  "docCv": "CV (optional)",
+  "documentsLater": "Document upload is not part of this step yet. You can continue; we will ask for your documents before your application is checked.",
+  "documentsReviewLine": "Documents are added after this step.",
+  "refereesIntro": "Add two people who know your teaching or character well. We may contact them to check your application.",
+  "refereeN": "Referee {n}",
+  "@refereeN": {
+    "placeholders": {
+      "n": {
+        "type": "int"
+      }
+    }
+  },
+  "fieldRefereeName": "Full name",
+  "fieldRefereePhone": "Phone number",
+  "refereePhoneHelp": "A Ugandan mobile number, for example 0701 234 567.",
+  "fieldRelationship": "Relationship to you",
+  "relHeadTeacher": "Head teacher",
+  "relColleague": "Colleague",
+  "relSupervisor": "Supervisor",
+  "relLecturer": "Lecturer",
+  "relEmployer": "Employer",
+  "relCommunityLeader": "Community leader",
+  "relOther": "Other",
+  "fieldYearsKnown": "Years known",
+  "fieldRefereeEmail": "Email (optional)",
+  "refereeConsent": "I confirm both referees agree that Home School may contact them about my application.",
+  "zonesTitle": "Where can you teach?",
+  "zonesHelp": "Pick the neighbourhoods you can travel to.",
+  "radiusTitle": "How far will you travel?",
+  "radiusValue": "{km} km",
+  "@radiusValue": {
+    "placeholders": {
+      "km": {
+        "type": "int"
+      }
+    }
+  },
+  "radiusNotSet": "Not set",
+  "radiusLess": "Less distance",
+  "radiusMore": "More distance",
+  "availabilityTitle": "Weekly availability",
+  "availabilityHelp": "Tap the hours you can teach each week.",
+  "peakLegend": "Highlighted hours are in high demand. Weekday evenings are the busiest.",
+  "peakSemantic": "high demand",
+  "dayMon": "Mon",
+  "dayTue": "Tue",
+  "dayWed": "Wed",
+  "dayThu": "Thu",
+  "dayFri": "Fri",
+  "daySat": "Sat",
+  "daySun": "Sun",
+  "availabilityTotal": "{hours} hours a week",
+  "@availabilityTotal": {
+    "placeholders": {
+      "hours": {
+        "type": "int"
+      }
+    }
+  },
+  "availabilityMinimum": "Offer at least {hours} hours a week.",
+  "@availabilityMinimum": {
+    "placeholders": {
+      "hours": {
+        "type": "int"
+      }
+    }
+  },
+  "reviewIntro": "Check your details. Use Edit to change anything.",
+  "reviewComplete": "Everything needed is filled in.",
+  "reviewIncomplete": "Still to do: {sections}.",
+  "@reviewIncomplete": {
+    "placeholders": {
+      "sections": {
+        "type": "String"
+      }
+    }
+  },
+  "sectionDone": "Complete",
+  "sectionNeedsWork": "Needs attention",
+  "declaration": "I declare the information in this application is true and complete.",
+  "declarationNeeded": "Please tick the declaration to submit.",
+  "submitApplication": "Submit application",
+  "submitting": "Submitting...",
+  "submitQueued": "Your application is ready. It will be sent as soon as you are online. You do not need to do anything.",
+  "submitFailedIssues": "Please fix these before submitting:",
+  "statusSubmittedTitle": "Application submitted",
+  "statusSubmittedBody": "Thank you. Our team will check your application and contact you. You can leave this screen.",
+  "statusUnderReviewTitle": "Your application is being reviewed",
+  "statusApprovedTitle": "Application approved",
+  "statusApprovedBody": "Welcome. Your approved curricula and levels will appear in the app.",
+  "statusNotApprovedTitle": "Application not approved this time",
+  "statusNotApprovedBody": "Thank you for applying. You can apply again after a waiting period.",
+  "reapply": "Apply again",
+  "reapplyOn": "You can apply again from {date}.",
+  "@reapplyOn": {
+    "placeholders": {
+      "date": {
+        "type": "String"
+      }
+    }
+  },
+  "errRequired": "This is required.",
+  "errTooShort": "This is too short.",
+  "errTooLong": "This is too long.",
+  "errInvalid": "Please check this value.",
+  "errUnknownChoice": "Please choose from the list.",
+  "errUnderAge": "You must be at least 18.",
+  "errOutOfRange": "This number is outside the allowed range.",
+  "errDuplicate": "This is already used.",
+  "errOwnNumber": "A referee cannot have your own number.",
+  "errOverlap": "These hours overlap with another block.",
+  "errWrongCount": "Please give exactly two referees.",
+  "errTooMany": "You chose too many.",
+  "errTooFewHours": "Offer at least {hours} hours a week.",
+  "@errTooFewHours": {
+    "placeholders": {
+      "hours": {
+        "type": "int"
+      }
+    }
+  },
+  "submitInProgress": "We are still finishing your earlier submission. This can take a few minutes; we will keep trying and you do not need to do anything."
+}

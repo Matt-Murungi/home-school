@@ -15,9 +15,17 @@ class TabSpec {
 
 /// Per-app navigation description.
 class AppSpec {
-  const AppSpec({required this.tabs, required this.welcomeBody});
+  const AppSpec({
+    required this.tabs,
+    required this.welcomeBody,
+    this.postSignInPath,
+  });
   final List<TabSpec> tabs;
   final String Function(HsStrings) welcomeBody;
+
+  /// Where a successful sign-in lands; the first tab when null. The teacher
+  /// app sends new teachers into the application flow (V01).
+  final String? postSignInPath;
 
   /// Design Brief section 8.
   static final parent = AppSpec(
@@ -49,6 +57,7 @@ class AppSpec {
 
   static final teacher = AppSpec(
     welcomeBody: (s) => s.welcomeTeacherBody,
+    postSignInPath: '/apply',
     tabs: [
       TabSpec(
         path: 'today',
@@ -82,7 +91,13 @@ class AppSpec {
 const signInPhonePath = '/sign-in/phone';
 const signInCodePath = '/sign-in/code';
 
-GoRouter buildAppRouter(AppSpec spec, {String initialLocation = '/'}) {
+/// [extraRoutes] are added outside the tab shell (full-screen flows such as
+/// the teacher application).
+GoRouter buildAppRouter(
+  AppSpec spec, {
+  String initialLocation = '/',
+  List<RouteBase> extraRoutes = const [],
+}) {
   return GoRouter(
     initialLocation: initialLocation,
     routes: [
@@ -103,10 +118,12 @@ GoRouter buildAppRouter(AppSpec spec, {String initialLocation = '/'}) {
       GoRoute(
         path: signInCodePath,
         builder: (context, state) => CodeEntryScreen(
-          onSignedIn: () => context.go('/${spec.tabs.first.path}'),
+          onSignedIn: () =>
+              context.go(spec.postSignInPath ?? '/${spec.tabs.first.path}'),
           onChangeNumber: () => context.go(signInPhonePath),
         ),
       ),
+      ...extraRoutes,
       StatefulShellRoute.indexedStack(
         builder: (context, state, shell) {
           final s = HsStrings.of(context);
