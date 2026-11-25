@@ -16,3 +16,7 @@ Alert routing is the item 3 row above; the uptime heartbeat is in row 4.
 ## Verification once set up
 
 Run the "Monthly monitoring test" in `runbook.md` on staging: a deliberate exception shows in Sentry without personal data; stopping the staging API pages the founder.
+
+## Note for F09 (secrets inventory)
+
+F09's `secrets_check.py` was not on `main` when F08 was built. When F09 merges, its inventory must list `SENTRY_DSN` (the `sentry_dsn` setting in `services/core`; Fly secret, empty in dev/tests) and the admin/Flutter equivalents (`NEXT_PUBLIC_SENTRY_DSN`, dart-define `SENTRY_DSN`); run its validator after adding the rows.

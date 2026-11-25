@@ -6,15 +6,29 @@ look personal are masked at any depth; free text is masked by pattern. Names and
 found reliably in free text, so the rules are: never put them in exception messages (use ids) and
 rely on key masking + dropped request bodies + dropped frame variables. If scrubbing fails the
 event is dropped, never sent raw. Structures are walked with cycle detection and node/size caps
-(cap exhaustion = scrub failure = drop). Log `extra=` fields get the same treatment (logging_setup).
+(cap exhaustion = scrub failure = drop; each drop is counted and logged once, PII-free).
+Log `extra=` fields get the same treatment (logging_setup).
+
+Name-aware masking (`name=value`, `name: value`, `name%3Dvalue`, `"name": "value"`): the name is
+found with a bounded pattern and judged in Python, so scanning is linear (a 1 MB run of `token`
+takes milliseconds). Credential-like names (token, secret, password, passwd, pwd, pass, apikey,
+`*_key`, jwt, session, cookie, authorization, signature) are masked; counters/settings whose last
+part is `count/used/policy/length/...` (`session_count=3`, `password_policy=ok`) and plurals such as
+`tokens_used=5` are NOT masked. Limits: only the last 64 characters of a name are examined; a
+secret value is taken up to the next whitespace/delimiter (4096 chars max); a value that follows a
+prose word and a space only (`the token abc`) is not detectable.
 
 The same rules are mirrored for the Flutter apps and the admin app (docs/ops/integration.md).
 """
 
 from __future__ import annotations
 
+import logging
 import re
 from typing import Any
+
+log = logging.getLogger(__name__)
+_dropped = {"n": 0}
 
 FILTERED = "[Filtered]"
 
@@ -65,26 +79,82 @@ MAX_DEPTH = 30
 CIRCULAR = "[Circular]"
 
 _JWT = re.compile(r"\beyJ[A-Za-z0-9_-]{5,}\.[A-Za-z0-9_-]{5,}\.[A-Za-z0-9_-]*")
-_BEARER = re.compile(r"(?i)\b(bearer|basic)\s+[A-Za-z0-9._~+/=-]{6,}")
+_BEARER = re.compile(r"(?i)\b(bearer|basic)\s{1,8}[A-Za-z0-9._~+/=-]{6,}")
 # Header lines: the whole value up to end of line is a secret.
 _HEADER_LINE = re.compile(
     r"(?i)\b(set-cookie|cookie|proxy-authorization|authorization|x-appwrite-key"
-    r"|x-appwrite-jwt|x-appwrite-session|x-api-key)([ \t]*:[ \t]*)[^\r\n]+"
+    r"|x-appwrite-jwt|x-appwrite-session|x-api-key)([ \t]{0,8}:[ \t]{0,8})[^\r\n]+"
 )
 _APPWRITE_KEY = re.compile(r"(?i)\bstandard_[0-9a-f]{6,}")
-# Names whose value is a secret. `key` only as a whole word or `_key`/`-key` suffix.
-_SECRET_NAME = (
-    r"[\w.-]*(?:token|secret|passw(?:or)?d|pwd|apikey|api[_-]key|jwt|session|signature)[\w.-]*"
-    r"|(?:[\w.]*[_-])?key"
+
+# name=value / name: value / name%3Dvalue / "name": "value" for secret-looking names.
+#
+# Linear by construction (R2-1): the regex only finds a bounded candidate name (at most
+# MAX_NAME word characters directly before the separator, no alternation of keywords, so no
+# backtracking over a long run) and a bounded separator; whether the name is secret is decided in
+# Python (`_secret_name`). Values are bounded and consumed, so the scan resumes after them.
+MAX_NAME = 64
+MAX_VALUE = 4096
+# A run of name characters, optionally followed by (closing quote,) separator and spaces. The
+# separator group is optional so a run without one matches once, in one pass (no per-position
+# retries); the candidate name is the last MAX_NAME characters of the run.
+_RUN = re.compile(r"[\w.-]+(?:([\"']?[ \t]{0,8}(?:=|:|%3[Dd])[ \t]{0,8}))?")
+_VALUE = re.compile(
+    r"\[Filtered\]|\"[^\"]{0,N}\"?|'[^']{0,N}'?|[^\s&;,\"')\]}]{1,N}".replace("N", str(MAX_VALUE))
 )
-# name=value (query strings, forms, env style); value ends at whitespace/&/;/quote/bracket.
-_KV_EQ = re.compile(
-    r"(?i)(?<![\w.-])(" + _SECRET_NAME + r")(\s*=\s*)(\"[^\"]*\"|'[^']*'|[^\s&;,\"')\]}]+)"
-)
-# "name": "value" (JSON / dict repr inside strings). Quoted name required.
-_KV_JSON = re.compile(
-    r"(?i)([\"'])(" + _SECRET_NAME + r")\1(\s*:\s*)(\"[^\"]*\"|'[^']*'|[^\s,}\]]+)"
-)
+_SECRET_WORDS = ("token", "secret", "password", "passwd", "apikey", "jwt", "signature")
+_SECRET_PARTS = {"cookie", "authorization", "pass", "pwd", "key", "session"}
+# Last name part of a counter/setting, not a credential (`session_count`, `password_policy`).
+_BENIGN_LAST = {
+    "count", "counts", "used", "policy", "length", "len", "ttl", "seconds", "expiry", "expires",
+    "enabled", "required", "type", "minutes", "max", "min", "limit", "total",
+}  # fmt: skip
+
+
+def _secret_name(name: str) -> bool:
+    """Decide in Python (no regex alternation): is `name` a credential-like field name?
+
+    Parts split on `_ - .`; a part is secret if it equals/ends with token, secret, password,
+    passwd, apikey, jwt, signature, equals cookie/authorization/pass/pwd/key/session or starts with
+    `session`. Plural/other words (`tokens_used`) and settings whose last part is a counter-like
+    word (`session_count`, `password_policy`) are not masked. Only the last 64 characters of a
+    longer name are considered.
+    """
+    parts = [p for p in re.split(r"[_.-]", name.lower()[-MAX_NAME:]) if p]
+    if not parts:
+        return False
+    if len(parts) > 1 and parts[-1] in _BENIGN_LAST:
+        return False
+    for p in parts:
+        if p in _SECRET_PARTS or p.startswith("session") or p.endswith(_SECRET_WORDS):
+            if p == "key" and p is not parts[-1]:
+                continue  # `key` only as the last part (`api_key`), not `key_count`/`key_id`
+            return True
+    return False
+
+
+def _mask_pairs(s: str) -> str:
+    out: list[str] = []
+    pos = 0  # start of text not yet emitted
+    scan = 0
+    while True:
+        m = _RUN.search(s, scan)
+        if m is None:
+            break
+        scan = m.end()
+        if m.group(1) is None:
+            continue
+        name = s[m.start() : m.start(1)]
+        v = _VALUE.match(s, scan)
+        if v is None or not _secret_name(name):
+            continue  # a non-secret name may precede another pair (`x:token=abc`): keep scanning
+        out.append(s[pos:scan])
+        out.append(FILTERED)
+        pos = scan = v.end()
+    out.append(s[pos:])
+    return "".join(out)
+
+
 # Emails, also percent-encoded (`%40`, `%2E`). The lookbehind keeps matching linear.
 _EMAIL = re.compile(
     r"(?<![A-Za-z0-9._%+-])[A-Za-z0-9._%+-]+(?:@|%40)[A-Za-z0-9-]+(?:(?:\.|%2[Ee])[A-Za-z0-9-]+)+"
@@ -99,9 +169,30 @@ _PHONE = re.compile(
     + _SEP
     + r")?"
     r"\(?\d{2,4}\)?(?:" + _SEP + r"\d{2,4}){2,3}(?!\w)"
-    r"|(?<![\w.])256" + _SEP + r"(?:\(0\)" + _SEP + r")?\d{2,3}(?:" + _SEP + r"\d{3}){2}(?!\w)"
+    r"|(?<![\w.])(?:00)?256"
+    + _SEP
+    + r"(?:\(0\)"
+    + _SEP
+    + r")?\d{2,3}(?:"
+    + _SEP
+    + r"\d{3}){2}(?!\w)"
     r"|(?<![\w.])0[37]\d{2}(?:" + _SEP + r"\d{3}){2}(?!\w)"
+    r"|(?<![\w.])\(0[37]\d{2}\)" + _SEP + r"\d{6}(?!\w)"
 )
+
+
+def dropped_count() -> int:
+    """Events/breadcrumbs dropped (fail closed) since start; for tests and diagnostics."""
+    return _dropped["n"]
+
+
+def reset_dropped() -> None:
+    _dropped["n"] = 0
+
+
+def _note_drop(kind: str, exc: Exception) -> None:
+    _dropped["n"] += 1
+    log.warning("%s dropped by scrubber: %s", kind, type(exc).__name__)  # class name only: no PII
 
 
 def scrub_text(s: str) -> str:
@@ -111,8 +202,7 @@ def scrub_text(s: str) -> str:
     s = _JWT.sub(FILTERED, s)
     s = _BEARER.sub(lambda m: f"{m.group(1)} {FILTERED}", s)
     s = _APPWRITE_KEY.sub(FILTERED, s)
-    s = _KV_EQ.sub(lambda m: f"{m.group(1)}{m.group(2)}{FILTERED}", s)
-    s = _KV_JSON.sub(lambda m: f'{m.group(1)}{m.group(2)}{m.group(1)}{m.group(3)}"{FILTERED}"', s)
+    s = _mask_pairs(s)
     s = _EMAIL.sub(FILTERED, s)
     return _PHONE.sub(FILTERED, s)
 
@@ -230,7 +320,8 @@ def scrub_event(event: dict | None, hint: Any = None) -> dict | None:
             ev["user"] = {"id": user["id"]} if "id" in user else {}
         ev.pop("server_name", None)
         return _walk(ev)
-    except Exception:  # noqa: BLE001 - fail closed
+    except Exception as exc:  # noqa: BLE001 - fail closed
+        _note_drop("event", exc)
         return None
 
 
@@ -239,5 +330,6 @@ def scrub_breadcrumb(crumb: dict | None, hint: Any = None) -> dict | None:
         return None
     try:
         return _walk(crumb)
-    except Exception:  # noqa: BLE001
+    except Exception as exc:  # noqa: BLE001
+        _note_drop("breadcrumb", exc)
         return None
