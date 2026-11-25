@@ -243,6 +243,8 @@ class ApplicationService:
         if len(blob.encode()) > MAX_CONTENT_BYTES:
             raise AppError(413, "payload_too_large", "Application content too large")
         issues = validate_content(content, self._ctx(tid), final=False)
+        content = self._without_rejected(content)
+        blob = json.dumps(content, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
         now = self.clock()
         row = self._row(tid)
         if row is None:
@@ -279,43 +281,73 @@ class ApplicationService:
         )
         return {**self._view(self._row(tid)), "issues": issues}
 
+    # -- claim chains --------------------------------------------------------------------
+    # Appwrite has no conditional update, so a claim is never UPDATED. A chain is the set of rows
+    # sharing one `bucket`; the first claim has a derived id, a takeover is ONE create whose id is
+    # derived from the row it replaces (`row_id(prev_id)`), so of N racing takeovers exactly one
+    # create succeeds, and a crash between steps leaves nothing half-done: the next request just
+    # reads the latest row of the chain again. Rows are bounded by `expires_at` and removed by the
+    # `application-claims-cleanup` job (the successor id does not depend on older rows existing).
+    def _chain_latest(self, chain: str) -> dict | None:
+        rows = self.repo.list(CLAIM, [Query.equal("bucket", [chain]), Query.limit(100)])
+        return max(rows, key=lambda r: (r["created_at"], r["$id"])) if rows else None
+
+    def _chain_create(self, chain: str, rid: str, data: dict) -> None:
+        now = self.clock()
+        life = data.pop("life")
+        self.repo.create(
+            CLAIM,
+            rid,
+            {
+                **data,
+                "bucket": chain,
+                "created_at": iso(now),
+                "expires_at": iso(now + life),
+            },
+        )
+
+    @staticmethod
+    def _without_rejected(content: dict) -> dict:
+        """Never persist a field the rules refuse: the client was told (`issues`), and nothing
+        downstream (V02 included) can read a value that was never stored. Today that is the
+        photo file id and any photo state other than `chosen`."""
+        photo = (content.get("personal") or {}).get("photo")
+        if photo is not None and (photo.get("file_id") or photo.get("state") != "chosen"):
+            cleaned = {"state": "chosen", **({"crop": photo["crop"]} if photo.get("crop") else {})}
+            return {**content, "personal": {**content["personal"], "photo": cleaned}}
+        return content
+
     def _claim_revision(self, tid: str, rev: int, now: datetime, row: dict | None = None) -> None:
         """Take revision `rev` (one winner per number). A claim left behind by a crash between
         the claim and the row update would block that number forever, so a claim older than
-        `revision_stale_seconds` while the row has not reached `rev` may be retaken, itself
-        claimed with a derived id so that only one retaker wins."""
-        data = {
-            "kind": "revision",
-            "teacher_id": tid,
-            "created_at": iso(now),
-            "expires_at": iso(now + timedelta(days=1)),
-        }
-        rid = row_id("approvrev", tid, rev)
+        `revision_stale_seconds` while the row has not reached `rev` may be replaced by a
+        successor claim (see the chain notes above)."""
+        chain = f"rev:{tid}:{rev}"
+        data = {"kind": "revision", "teacher_id": tid, "life": timedelta(days=1)}
         try:
-            self.repo.create(CLAIM, rid, data)
+            self._chain_create(chain, row_id("approvrev", tid, rev), dict(data))
             return
         except Conflict:
             pass
-        try:
-            existing = self.repo.get(CLAIM, rid)
+        latest = self._chain_latest(chain)
+        if latest is not None:
             current = (self._row(tid) or {}).get("revision", 0)
-            stale = now - parse(existing["created_at"]) > timedelta(
+            stale = now - parse(latest["created_at"]) > timedelta(
                 seconds=self.policy.revision_stale_seconds
             )
             if stale and current < rev:
-                retake = row_id("approvrev-retake", tid, rev, existing["created_at"])
-                self.repo.create(CLAIM, retake, data)
-                return
-        except (Conflict, NotFound):
-            pass
+                try:
+                    self._chain_create(chain, row_id("approvrev-next", latest["$id"]), dict(data))
+                    return
+                except Conflict:
+                    pass
         raise self._conflict(self._row(tid))
 
     def _submit_claim_exists(self, tid: str, attempt: int) -> bool:
         """A FRESH submit claim: edits wait. Past the takeover window the claim is abandoned
         (its owner crashed) and the teacher may edit again; the next submit takes it over."""
-        try:
-            c = self.repo.get(CLAIM, row_id("appsubmit", tid, attempt))
-        except NotFound:
+        c = self._chain_latest(f"submit:{tid}:{attempt}")
+        if c is None:
             return False
         return self.clock() - parse(c["created_at"]) < timedelta(
             minutes=self.policy.submit_takeover_minutes
@@ -482,32 +514,30 @@ class ApplicationService:
         }
 
     def _claim_submit(self, tid: str, attempt: int, key: str) -> None:
-        """One submit claim per (teacher, attempt). The same key resumes. Another key is refused
-        while the claim is fresh (`submit_in_progress`: the earlier request may still be working)
-        and may TAKE OVER once it is older than the takeover window: a crash mid-submit followed
-        by a reinstall (the idempotency key is lost) must not lock the teacher out. The takeover
-        is itself claimed with a derived id, so one request wins; it finishes with the existing
-        rows (every step is idempotent), never creating duplicates."""
-        rid = row_id("appsubmit", tid, attempt)
-        now = self.clock()
+        """One submit claim chain per (teacher, attempt). The latest claim's key resumes. Another
+        key is refused while the latest claim is fresh (`submit_in_progress`: the earlier request
+        may still be working) and may TAKE OVER once it is older than the takeover window: a
+        crash mid-submit followed by a reinstall (the idempotency key is lost) must not lock the
+        teacher out. A takeover is a single create of the successor claim, so a crash at any
+        point leaves a state the next request resumes from (never a lock-out), and it finishes
+        with the existing rows (every step is idempotent), never creating duplicates."""
+        chain = f"submit:{tid}:{attempt}"
+        data = {"kind": "submit", "teacher_id": tid, "submit_key": key, "life": timedelta(days=7)}
         try:
-            self.repo.create(
-                CLAIM,
-                rid,
-                {
-                    "kind": "submit",
-                    "teacher_id": tid,
-                    "submit_key": key,
-                    "created_at": iso(now),
-                    "expires_at": iso(now + timedelta(days=3650)),
-                },
-            )
+            self._chain_create(chain, row_id("appsubmit", tid, attempt), dict(data))
             return
         except Conflict:
-            existing = self.repo.get(CLAIM, rid)
-        if existing.get("submit_key") == key:
+            pass
+        latest = self._chain_latest(chain)
+        if latest is None:  # cleaned up between the two calls: start the chain again
+            try:
+                self._chain_create(chain, row_id("appsubmit", tid, attempt), dict(data))
+                return
+            except Conflict:
+                raise AppError(409, "submit_in_progress", "Please try again") from None
+        if latest.get("submit_key") == key:
             return  # same key: a concurrent or crashed earlier try; the steps are idempotent
-        age = now - parse(existing["created_at"])
+        age = self.clock() - parse(latest["created_at"])
         if age < timedelta(minutes=self.policy.submit_takeover_minutes):
             raise AppError(
                 409,
@@ -517,22 +547,11 @@ class ApplicationService:
                 {"retry_after_s": 60},
             )
         try:  # one winner among simultaneous takeovers
-            self.repo.create(
-                CLAIM,
-                row_id("appsubmit-takeover", tid, attempt, existing["created_at"]),
-                {
-                    "kind": "submit",
-                    "teacher_id": tid,
-                    "submit_key": key,
-                    "created_at": iso(now),
-                    "expires_at": iso(now + timedelta(days=3650)),
-                },
-            )
+            self._chain_create(chain, row_id("appsubmit-next", latest["$id"]), dict(data))
         except Conflict:
             raise AppError(
                 409, "submit_in_progress", "Your application is being submitted"
             ) from None
-        self.repo.update(CLAIM, rid, {"submit_key": key, "created_at": iso(now)})
         log.warning("submit claim taken over", extra={"attempt": attempt})
 
     def _profile_id(self, uid: str) -> str | None:

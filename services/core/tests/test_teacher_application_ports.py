@@ -217,8 +217,19 @@ def test_with_the_event_present_the_service_is_called_once_with_the_dedupe_key_a
     assert svc.calls == [
         ("application_submitted_teacher", "u1", "teacher", {"attempt": 1}, "app-submit-t:u1:1")
     ]
-    n.send(Notice("application_submitted_ops", None, "k"))  # no recipient: recorded gap
+    assert n.gaps == []
+    # no event yet for the ops notice in this fake catalogue: gap; with it, a ROLE recipient
+    n.send(Notice("application_submitted_ops", None, "k"))
     assert n.gaps == ["application_submitted_ops"]
+    n2 = NotificationServiceNotifier(svc, events={"application_submitted_admin": object()})
+    n2.send(Notice("application_submitted_ops", None, "app-submit-o:u1:1", {"teacher_id": "u1"}))
+    assert svc.calls[-1] == (
+        "application_submitted_admin",
+        "role:opsadmin",
+        "admin",
+        {"teacher_id": "u1"},
+        "app-submit-o:u1:1",
+    )
 
 
 def test_the_app_wires_the_notification_service_and_a_submit_sends_no_real_channel():

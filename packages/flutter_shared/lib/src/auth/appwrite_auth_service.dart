@@ -80,6 +80,7 @@ class AppwriteAuthService implements AuthService {
     SessionVault? vault,
     DateTime Function()? clock,
     this.refreshWindow = const Duration(days: 7),
+    this.onSessionChanged,
   }) : _account = Account(client),
        _otp = otp, // ignore: prefer_initializing_formals
        _gateway = gateway ?? SdkSessionGateway(client),
@@ -94,6 +95,15 @@ class AppwriteAuthService implements AuthService {
 
   /// Sessions closer to expiry than this are extended on start and resume.
   final Duration refreshWindow;
+
+  /// Called whenever the signed-in identity may have changed or ended (sign
+  /// out, a new sign-in, a session found revoked or expired). The apps use it
+  /// to drop anything tied to the previous session, above all the cached core
+  /// service JWT (`CachedTokenProvider.invalidate`), so the next user on the
+  /// same phone never sends the previous user's token.
+  final void Function()? onSessionChanged;
+
+  void _changed() => onSessionChanged?.call();
 
   @override
   Future<AuthSession?> currentSession() async {
@@ -113,6 +123,7 @@ class AppwriteAuthService implements AuthService {
         email: email,
         password: password,
       );
+      _changed();
       return AuthSession(userId: s.userId, email: email);
     } on AppwriteException catch (e) {
       throw AuthException(e.message ?? 'Sign-in failed');
@@ -121,6 +132,7 @@ class AppwriteAuthService implements AuthService {
 
   @override
   Future<void> signOut() async {
+    _changed(); // first: a token being fetched right now is discarded as well
     await _vault.clear();
     try {
       await _gateway.deleteCurrent();
@@ -129,6 +141,8 @@ class AppwriteAuthService implements AuthService {
       if (e.code != 401 && e.code != 404) {
         throw AuthException(e.message ?? 'Sign-out failed');
       }
+    } finally {
+      _changed();
     }
   }
 
@@ -150,6 +164,7 @@ class AppwriteAuthService implements AuthService {
       if (e.code == 429) throw const OtpException(OtpFailure.rateLimited);
       throw const OtpException(OtpFailure.serverUnavailable);
     }
+    _changed(); // a different account may now be signed in on this phone
     return _persist(s, maskPhone(phoneE164), isNew: token.isNewUser);
   }
 
@@ -181,6 +196,7 @@ class AppwriteAuthService implements AuthService {
     if (stored == null) return null;
     if (!stored.expiresAt.isAfter(_now())) {
       await _vault.clear();
+      _changed();
       return null;
     }
     final secret = stored.secret;
@@ -189,6 +205,7 @@ class AppwriteAuthService implements AuthService {
       var s = await _gateway.current();
       if (s == null) {
         await _vault.clear(); // revoked or expired server-side
+        _changed();
         return null;
       }
       if (s.expiresAt.difference(_now()) < refreshWindow) {
@@ -198,6 +215,7 @@ class AppwriteAuthService implements AuthService {
     } on AppwriteException catch (e) {
       if (e.code == 401) {
         await _vault.clear();
+        _changed();
         return null;
       }
       // Offline or a server hiccup: keep the stored session, stay signed in.

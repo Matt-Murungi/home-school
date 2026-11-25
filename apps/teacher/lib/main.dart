@@ -23,8 +23,16 @@ Future<void> main() async {
   final client = Client()
     ..setEndpoint(config.endpoint)
     ..setProject(config.projectId);
+  // The cached core JWT belongs to the signed-in session: every sign-out, new
+  // sign-in or lost session drops it (the next user must never send this one).
+  // Appwrite rate-limits JWT creation: one token is reused for ~10 minutes.
+  final account = Account(client);
+  final tokens = CachedTokenProvider(
+    () async => (await account.createJWT()).jwt,
+  );
   final auth = AppwriteAuthService(
     client,
+    onSessionChanged: () => tokens.invalidate(),
     otp: CoreOtpApi(
       HttpApiClient(config.coreUrl),
       role: AppRole.teacher,
@@ -40,11 +48,6 @@ Future<void> main() async {
   }
   final db = await openAppDatabase();
   // Authenticated calls to the core service carry a short-lived Appwrite JWT.
-  final account = Account(client);
-  // Appwrite rate-limits JWT creation: one token is reused for ~10 minutes.
-  final tokens = CachedTokenProvider(
-    () async => (await account.createJWT()).jwt,
-  );
   final coreApi = HttpApiClient(
     config.coreUrl,
     bearerToken: tokens.call,

@@ -25,10 +25,12 @@ class CachedTokenProvider {
   Future<String?>? _inFlight;
   int _generation = 0;
 
-  bool get _fresh =>
-      _token != null &&
-      _fetchedAt != null &&
-      _clock().difference(_fetchedAt!) < reuseFor - margin;
+  bool get _fresh {
+    if (_token == null || _fetchedAt == null) return false;
+    final age = _clock().difference(_fetchedAt!);
+    // A clock that jumped backwards gives a negative age: not trusted.
+    return !age.isNegative && age < reuseFor - margin;
+  }
 
   Future<String?> call() {
     if (_fresh) return Future.value(_token);

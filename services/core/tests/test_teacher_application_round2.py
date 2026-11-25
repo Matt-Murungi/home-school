@@ -36,16 +36,19 @@ def counts(e):
         {"state": "uploaded"},
     ],
 )
-def test_a_client_file_id_or_uploaded_state_is_refused_at_submit_and_never_copied(photo):
+def test_a_client_file_id_or_uploaded_state_is_reported_never_stored_and_never_copied(photo):
     e = Env()
     c = valid_content()
     c["personal"]["photo"] = photo
     r = e.save(c)
     assert r.status_code == 200 and "personal.photo:file_not_allowed" in r.json()["issues"]
-    r = e.submit(1)
-    assert r.status_code == 422
-    assert "personal.photo:file_not_allowed" in r.json()["error"]["issues"]
-    assert e.rows("teacher_profile") == []  # nothing was materialised
+    stored = e.repo.get("teacher_application", "teacher_one")["content_json"]
+    assert "someone_elses_file" not in stored and '"uploaded"' not in stored
+    assert "file_id" not in e.get().json()["content"]["personal"]["photo"]
+    # what remains is the on-device photo; submitting copies no file id anywhere
+    assert e.submit(1).status_code == 200
+    assert e.rows("teacher_profile")[0].get("photo_file_id") is None
+    assert "someone_elses_file" not in str(e.rows("teacher_application"))
 
 
 def test_the_photo_file_id_of_the_profile_is_always_empty_after_submit():

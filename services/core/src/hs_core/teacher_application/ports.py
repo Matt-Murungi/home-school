@@ -132,6 +132,7 @@ class FakeNotifier:
 # neither a teacher confirmation nor an ops-queue event exist). Until N01 adds them the adapter
 # records the gap instead of inventing events in someone else's catalogue; adding the keys there
 # and nothing else here turns the notifications on.
+OPS_QUEUE_RECIPIENT = "role:opsadmin"
 EVENT_FOR_NOTICE: dict[str, tuple[str, str]] = {
     "application_submitted_teacher": ("application_submitted_teacher", "teacher"),
     "application_submitted_ops": ("application_submitted_admin", "admin"),
@@ -157,13 +158,10 @@ class NotificationServiceNotifier:
             self.gaps.append(notice.template)
             log.warning("notification event missing", extra={"template": notice.template})
             return
-        if notice.user_id is None:  # the ops queue has no single recipient to address yet
-            self.gaps.append(notice.template)
-            log.warning("no recipient for ops notice", extra={"template": notice.template})
-            return
-        self._service.send(
-            key, Recipient(notice.user_id, role), dict(notice.data), notice.dedupe_key
-        )
+        # The ops notice has no single user: it goes to the ROLE recipient `OPS_QUEUE_RECIPIENT`,
+        # which the notification directory (N03/V04) resolves to the active `opsadmin` holders.
+        uid = notice.user_id if notice.user_id is not None else OPS_QUEUE_RECIPIENT
+        self._service.send(key, Recipient(uid, role), dict(notice.data), notice.dedupe_key)
 
 
 class LogNotifier:
