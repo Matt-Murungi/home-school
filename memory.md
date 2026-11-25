@@ -630,7 +630,7 @@ README now states the caller contract: on `OutcomeUnknown` poll status with the 
 
 ### chore · main-health (branch `chore-main-health`, no ticket)
 
-Status: **ready-for-review** (branch pushed at b9347e6 on top of main 2454a64, no PR; reviewer opens it). Machine was rebooted mid-task; everything re-verified in a fresh worktree afterwards.
+Status: **merged** (PR #170, squash 253d463). Reviewer (clean worktree rebased on main, scratch npm cache, documented commands only): `make lint` before setup exit 0 with `SKIP apps/admin: not set up ...` (HS_STRICT=1 exit 1); `make setup` ok; `make lint` 8 ran ok/2 skipped/0 failed; `make test` 10 ran ok, 0 skipped, 0 failed (all packages incl. app-admin and Flutter really run; the nested test skips are covered here); unittest Ran 41 OK; `uvx pre-commit run --all-files` all Passed. Rebased on F08 main: lint 9 ran ok, unittest 41 OK. Hook mutations (exit 0 silent skip, guard removed, eslint runs prettier binary, npx, eslint files scope, no prefix strip) each fail a test. Non-blocking: (1) widening the prettier hook `files` regex to all repo files is not caught by a test; (2) the new `needs` test and `test_missing_tool_degrades_with_message` inherit `HS_STRICT=1` from the environment and fail under `HS_STRICT=1 make test` (CI scripts job uses HS_STRICT=0; better to pass `env={'HS_STRICT':'0'}`); (3) F07 `ci_changes`/`ci_lint` read only packages.json id/path/commands, so `needs`/`setup` do not conflict (CI admin job must run `npm ci`, which the test command already does). Original builder note: (branch pushed at b9347e6 on top of main 2454a64). Machine was rebooted mid-task; everything re-verified in a fresh worktree afterwards.
 
 | Failure | Cause | Class | Fix |
 |---|---|---|---|
