@@ -10,4 +10,6 @@ Dart package shared by both Flutter apps: Appwrite client adapter, models, theme
 
 ## Status
 
-Not scaffolded yet. Skipped by `make test` until F05 flips it in `packages.json`.
+Scaffolded (F05). Contents: design tokens and theme (`lib/src/theme`), `AppConfig` (`--dart-define` environments), `ApiClient` + `FakeApiClient`, `AuthService` + `FakeAuthService` + `AppwriteAuthService` adapter, placeholder models, Drift offline queue (`AppDatabase`, `OfflineQueue`), go_router `buildAppRouter`, widgets, and strings in `lib/src/l10n/app_en.arb`.
+
+Generated code is committed. After editing the ARB run `flutter gen-l10n`; after editing Drift tables run `dart run build_runner build --delete-conflicting-outputs`.
