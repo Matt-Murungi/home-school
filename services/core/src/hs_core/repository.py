@@ -58,6 +58,17 @@ def _apply_queries(rows: list[dict], queries: list[str] | None) -> list[dict]:
             attr, vals = q["attribute"], q["values"]
             # Appwrite never matches a null attribute with a comparison.
             rows = [r for r in rows if r.get(attr) is not None and cmp[m](r[attr], vals)]
+        elif m in ("startsWith", "notStartsWith"):
+            attr, prefix = q["attribute"], q["values"][0]
+            want = m == "startsWith"  # null never matches, like a comparison
+            rows = [
+                r for r in rows
+                if isinstance(r.get(attr), str) and r[attr].startswith(prefix) == want
+            ]  # fmt: skip
+        elif m in ("isNull", "isNotNull"):
+            rows = [r for r in rows if (r.get(q["attribute"]) is None) == (m == "isNull")]
+        elif m == "select":
+            pass  # projection only: the fake returns whole rows
         elif m in ("orderAsc", "orderDesc"):
             orders.append((q["attribute"], m == "orderDesc"))
         elif m == "limit":
@@ -77,6 +88,35 @@ def _apply_queries(rows: list[dict], queries: list[str] | None) -> list[dict]:
         rows = rows[ids.index(cursor_after) + 1 :]
     rows = rows[offset:]
     return rows[:limit] if limit is not None else rows
+
+
+def _is_filter(q) -> bool:
+    method = (json.loads(q) if isinstance(q, str) else q)["method"]
+    return method not in ("limit", "offset", "cursorAfter", "orderAsc", "orderDesc")
+
+
+def count_rows(repo, table: str, queries: list[str] | None = None, cap: int = 1_000_000) -> int:
+    """Number of rows matching `queries`. Uses the repository's own `count` (Appwrite returns the
+    exact `total` with limit 1) and otherwise walks the table by cursor, 100 per page, stopping at
+    `cap` (never offsets: Appwrite caps them at 5,000)."""
+    fn = getattr(repo, "count", None)
+    if fn is not None:
+        return fn(table, queries)
+    filters = [q for q in (queries or []) if _is_filter(q)]
+    from appwrite.query import Query
+
+    n, after = 0, None
+    while n < cap:
+        page = repo.list(
+            table,
+            [*filters, Query.order_asc("$id"), Query.limit(100)]
+            + ([Query.cursor_after(after)] if after else []),
+        )
+        n += len(page)
+        if len(page) < 100:
+            break
+        after = page[-1]["$id"]
+    return n
 
 
 class InMemoryRepository:
@@ -134,6 +174,11 @@ class InMemoryRepository:
         with self._lock:
             if self._t.get(table, {}).pop(row_id, None) is None:
                 raise NotFound(f"{table}/{row_id}")
+
+    def count(self, table, queries=None):
+        """Rows matching the filter queries (limit/offset/order/cursor are ignored)."""
+        rows = self.list(table, [q for q in (queries or []) if _is_filter(q)])
+        return len(rows)
 
 
 def _plain(obj: Any) -> dict[str, Any]:
@@ -211,6 +256,19 @@ class AppwriteRepository:
 
     def delete(self, table, row_id):
         self._wrap(self._tables.delete_row, database_id=self._db, table_id=table, row_id=row_id)
+
+    def count(self, table, queries=None):
+        """Exact number of rows matching the filters: a list call with limit 1 returns `total`."""
+        from appwrite.query import Query
+
+        filters = [q for q in (queries or []) if _is_filter(q)]
+        res = self._wrap(
+            self._tables.list_rows,
+            database_id=self._db,
+            table_id=table,
+            queries=[*filters, Query.limit(1)],
+        )
+        return int(res["total"] if isinstance(res, dict) else res.total)
 
 
 class _TimeoutRequests:

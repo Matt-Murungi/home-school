@@ -58,6 +58,10 @@ M01 tables that predate the rule and still need the derived-key treatment (follo
 - **Question two-person rule**: `approve_question` / `assert_two_person` / `validate_question_row`: approver is not the author, an approved question has approver and approved_at, only approved questions are assembled, approved questions are retired not edited. The approver must be a curator or senior teacher (core role check). `answer_key` never goes to the parent app before an item is submitted.
 - Child data (logs, school uploads, handover summaries, assessments) has no table-level read for anyone; per-row grants come from M05/M06.
 
+## Retention bookkeeping (C03)
+
+`schema/retention.json`, migration `0011_retention_schema.py`: `retention_hold` (a legal hold on a child, parent, teacher, user, safeguarding case or one row; `active_key` unique while active, `revoked_at` when lifted), `deletion_request` (data-subject deletion lifecycle, `open_key` unique while open) and `retention_run` (purge lease generations `lease-<n>` and run summaries). Server-only, no client permission. **The retention job (`services/core/src/hs_core/retention/`) is the only allowed hard-deleter of soft, immutable and append-only rows** (the M02 rule above, made concrete); the policy for every table is `docs/legal/retention-schedule.md` (generated), the mechanism `docs/ops/retention.md`. A new table without a retention rule fails `services/core/tests/test_retention_policy.py`.
+
 ## Permissions bookkeeping (M05)
 
 `schema/permissions.json`, migration `0010_permissions_schema.py`: `access_window` (when a teacher's time-limited access to a child lapses, so the `address-revoke` job finds due rows by index) and `teacher_session_history` (the redacted copy of a session log a teacher keeps after an assignment ends: child first name, class, date, duration). Both are written only by the core service. The rules and jobs are in `services/core/src/hs_core/permissions/`; see `docs/ops/permissions.md`.

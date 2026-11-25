@@ -28,6 +28,9 @@ from .registry import AUDITED_TABLES, CASE_TABLES
 _WRITES = WRITE_METHODS | {"create"}
 _READS = frozenset({"get", "list", "get_row", "list_rows"})
 _EXEMPT_FILES = frozenset({"repository.py", "append_only.py"})
+# C03: the retention hold check must know whether a case is OPEN. It reads ids and status only
+# (`Query.select`, never the description or outcome); a test (test_retention_tripwire) pins this.
+CASE_READ_EXEMPT = frozenset({"retention/holds.py"})
 
 
 def _is_exempt_dir(path: Path, root: Path) -> bool:
@@ -44,10 +47,12 @@ def _table_args(node: ast.Call, consts: dict[str, str]) -> list[str]:
     return out
 
 
-def _calls(root: Path, skip_files: frozenset[str]):
+def _calls(root: Path, skip_files: frozenset[str], skip_paths: frozenset[str] = frozenset()):
     root = Path(root)
     for path in sorted(root.rglob("*.py")):
         if path.name in skip_files or _is_exempt_dir(path, root):
+            continue
+        if path.relative_to(root).as_posix() in skip_paths:
             continue
         tree = ast.parse(path.read_text(), filename=str(path))
         consts = _string_constants(tree)
@@ -72,7 +77,7 @@ def find_unaudited_writes(root: Path) -> list[str]:
 
 def find_unaudited_case_reads(root: Path) -> list[str]:
     found = []
-    for path, n, consts in _calls(root, frozenset()):
+    for path, n, consts in _calls(root, frozenset(), CASE_READ_EXEMPT):
         if n.func.attr not in _READS:
             continue
         hit = [t for t in _table_args(n, consts) if t in CASE_TABLES]

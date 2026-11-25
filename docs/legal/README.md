@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Legal and data-protection working documents (D06, C04): positioning inputs, policy inventory, lawyer brief, PDPO checklist and plan, processor register (`processors.json`), breach procedure. Not legal advice; Ugandan-law statements are unverified, for lawyer confirmation. Agreements, registration and lawyer review are owner-blocked.
+Legal and data-protection working documents (D06, C04): positioning inputs, policy inventory, lawyer brief, PDPO checklist and plan, processor register (`processors.json`), breach procedure, retention periods (`retention.md`, generated `retention-schedule.md`, C03). Not legal advice; Ugandan-law statements are unverified, for lawyer confirmation. Agreements, registration and lawyer review are owner-blocked.
 
 ## Test command
 

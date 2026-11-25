@@ -575,6 +575,9 @@ SERVICE_ONLY_TABLES: dict[str, str] = {
     "schema_migration": "migration runner bookkeeping",
     "sample_item": "CI sample table",
     "access_window": "permission service bookkeeping (when time-limited access lapses)",
+    "retention_hold": "C03 legal holds (placed and lifted by staff through the core service only)",
+    "deletion_request": "C03 data-subject deletion lifecycle (C05 owns the user flow, through the core service)",
+    "retention_run": "C03 retention purge lease generations and run summaries, counts only",
 }
 # Tables owned by tickets that are not on main yet. Decided now so their merge does not leave a
 # table without a decision; `test_decisions_cover_every_table` allows these to be absent.

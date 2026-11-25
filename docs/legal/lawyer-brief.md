@@ -41,6 +41,12 @@ Home tutoring alongside formal school (not homeschooling), Uganda. Parents book 
 27. Does any sector rule (education, payments, safeguarding) require local copies or hosting?
 28. For the closed pilot, is a lighter route acceptable (explicit consent with a short notice), and what must change before public launch?
 
+### D. Retention mechanism (C03, `retention-schedule.md`)
+29. Please confirm or replace each placeholder period in `docs/legal/retention-schedule.md` (generated, one row per table): child records after cancellation (3 years), session logs and school reports (3 years), home address (1 year), check-in coordinates (2 years), teacher documents and profile after deactivation (7 years), safeguarding cases (25 years after closing), notifications, and the proof records that have no end date (consent, policy acceptance, audit log).
+30. Tax records: the statutory retention period for payments, invoices, earnings, payouts, subscriptions, sessions and the ledger (7 years is a placeholder), and whether a stable one-way pseudonym in place of the payer or teacher reference, with the provider callback text removed, satisfies "personal fields minimised". What happens to the ledger after the period (archive, aggregate, keep)?
+31. Deletion requests (DP-5): is a 30 day grace period (a cancellation window) acceptable and lawful; what must be kept and for how long (consent records, ledger, audit log, safeguarding cases, the request itself); can a teacher with open payouts or disputes be deleted, and when?
+32. Backups and quarantine: deleted data stays in provider backups until they roll off and for 14 days as soft-deleted rows. Is that acceptable and what must the privacy notice say? Who may place a legal hold (safeguarding lead, owner), and is an open safeguarding case an acceptable automatic hold on the child's and the teacher's data?
+
 ## What we will give counsel
 Data inventory by table (F02/M01-M04), processor list and regions (to be completed), access model (ADR 0012), retention proposals (C03), policy outlines (`policy-inventory.md`), draft flows (consent, teacher signature).
 

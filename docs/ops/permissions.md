@@ -212,9 +212,12 @@ Owner steps to verify: see memory.md, ticket M05, "Owner-blocked".
 - `billing_claim`: B03 idempotency claims, server only (table arrives with its own ticket)
 - `billing_credit`: B03 billing credits, server only (table arrives with its own ticket)
 - `billing_payment`: B03 payment flags, server only (table arrives with its own ticket)
+- `deletion_request`: C03 data-subject deletion lifecycle (C05 owns the user flow, through the core service)
 - `job_attempt`: F04 job runner attempts, server only (planned schema) (table arrives with its own ticket)
 - `job_run`: F04 job runner state, server only (planned schema) (table arrives with its own ticket)
 - `otp_challenge`: A01 one-time code hashes, server only (table arrives with its own ticket)
+- `retention_hold`: C03 legal holds (placed and lifted by staff through the core service only)
+- `retention_run`: C03 retention purge lease generations and run summaries, counts only
 - `sample_item`: CI sample table
 - `scheduling_issue`: S01 scheduling problems, server only (admin queue through an endpoint) (table arrives with its own ticket)
 - `schema_migration`: migration runner bookkeeping

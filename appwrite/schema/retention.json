@@ -1,0 +1,424 @@
+{
+  "domain": "retention",
+  "description": "C03 (#141): retention enforcement bookkeeping (DP-5, DP-6). retention_hold blocks purging for a subject or one row (legal hold, safeguarding); deletion_request is the data-subject deletion lifecycle (C05 owns the user-facing flow); retention_run holds the purge job's lease generations and its per-run summaries. Server-only: no client permission, no table-level read. Holds ids, counts and states, never personal data.",
+  "tables": [
+    {
+      "$id": "retention_hold",
+      "name": "retention_hold",
+      "enabled": true,
+      "rowSecurity": true,
+      "$permissions": [],
+      "columns": [
+        {
+          "key": "subject_kind",
+          "type": "string",
+          "format": "enum",
+          "elements": [
+            "child",
+            "parent",
+            "teacher",
+            "user",
+            "case",
+            "row"
+          ],
+          "required": true
+        },
+        {
+          "key": "subject_id",
+          "type": "varchar",
+          "size": 80,
+          "required": true
+        },
+        {
+          "key": "reason",
+          "type": "string",
+          "format": "enum",
+          "elements": [
+            "safeguarding",
+            "legal_claim",
+            "regulator",
+            "dispute",
+            "other"
+          ],
+          "required": true
+        },
+        {
+          "key": "reference",
+          "type": "varchar",
+          "size": 60,
+          "required": false
+        },
+        {
+          "key": "placed_by_id",
+          "type": "varchar",
+          "size": 36,
+          "required": true
+        },
+        {
+          "key": "placed_at",
+          "type": "datetime",
+          "required": true
+        },
+        {
+          "key": "revoked_by_id",
+          "type": "varchar",
+          "size": 36,
+          "required": false
+        },
+        {
+          "key": "revoked_at",
+          "type": "datetime",
+          "required": false
+        },
+        {
+          "key": "active_key",
+          "type": "varchar",
+          "size": 100,
+          "required": false
+        }
+      ],
+      "indexes": [
+        {
+          "key": "unique_active",
+          "type": "unique",
+          "columns": [
+            "active_key"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_subject",
+          "type": "key",
+          "columns": [
+            "subject_kind",
+            "subject_id"
+          ],
+          "orders": [
+            "ASC",
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_placed_by",
+          "type": "key",
+          "columns": [
+            "placed_by_id"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_revoked_by",
+          "type": "key",
+          "columns": [
+            "revoked_by_id"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        }
+      ]
+    },
+    {
+      "$id": "deletion_request",
+      "name": "deletion_request",
+      "enabled": true,
+      "rowSecurity": true,
+      "$permissions": [],
+      "columns": [
+        {
+          "key": "subject_kind",
+          "type": "string",
+          "format": "enum",
+          "elements": [
+            "parent",
+            "child",
+            "teacher",
+            "user"
+          ],
+          "required": true
+        },
+        {
+          "key": "subject_id",
+          "type": "varchar",
+          "size": 36,
+          "required": true
+        },
+        {
+          "key": "requested_by_id",
+          "type": "varchar",
+          "size": 36,
+          "required": true
+        },
+        {
+          "key": "status",
+          "type": "string",
+          "format": "enum",
+          "elements": [
+            "requested",
+            "verified",
+            "scheduled",
+            "executed",
+            "confirmed",
+            "cancelled",
+            "blocked"
+          ],
+          "required": true
+        },
+        {
+          "key": "verification",
+          "type": "varchar",
+          "size": 24,
+          "required": false
+        },
+        {
+          "key": "requested_at",
+          "type": "datetime",
+          "required": true
+        },
+        {
+          "key": "verified_at",
+          "type": "datetime",
+          "required": false
+        },
+        {
+          "key": "scheduled_for_at",
+          "type": "datetime",
+          "required": false
+        },
+        {
+          "key": "executed_at",
+          "type": "datetime",
+          "required": false
+        },
+        {
+          "key": "confirmed_at",
+          "type": "datetime",
+          "required": false
+        },
+        {
+          "key": "cancelled_at",
+          "type": "datetime",
+          "required": false
+        },
+        {
+          "key": "blocked_reason",
+          "type": "varchar",
+          "size": 40,
+          "required": false
+        },
+        {
+          "key": "result",
+          "type": "text",
+          "required": false
+        },
+        {
+          "key": "open_key",
+          "type": "varchar",
+          "size": 100,
+          "required": false
+        }
+      ],
+      "indexes": [
+        {
+          "key": "unique_open",
+          "type": "unique",
+          "columns": [
+            "open_key"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_subject",
+          "type": "key",
+          "columns": [
+            "subject_kind",
+            "subject_id"
+          ],
+          "orders": [
+            "ASC",
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_requester",
+          "type": "key",
+          "columns": [
+            "requested_by_id"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_status_due",
+          "type": "key",
+          "columns": [
+            "status",
+            "scheduled_for_at"
+          ],
+          "orders": [
+            "ASC",
+            "ASC"
+          ]
+        }
+      ]
+    },
+    {
+      "$id": "retention_run",
+      "name": "retention_run",
+      "enabled": true,
+      "rowSecurity": true,
+      "$permissions": [],
+      "columns": [
+        {
+          "key": "kind",
+          "type": "string",
+          "format": "enum",
+          "elements": [
+            "lease",
+            "run"
+          ],
+          "required": true
+        },
+        {
+          "key": "seq",
+          "type": "integer",
+          "required": true,
+          "min": 0,
+          "max": 2000000000
+        },
+        {
+          "key": "owner",
+          "type": "varchar",
+          "size": 64,
+          "required": false
+        },
+        {
+          "key": "mode",
+          "type": "string",
+          "format": "enum",
+          "elements": [
+            "dry_run",
+            "enforce"
+          ],
+          "required": false
+        },
+        {
+          "key": "status",
+          "type": "string",
+          "format": "enum",
+          "elements": [
+            "running",
+            "completed",
+            "aborted",
+            "refused"
+          ],
+          "required": true
+        },
+        {
+          "key": "started_at",
+          "type": "datetime",
+          "required": true
+        },
+        {
+          "key": "lease_until_at",
+          "type": "datetime",
+          "required": false
+        },
+        {
+          "key": "finished_at",
+          "type": "datetime",
+          "required": false
+        },
+        {
+          "key": "counts",
+          "type": "text",
+          "required": false
+        },
+        {
+          "key": "note",
+          "type": "varchar",
+          "size": 200,
+          "required": false
+        }
+      ],
+      "indexes": [
+        {
+          "key": "unique_kind_seq",
+          "type": "unique",
+          "columns": [
+            "kind",
+            "seq"
+          ],
+          "orders": [
+            "ASC",
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_kind_started",
+          "type": "key",
+          "columns": [
+            "kind",
+            "started_at"
+          ],
+          "orders": [
+            "ASC",
+            "DESC"
+          ]
+        },
+        {
+          "key": "by_finished",
+          "type": "key",
+          "columns": [
+            "finished_at"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        }
+      ]
+    }
+  ],
+  "meta": {
+    "retention_hold": {
+      "deletion": "history",
+      "note": "A hold stops the retention job (and the deletion executor) from purging or anonymising any row that belongs to the subject: child, parent, teacher, user, safeguarding case, or one row ('table:id'). Placed and revoked by staff through the core service only (SEC-6 audited), never deleted; revoked_at set when lifted. active_key = '<subject_kind>:<subject_id>:<reason>' while active, null once revoked (unique among active holds, a revoked hold can be placed again). reference is a case or matter number, never a name or a description of the child. Open safeguarding cases are an implicit hold even without a row here (retention/holds.py).",
+      "non_fk": {
+        "subject_id": "polymorphic: the id of a child, parent profile, teacher profile, user, safeguarding case, or 'table:row id'"
+      }
+    },
+    "deletion_request": {
+      "deletion": "hard",
+      "note": "Data-subject deletion lifecycle (DP-5): requested -> verified (identity re-confirmed) -> scheduled (grace period before anything is deleted, scheduled_for_at) -> executed -> confirmed (the requester was told). cancelled while still before executed; blocked when a legal or safeguarding hold applies (blocked_reason carries the code only). open_key = '<subject_kind>:<subject_id>' while the request is open, null once executed, confirmed, cancelled or blocked-and-closed: one open request per subject. result holds counts per table of what was deleted, anonymised and retained (never values). The row itself is kept as proof of the request and purged by the retention job after its period. C05 (#143) owns the user flow; the executor is hs_core.retention.deletion.",
+      "non_fk": {
+        "subject_id": "polymorphic: the id of a parent profile, child, teacher profile or user"
+      }
+    },
+    "retention_run": {
+      "deletion": "hard",
+      "note": "kind=lease: one row per lease generation of the purge job (row id 'lease-<seq>', created atomically, so exactly one concurrent run holds generation n; lease_until_at is when a crashed holder is replaced by generation n+1). kind=run: one summary per purge run (mode dry_run or enforce, status, counts per table: scanned, deleted, anonymised, quarantined, held, skipped, errors). Read by the purge guard (clock sanity: now must not be earlier than the last run). No personal data. Purged by the retention job after its period.",
+      "non_fk": {}
+    }
+  },
+  "relations": [
+    {
+      "from": "retention_hold.placed_by_id",
+      "to": "user_profile"
+    },
+    {
+      "from": "retention_hold.revoked_by_id",
+      "to": "user_profile"
+    },
+    {
+      "from": "deletion_request.requested_by_id",
+      "to": "user_profile"
+    }
+  ]
+}

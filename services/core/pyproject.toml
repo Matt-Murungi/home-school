@@ -28,3 +28,11 @@ line-length = 100
 src = ["src", "tests"]
 [tool.ruff.lint]
 select = ["E", "F", "I", "B", "UP"]
+
+[tool.ruff.lint.per-file-ignores]
+# The retention policy is a table of rules with long human-readable notes (rendered for the lawyer).
+"src/hs_core/retention/policy.py" = ["E501"]
+"src/hs_core/retention/render.py" = ["E501"]
+# Row fixtures in the retention tests are one-line dict literals (`# fmt: skip`): readable as tables.
+"tests/test_retention_*.py" = ["E501"]
+"tests/retention_*.py" = ["E501"]

@@ -30,6 +30,12 @@ OTP_RANGES: dict[str, tuple[int, int]] = {
     "otp_dormant_days": (30, 3650),
 }
 # M06 audit: allowed (min, max) of the audit-recover tuning settings.
+RETENTION_RANGES: dict[str, tuple[int, int]] = {
+    "retention_quarantine_days": (0, 90),
+    "retention_max_delete_pct": (1, 100),
+    "retention_deletion_grace_days": (1, 90),
+    "retention_lease_s": (60, 3600),
+}
 AUDIT_RANGES: dict[str, tuple[int, int]] = {
     "audit_recover_lookback_hours": (1, 720),
     "audit_recover_grace_s": (30, 3600),
@@ -172,9 +178,36 @@ class Settings(BaseSettings):
     audit_recover_grace_s: int = 300  # in-flight changes younger than this are left alone
     admin_audit_rate_per_min: int = 60  # admin-UI audit events per admin per minute (429 above)
 
+    # C03 retention (DP-6). RETENTION_ENFORCE defaults to FALSE everywhere: the purge job only
+    # reports what it WOULD do (dry run) until the owner switches it on after the lawyer has
+    # confirmed the periods (docs/legal/retention.md).
+    retention_enforce: bool = False
+    retention_periods: str = ""  # JSON {"table": "7y"}: lengthens (never shortens below the floor)
+    retention_quarantine_days: int = 14  # soft-delete first, hard-delete this many days later
+    retention_max_delete_pct: int = 10  # blast radius: refuse a table if more than this % is due
+    retention_blast_override: bool = False  # owner switch for the one-off first big purge
+    retention_allow_append_only_purge: bool = False  # exception path for audit/safeguarding rows
+    retention_deletion_grace_days: int = 30  # data-subject deletion: days between schedule and run
+    retention_lease_s: int = 600  # a crashed purge run is replaced after this many seconds
+
+    def _retention_problems(self) -> list[str]:
+        from .retention.policy import PolicyError, effective_policy, parse_overrides
+
+        out = [
+            f"{name.upper()} must be between {lo} and {hi}"
+            for name, (lo, hi) in RETENTION_RANGES.items()
+            if not lo <= getattr(self, name) <= hi
+        ]
+        try:
+            effective_policy(parse_overrides(self.retention_periods))
+        except PolicyError as e:
+            out.append(str(e))
+        return out
+
     def problems(self) -> list[str]:
         """Variable-name-only list of what is wrong for this environment."""
         out: list[str] = []
+        out += self._retention_problems()
         dsn = self.sentry_dsn.get_secret_value().strip()
         if dsn and urlparse(dsn).scheme != "https":
             out.append("SENTRY_DSN must be an https DSN")

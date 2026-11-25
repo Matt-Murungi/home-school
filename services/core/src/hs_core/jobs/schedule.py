@@ -14,6 +14,7 @@ from ..audit.recover import audit_recover
 from ..auth_otp.jobs import otp_cleanup
 from ..notifications.dispatch import notification_dispatch
 from ..permissions.jobs import address_revoke, permission_audit, permission_reconcile
+from ..retention.jobs import retention_purge
 from ..travel.jobs import travel_cache_refresh
 from .handlers import heartbeat
 from .model import KAMPALA, JobSpec, Schedule
@@ -84,5 +85,15 @@ JOBS: list[JobSpec] = [
         max_attempts=3,
         catch_up=timedelta(hours=1),
         timeout=timedelta(seconds=15),
+    ),
+    # C03 (#141, DP-6): enforce the retention schedule (docs/legal/retention-schedule.md).
+    # Daily 03:30 Kampala, chunked, idempotent. DRY RUN until RETENTION_ENFORCE is set (owner,
+    # after the lawyer confirms the periods). Misfires are covered by the next day: catch_up 1 day.
+    JobSpec(
+        "retention-purge",
+        retention_purge,
+        schedule=Schedule(timedelta(days=1), anchor=datetime(2026, 1, 1, 3, 30, tzinfo=KAMPALA)),
+        max_attempts=3,
+        catch_up=timedelta(days=1),
     ),
 ]

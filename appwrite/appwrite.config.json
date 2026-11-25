@@ -5379,6 +5379,392 @@
       ]
     },
     {
+      "$id": "retention_hold",
+      "databaseId": "main",
+      "name": "retention_hold",
+      "enabled": true,
+      "rowSecurity": true,
+      "$permissions": [],
+      "columns": [
+        {
+          "key": "subject_kind",
+          "type": "string",
+          "format": "enum",
+          "elements": [
+            "child",
+            "parent",
+            "teacher",
+            "user",
+            "case",
+            "row"
+          ],
+          "required": true
+        },
+        {
+          "key": "subject_id",
+          "type": "varchar",
+          "size": 80,
+          "required": true
+        },
+        {
+          "key": "reason",
+          "type": "string",
+          "format": "enum",
+          "elements": [
+            "safeguarding",
+            "legal_claim",
+            "regulator",
+            "dispute",
+            "other"
+          ],
+          "required": true
+        },
+        {
+          "key": "reference",
+          "type": "varchar",
+          "size": 60,
+          "required": false
+        },
+        {
+          "key": "placed_by_id",
+          "type": "varchar",
+          "size": 36,
+          "required": true
+        },
+        {
+          "key": "placed_at",
+          "type": "datetime",
+          "required": true
+        },
+        {
+          "key": "revoked_by_id",
+          "type": "varchar",
+          "size": 36,
+          "required": false
+        },
+        {
+          "key": "revoked_at",
+          "type": "datetime",
+          "required": false
+        },
+        {
+          "key": "active_key",
+          "type": "varchar",
+          "size": 100,
+          "required": false
+        }
+      ],
+      "indexes": [
+        {
+          "key": "unique_active",
+          "type": "unique",
+          "columns": [
+            "active_key"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_subject",
+          "type": "key",
+          "columns": [
+            "subject_kind",
+            "subject_id"
+          ],
+          "orders": [
+            "ASC",
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_placed_by",
+          "type": "key",
+          "columns": [
+            "placed_by_id"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_revoked_by",
+          "type": "key",
+          "columns": [
+            "revoked_by_id"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        }
+      ]
+    },
+    {
+      "$id": "deletion_request",
+      "databaseId": "main",
+      "name": "deletion_request",
+      "enabled": true,
+      "rowSecurity": true,
+      "$permissions": [],
+      "columns": [
+        {
+          "key": "subject_kind",
+          "type": "string",
+          "format": "enum",
+          "elements": [
+            "parent",
+            "child",
+            "teacher",
+            "user"
+          ],
+          "required": true
+        },
+        {
+          "key": "subject_id",
+          "type": "varchar",
+          "size": 36,
+          "required": true
+        },
+        {
+          "key": "requested_by_id",
+          "type": "varchar",
+          "size": 36,
+          "required": true
+        },
+        {
+          "key": "status",
+          "type": "string",
+          "format": "enum",
+          "elements": [
+            "requested",
+            "verified",
+            "scheduled",
+            "executed",
+            "confirmed",
+            "cancelled",
+            "blocked"
+          ],
+          "required": true
+        },
+        {
+          "key": "verification",
+          "type": "varchar",
+          "size": 24,
+          "required": false
+        },
+        {
+          "key": "requested_at",
+          "type": "datetime",
+          "required": true
+        },
+        {
+          "key": "verified_at",
+          "type": "datetime",
+          "required": false
+        },
+        {
+          "key": "scheduled_for_at",
+          "type": "datetime",
+          "required": false
+        },
+        {
+          "key": "executed_at",
+          "type": "datetime",
+          "required": false
+        },
+        {
+          "key": "confirmed_at",
+          "type": "datetime",
+          "required": false
+        },
+        {
+          "key": "cancelled_at",
+          "type": "datetime",
+          "required": false
+        },
+        {
+          "key": "blocked_reason",
+          "type": "varchar",
+          "size": 40,
+          "required": false
+        },
+        {
+          "key": "result",
+          "type": "text",
+          "required": false
+        },
+        {
+          "key": "open_key",
+          "type": "varchar",
+          "size": 100,
+          "required": false
+        }
+      ],
+      "indexes": [
+        {
+          "key": "unique_open",
+          "type": "unique",
+          "columns": [
+            "open_key"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_subject",
+          "type": "key",
+          "columns": [
+            "subject_kind",
+            "subject_id"
+          ],
+          "orders": [
+            "ASC",
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_requester",
+          "type": "key",
+          "columns": [
+            "requested_by_id"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_status_due",
+          "type": "key",
+          "columns": [
+            "status",
+            "scheduled_for_at"
+          ],
+          "orders": [
+            "ASC",
+            "ASC"
+          ]
+        }
+      ]
+    },
+    {
+      "$id": "retention_run",
+      "databaseId": "main",
+      "name": "retention_run",
+      "enabled": true,
+      "rowSecurity": true,
+      "$permissions": [],
+      "columns": [
+        {
+          "key": "kind",
+          "type": "string",
+          "format": "enum",
+          "elements": [
+            "lease",
+            "run"
+          ],
+          "required": true
+        },
+        {
+          "key": "seq",
+          "type": "integer",
+          "required": true,
+          "min": 0,
+          "max": 2000000000
+        },
+        {
+          "key": "owner",
+          "type": "varchar",
+          "size": 64,
+          "required": false
+        },
+        {
+          "key": "mode",
+          "type": "string",
+          "format": "enum",
+          "elements": [
+            "dry_run",
+            "enforce"
+          ],
+          "required": false
+        },
+        {
+          "key": "status",
+          "type": "string",
+          "format": "enum",
+          "elements": [
+            "running",
+            "completed",
+            "aborted",
+            "refused"
+          ],
+          "required": true
+        },
+        {
+          "key": "started_at",
+          "type": "datetime",
+          "required": true
+        },
+        {
+          "key": "lease_until_at",
+          "type": "datetime",
+          "required": false
+        },
+        {
+          "key": "finished_at",
+          "type": "datetime",
+          "required": false
+        },
+        {
+          "key": "counts",
+          "type": "text",
+          "required": false
+        },
+        {
+          "key": "note",
+          "type": "varchar",
+          "size": 200,
+          "required": false
+        }
+      ],
+      "indexes": [
+        {
+          "key": "unique_kind_seq",
+          "type": "unique",
+          "columns": [
+            "kind",
+            "seq"
+          ],
+          "orders": [
+            "ASC",
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_kind_started",
+          "type": "key",
+          "columns": [
+            "kind",
+            "started_at"
+          ],
+          "orders": [
+            "ASC",
+            "DESC"
+          ]
+        },
+        {
+          "key": "by_finished",
+          "type": "key",
+          "columns": [
+            "finished_at"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        }
+      ]
+    },
+    {
       "$id": "safeguarding_case",
       "databaseId": "main",
       "name": "safeguarding_case",

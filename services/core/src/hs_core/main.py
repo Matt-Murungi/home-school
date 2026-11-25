@@ -35,6 +35,8 @@ from .notifications import dispatch as notification_dispatch_job
 from .observability import ErrorReporter, build_reporter, report_once
 from .permissions.wiring import wire_permissions
 from .repository import Repository, build_repository
+from .retention import jobs as retention_jobs
+from .retention.wiring import build_retention_job
 from .settings import Settings, load_settings
 from .travel import jobs as travel_jobs
 from .travel.factory import build_travel_service
@@ -125,6 +127,10 @@ def create_app(
     app.state.trust_proxy_ip = (
         settings.hs_env != "dev" if trust_proxy_ip is None else trust_proxy_ip
     )
+    # C03: the purge job is the one allowed hard-deleter, so it gets the raw repository and writes
+    # ONE audit summary per run (docs/ops/audit.md "Hooks"); dry run unless RETENTION_ENFORCE.
+    app.state.retention = build_retention_job(settings, raw_repository, sink, app.state.audit)
+    retention_jobs.bind(app.state.retention)
     otp_jobs.bind(app.state.repository)
     notification_dispatch_job.bind(app.state.notifications)
     errors.install(app)
