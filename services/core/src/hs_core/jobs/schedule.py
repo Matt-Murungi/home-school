@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from datetime import timedelta
 
+from ..auth_otp.jobs import otp_cleanup
 from .handlers import heartbeat
 from .model import JobSpec, Schedule
 
@@ -20,5 +21,13 @@ JOBS: list[JobSpec] = [
         schedule=Schedule(timedelta(minutes=5)),
         max_attempts=3,
         catch_up=timedelta(hours=1),
+    ),
+    # A01: purge expired OTP challenge, attempt, consume and rate-limit rows. Idempotent.
+    JobSpec(
+        "otp-cleanup",
+        otp_cleanup,
+        schedule=Schedule(timedelta(hours=1)),
+        max_attempts=3,
+        catch_up=timedelta(hours=3),
     ),
 ]

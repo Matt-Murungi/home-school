@@ -4,12 +4,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:home_school_shared/home_school_shared.dart';
 
-Widget app(AppSpec spec, {double textScale = 1}) => ProviderScope(
-  child: MediaQuery(
-    data: MediaQueryData(textScaler: TextScaler.linear(textScale)),
-    child: HsApp(router: buildAppRouter(spec)),
-  ),
-);
+Widget app(AppSpec spec, {double textScale = 1, String initial = '/'}) =>
+    ProviderScope(
+      child: MediaQuery(
+        data: MediaQueryData(textScaler: TextScaler.linear(textScale)),
+        child: HsApp(router: buildAppRouter(spec, initialLocation: initial)),
+      ),
+    );
 
 void main() {
   testWidgets('parent boots to themed welcome screen', (t) async {
@@ -26,9 +27,7 @@ void main() {
   });
 
   testWidgets('parent tabs follow Design Brief and navigate', (t) async {
-    await t.pumpWidget(app(AppSpec.parent));
-    await t.pumpAndSettle();
-    await t.tap(find.text('Get started'));
+    await t.pumpWidget(app(AppSpec.parent, initial: '/home'));
     await t.pumpAndSettle();
     for (final l in ['Home', 'Sessions', 'Progress', 'Billing', 'Account']) {
       expect(find.text(l), findsWidgets);
@@ -39,9 +38,7 @@ void main() {
   });
 
   testWidgets('teacher tabs follow Design Brief', (t) async {
-    await t.pumpWidget(app(AppSpec.teacher));
-    await t.pumpAndSettle();
-    await t.tap(find.text('Get started'));
+    await t.pumpWidget(app(AppSpec.teacher, initial: '/today'));
     await t.pumpAndSettle();
     for (final l in ['Today', 'Schedule', 'Earnings', 'Growth', 'Account']) {
       expect(find.text(l), findsWidgets);

@@ -49,6 +49,7 @@ def test_missing_deployed_variable_fails_fast_naming_it(monkeypatch, name, env_n
         "APPWRITE_PROJECT_ID": "proj",
         "APPWRITE_API_KEY": "k" * 64,  # secret-scan: allow
         "APPWRITE_DATABASE_ID": "main",
+        "OTP_PEPPER": "o" * 40,  # secret-scan: allow
     }
     for k in list(good):
         monkeypatch.delenv(k, raising=False)

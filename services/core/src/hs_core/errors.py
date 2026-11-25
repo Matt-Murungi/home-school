@@ -26,8 +26,16 @@ _MSG = {404: "Not found", 405: "Method not allowed"}
 
 
 class AppError(Exception):
-    def __init__(self, status: int, code: str, message: str, headers: dict | None = None):
+    def __init__(
+        self,
+        status: int,
+        code: str,
+        message: str,
+        headers: dict | None = None,
+        extra: dict | None = None,
+    ):
         self.status, self.code, self.message, self.headers = status, code, message, headers
+        self.extra = extra or {}
         super().__init__(message)
 
 
@@ -40,7 +48,7 @@ def body(code: str, message: str, **extra) -> dict:
 def install(app: FastAPI) -> None:
     @app.exception_handler(AppError)
     async def _app(_: Request, e: AppError):
-        return JSONResponse(body(e.code, e.message), e.status, headers=e.headers)
+        return JSONResponse(body(e.code, e.message, **e.extra), e.status, headers=e.headers)
 
     @app.exception_handler(StarletteHTTPException)
     async def _http(_: Request, e: StarletteHTTPException):

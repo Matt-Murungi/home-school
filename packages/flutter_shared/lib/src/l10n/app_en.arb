@@ -1,15 +1,29 @@
 {
   "@@locale": "en",
   "appName": "Home School",
-  "@appName": {"description": "Working name until a brand exists (Design Brief section 6)."},
+  "@appName": {
+    "description": "Working name until a brand exists (Design Brief section 6)."
+  },
   "welcomeTitle": "Welcome to Home School",
   "welcomeParentBody": "Find a trusted teacher and follow your child's progress.",
   "welcomeTeacherBody": "Teach children near you and track your sessions and earnings.",
   "getStarted": "Get started",
   "environmentLabel": "Environment: {name}",
-  "@environmentLabel": {"placeholders": {"name": {"type": "String"}}},
+  "@environmentLabel": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
   "placeholderTabBody": "{tab} will appear here.",
-  "@placeholderTabBody": {"placeholders": {"tab": {"type": "String"}}},
+  "@placeholderTabBody": {
+    "placeholders": {
+      "tab": {
+        "type": "String"
+      }
+    }
+  },
   "tabHome": "Home",
   "tabSessions": "Sessions",
   "tabProgress": "Progress",
@@ -22,5 +36,100 @@
   "retry": "Try again",
   "errorGeneric": "Something went wrong. Please try again.",
   "offlineQueued": "{count, plural, =0{Nothing waiting to sync} =1{1 action waiting to sync} other{{count} actions waiting to sync}}",
-  "@offlineQueued": {"placeholders": {"count": {"type": "int"}}}
+  "@offlineQueued": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "signInExisting": "I already have an account",
+  "otpPhoneTitle": "Enter your phone number",
+  "otpPhoneNote": "We'll send a code by SMS.",
+  "otpCountryCode": "+256",
+  "@otpCountryCode": {
+    "description": "Fixed Uganda country code shown beside the number field."
+  },
+  "otpPhoneLabel": "Phone number",
+  "otpPhoneHint": "772 123 456",
+  "otpPhoneFieldSemantics": "Phone number, country code plus 256 fixed. Enter the nine digits after the country code.",
+  "otpSendCode": "Send code",
+  "otpSending": "Sending code",
+  "otpInvalidPhone": "Enter a valid Ugandan mobile number, for example 0772 123 456.",
+  "otpRateLimited": "Too many codes requested. Try again in {wait}.",
+  "@otpRateLimited": {
+    "placeholders": {
+      "wait": {
+        "type": "String"
+      }
+    }
+  },
+  "otpLocked": "Too many wrong codes. For your safety, try again in {wait}.",
+  "@otpLocked": {
+    "placeholders": {
+      "wait": {
+        "type": "String"
+      }
+    }
+  },
+  "otpOffline": "You're offline. Check your connection and try again.",
+  "otpSmsUnavailable": "We couldn't send the SMS right now. Please try again in a moment.",
+  "otpNumberUnreachable": "We can't send an SMS to this number. Use a different number.",
+  "otpAccountBlocked": "This account can't sign in. Please contact support.",
+  "otpServerUnavailable": "Sign-in is temporarily unavailable. Please try again.",
+  "otpUnknownError": "Something went wrong. Please try again.",
+  "otpDurationSeconds": "{count, plural, =1{1 second} other{{count} seconds}}",
+  "@otpDurationSeconds": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "otpDurationMinutes": "{count, plural, =1{1 minute} other{{count} minutes}}",
+  "@otpDurationMinutes": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "otpCodeTitle": "Enter the 6-digit code",
+  "otpCodeSentTo": "We sent a code to {phone}",
+  "@otpCodeSentTo": {
+    "placeholders": {
+      "phone": {
+        "type": "String"
+      }
+    }
+  },
+  "otpCodeFieldSemantics": "Verification code, 6 digits",
+  "otpVerify": "Verify",
+  "otpVerifying": "Verifying code",
+  "otpWrongCode": "That code isn't right. {count, plural, =0{No tries left} =1{1 try left} other{{count} tries left}}.",
+  "@otpWrongCode": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "otpWrongCodeNoCount": "That code isn't right. Check it and try again.",
+  "otpExpired": "That code has expired. Request a new one.",
+  "otpTooManyAttempts": "Too many wrong tries. Request a new code.",
+  "otpResendIn": "Resend code in {seconds}s",
+  "@otpResendIn": {
+    "placeholders": {
+      "seconds": {
+        "type": "int"
+      }
+    }
+  },
+  "otpResend": "Resend code",
+  "otpChangeNumber": "Use a different number",
+  "otpSmsDelayed": "Still no SMS? It can take a couple of minutes on busy networks. You can resend the code or use a different number.",
+  "otpHelp": "Need help?",
+  "otpHelpTitle": "No SMS arriving?",
+  "otpHelpBody": "Check that your phone has signal and that the number is right. SMS can be delayed on busy networks. If nothing arrives after you resend the code, use a different number or contact support.",
+  "otpClose": "Close"
 }

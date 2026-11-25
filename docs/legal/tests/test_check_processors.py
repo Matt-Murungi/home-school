@@ -169,7 +169,7 @@ PREFIX_TO_PROCESSOR = [
     ("PLAY_", "google-play"), ("IOS_", "apple-app-store"), ("APP_STORE_", "apple-app-store"),
     ("CODEMAGIC_", "codemagic"),
 ]
-FIRST_PARTY = {"JOB_TICK_SECRET", "ADMIN_COOKIE_SECRET"}
+FIRST_PARTY = {"JOB_TICK_SECRET", "ADMIN_COOKIE_SECRET", "OTP_PEPPER"}
 REAL_INV = LEGAL.parent / "ops" / "secrets-inventory.json"
 
 

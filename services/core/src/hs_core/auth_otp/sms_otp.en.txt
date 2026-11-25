@@ -1,0 +1,1 @@
+{app_name}: your verification code is {code}. It expires in {minutes} minutes. Never share it with anyone.

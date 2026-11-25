@@ -49,7 +49,10 @@ void main() {
     final client = Client()
       ..setEndpoint('http://localhost/v1')
       ..setProject('test');
-    final AuthService auth = AppwriteAuthService(client);
+    final AuthService auth = AppwriteAuthService(
+      client,
+      otp: CoreOtpApi(FakeApiClient(), role: AppRole.parent),
+    );
     expect(auth, isA<AuthService>());
   });
 

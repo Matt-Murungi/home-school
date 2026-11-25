@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 
 import '../l10n/gen/hs_strings.dart';
 import '../widgets/app_shell.dart';
+import '../widgets/otp_screens.dart';
 import '../widgets/welcome_screen.dart';
 
 class TabSpec {
@@ -78,6 +79,9 @@ class AppSpec {
   );
 }
 
+const signInPhonePath = '/sign-in/phone';
+const signInCodePath = '/sign-in/code';
+
 GoRouter buildAppRouter(AppSpec spec, {String initialLocation = '/'}) {
   return GoRouter(
     initialLocation: initialLocation,
@@ -86,7 +90,21 @@ GoRouter buildAppRouter(AppSpec spec, {String initialLocation = '/'}) {
         path: '/',
         builder: (context, state) => WelcomeScreen(
           body: spec.welcomeBody(HsStrings.of(context)),
-          onGetStarted: () => context.go('/${spec.tabs.first.path}'),
+          onGetStarted: () => context.go(signInPhonePath),
+          onSignIn: () => context.go(signInPhonePath),
+        ),
+      ),
+      // A01: phone + code, shared by both apps (P-02/P-03, T-02).
+      GoRoute(
+        path: signInPhonePath,
+        builder: (context, state) =>
+            PhoneEntryScreen(onCodeSent: () => context.go(signInCodePath)),
+      ),
+      GoRoute(
+        path: signInCodePath,
+        builder: (context, state) => CodeEntryScreen(
+          onSignedIn: () => context.go('/${spec.tabs.first.path}'),
+          onChangeNumber: () => context.go(signInPhonePath),
         ),
       ),
       StatefulShellRoute.indexedStack(

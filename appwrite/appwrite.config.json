@@ -563,6 +563,112 @@
       ]
     },
     {
+      "$id": "otp_challenge",
+      "databaseId": "main",
+      "name": "otp_challenge",
+      "enabled": true,
+      "rowSecurity": true,
+      "$permissions": [],
+      "columns": [
+        {
+          "key": "kind",
+          "type": "string",
+          "format": "enum",
+          "elements": [
+            "challenge",
+            "attempt",
+            "consume",
+            "bucket"
+          ],
+          "required": true
+        },
+        {
+          "key": "challenge_id",
+          "type": "varchar",
+          "size": 36,
+          "required": false
+        },
+        {
+          "key": "bucket",
+          "type": "varchar",
+          "size": 96,
+          "required": false
+        },
+        {
+          "key": "phone_hash",
+          "type": "varchar",
+          "size": 64,
+          "required": false
+        },
+        {
+          "key": "code_hash",
+          "type": "varchar",
+          "size": 64,
+          "required": false
+        },
+        {
+          "key": "salt",
+          "type": "varchar",
+          "size": 32,
+          "required": false
+        },
+        {
+          "key": "app",
+          "type": "string",
+          "format": "enum",
+          "elements": [
+            "parent",
+            "teacher"
+          ],
+          "required": false
+        },
+        {
+          "key": "created_at",
+          "type": "datetime",
+          "required": true
+        },
+        {
+          "key": "expires_at",
+          "type": "datetime",
+          "required": true
+        }
+      ],
+      "indexes": [
+        {
+          "key": "by_bucket",
+          "type": "key",
+          "columns": [
+            "bucket"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_phone_created",
+          "type": "key",
+          "columns": [
+            "phone_hash",
+            "created_at"
+          ],
+          "orders": [
+            "ASC",
+            "DESC"
+          ]
+        },
+        {
+          "key": "by_expires",
+          "type": "key",
+          "columns": [
+            "expires_at"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        }
+      ]
+    },
+    {
       "$id": "curriculum",
       "databaseId": "main",
       "name": "curriculum",

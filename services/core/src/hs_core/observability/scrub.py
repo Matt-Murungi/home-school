@@ -67,7 +67,11 @@ SENSITIVE_KEYS = (
     "nationalid",
     "nin",
 )
-_EXACT_KEYS = {"name", "username", "nin", "dob"}
+_EXACT_KEYS = {
+    "name", "username", "nin", "dob",
+    # A01 phone OTP: the code, its hash and salt, and the SMS body that contains the code.
+    "otp", "otpcode", "salt", "codehash", "smsbody", "verificationcode", "passcode",
+}  # fmt: skip
 # Request keys dropped entirely.
 _DROP_REQUEST = ("data", "cookies", "env")
 
@@ -156,6 +160,10 @@ def _mask_pairs(s: str) -> str:
 
 
 # Emails, also percent-encoded (`%40`, `%2E`). The lookbehind keeps matching linear.
+# A01: a one-time code spelled out in free text ("your code is 123456", "otp=123456", "pin 1234").
+# The name must start a word and the digits follow within 24 non-digit characters, so the scan is
+# linear. Over-masks a 4-8 digit number right after "code"/"pin" (e.g. "error code 5000").
+_OTP_TEXT = re.compile(r"(?i)(?<!\w)(otp|passcode|code|pin)\b([^\d\n]{0,24}?)(\d{4,8})(?!\d)")
 _EMAIL = re.compile(
     r"(?<![A-Za-z0-9._%+-])[A-Za-z0-9._%+-]+(?:@|%40)[A-Za-z0-9-]+(?:(?:\.|%2[Ee])[A-Za-z0-9-]+)+"
 )
@@ -203,6 +211,7 @@ def scrub_text(s: str) -> str:
     s = _BEARER.sub(lambda m: f"{m.group(1)} {FILTERED}", s)
     s = _APPWRITE_KEY.sub(FILTERED, s)
     s = _mask_pairs(s)
+    s = _OTP_TEXT.sub(lambda m: f"{m.group(1)}{m.group(2)}{FILTERED}", s)
     s = _EMAIL.sub(FILTERED, s)
     return _PHONE.sub(FILTERED, s)
 

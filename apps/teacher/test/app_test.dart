@@ -21,13 +21,24 @@ void main() {
     expect(app.theme!.colorScheme.primary, HsColors.primary);
   });
 
-  testWidgets('get started opens the first tab', (t) async {
-    await t.pumpWidget(const ProviderScope(child: TeacherApp()));
-    await t.pumpAndSettle();
-    await t.tap(find.text('Get started'));
-    await t.pumpAndSettle();
-    expect(find.text('Today will appear here.'), findsOneWidget);
-  });
+  testWidgets(
+    'get started opens phone sign-in, a restored session opens Today',
+    (t) async {
+      await t.pumpWidget(const ProviderScope(child: TeacherApp()));
+      await t.pumpAndSettle();
+      await t.tap(find.text('Get started'));
+      await t.pumpAndSettle();
+      expect(find.text('Enter your phone number'), findsOneWidget);
+      expect(find.text('+256'), findsOneWidget);
+
+      await t.pumpWidget(const SizedBox());
+      await t.pumpWidget(
+        const ProviderScope(child: TeacherApp(initialLocation: '/today')),
+      );
+      await t.pumpAndSettle();
+      expect(find.text('Today will appear here.'), findsOneWidget);
+    },
+  );
 
   testWidgets('130% font on a small phone does not overflow', (t) async {
     t.view.physicalSize = const Size(360, 640);
@@ -55,6 +66,16 @@ void main() {
   test('Android minSdk is 26 so Android 8 devices can install', () {
     final gradle = File('android/app/build.gradle.kts').readAsStringSync();
     expect(RegExp(r'minSdk\s*=\s*26').hasMatch(gradle), isTrue);
+  });
+
+  test('main wires the teacher role and the core service URL (A01)', () {
+    {
+      final main = File('lib/main.dart').readAsStringSync();
+      expect(main, contains('AppRole.teacher'));
+      expect(main, contains('config.coreUrl'));
+      expect(main, contains('refreshSession'));
+      expect(main, isNot(contains('AppRole.parent')));
+    }
   });
 
   test('no secrets in app sources', () {

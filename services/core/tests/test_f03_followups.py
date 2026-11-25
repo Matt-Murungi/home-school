@@ -168,6 +168,7 @@ BASE = dict(
     appwrite_api_key="k1" * 20,
     appwrite_database_id="main",
     job_tick_secret="s1" * 20,
+    otp_pepper="o1" * 20,
 )
 
 
