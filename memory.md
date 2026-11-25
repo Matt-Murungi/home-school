@@ -25,6 +25,9 @@ Product docs: `/Users/mat/Library/Mobile Documents/com~apple~CloudDocs/Work Spac
 
 ## Hand-off protocol
 
+**memory.md is committed straight to `main` (message `memory: …`), never inside a ticket PR.** This avoids merge conflicts. Always `git pull` before editing it, commit and push right after. Only one agent works at a time; the main agent waits for the reviewer's verdict before starting the next ticket.
+The reviewer verifies in a separate worktree (`git worktree add <scratchpad>/review-<id> <branch>`), never in the main checkout, and removes it afterwards. A PR cannot be approved by its own author on GitHub, so the reviewer posts its review with `gh pr review --comment` and merges with `gh pr merge --squash --delete-branch`.
+
 Each ticket has a block under "Ticket log" with a `Status`:
 `todo` → `in-progress` (main) → `ready-for-review` (main) → `changes-requested` (reviewer) → `ready-for-review` … → `merged` (reviewer) | `blocked-foundation-merged`.
 Main agent writes: what was built, files, test command + result, which acceptance criteria/edge cases map to which tests, deviations, open questions.
