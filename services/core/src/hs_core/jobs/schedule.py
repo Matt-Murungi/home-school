@@ -14,6 +14,7 @@ from ..audit.recover import audit_recover
 from ..auth_otp.jobs import otp_cleanup
 from ..notifications.dispatch import notification_dispatch
 from ..permissions.jobs import address_revoke, permission_audit, permission_reconcile
+from ..teacher_application.jobs import application_claims_cleanup
 from ..travel.jobs import travel_cache_refresh
 from .handlers import heartbeat
 from .model import KAMPALA, JobSpec, Schedule
@@ -30,6 +31,14 @@ JOBS: list[JobSpec] = [
     JobSpec(
         "otp-cleanup",
         otp_cleanup,
+        schedule=Schedule(timedelta(hours=1)),
+        max_attempts=3,
+        catch_up=timedelta(hours=3),
+    ),
+    # V01: purge expired application rate-limit and revision claim rows. Idempotent.
+    JobSpec(
+        "application-claims-cleanup",
+        application_claims_cleanup,
         schedule=Schedule(timedelta(hours=1)),
         max_attempts=3,
         catch_up=timedelta(hours=3),

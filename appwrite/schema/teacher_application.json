@@ -1,0 +1,503 @@
+{
+  "domain": "teacher_application",
+  "description": "Teacher application wizard (V01, #56, SR VER-1, T-03..T-08): the draft and its status, the two referees, the subjects applied for, and server-only claim rows (submit exactly once, draft revision, rate limits). Final data lands in M01 tables on submit: teacher_profile (status pending), teacher_zone, availability_slot, teacher_approval REQUESTS (approved_at null; admin approves in V04).",
+  "meta": {
+    "teacher_application": {
+      "deletion": "history",
+      "note": "Row id = the teacher's user id (create is the atomic one-per-teacher claim). status draft -> submitted -> under_review -> approved | not_approved | action_needed (V03/V04 own the transitions after submitted). content_json holds the wizard payload (personal details, curricula choice, referees, zones, availability) as validated by the core service; it is frozen from submit until the application is reopened. Typed columns duplicate the fields admins filter on. current_school and date of birth are private to the teacher and admins. revoked_at = application withdrawn (no hard delete). National ID numbers are NOT collected (SR T-05: ID images only, V02).",
+      "non_fk": {
+        "submit_key": "client idempotency key of the last accepted submit",
+        "content_json": "wizard payload; ids inside are validated against catalogue and zone at save/submit"
+      }
+    },
+    "teacher_referee": {
+      "deletion": "soft",
+      "note": "Two rows per application attempt (position 1 and 2). phone is E.164 normalised with the A01 rules. Not contacted by this ticket: V04 contacts referees and records checks. Rows of a resubmission are new rows (attempt+1); old ones keep their deleted_at set."
+    },
+    "teacher_application_subject": {
+      "deletion": "join",
+      "note": "Subjects applied for per curriculum and level (teacher_approval is per curriculum and level only). Replaced as a set on resubmission."
+    },
+    "teacher_application_claim": {
+      "deletion": "hard",
+      "note": "Server-only claim rows made with deterministic ids so a duplicate create (409) decides the winner (ADR 0002 idiom, same as otp_challenge): kind=submit one per (teacher, attempt) carrying the idempotency key; kind=revision one per (teacher, revision) so two saves from the same base revision cannot both win; kind=bucket rate-limit slots. Expired rows are deleted lazily by the writer."
+    }
+  },
+  "relations": [
+    {
+      "from": "teacher_application.teacher_id",
+      "to": "user_profile"
+    },
+    {
+      "from": "teacher_referee.application_id",
+      "to": "teacher_application"
+    },
+    {
+      "from": "teacher_referee.teacher_id",
+      "to": "user_profile"
+    },
+    {
+      "from": "teacher_application_subject.application_id",
+      "to": "teacher_application"
+    },
+    {
+      "from": "teacher_application_subject.teacher_id",
+      "to": "user_profile"
+    },
+    {
+      "from": "teacher_application_subject.curriculum_id",
+      "to": "curriculum"
+    },
+    {
+      "from": "teacher_application_subject.level_id",
+      "to": "level"
+    },
+    {
+      "from": "teacher_application_subject.subject_id",
+      "to": "subject"
+    },
+    {
+      "from": "teacher_application_claim.teacher_id",
+      "to": "user_profile"
+    }
+  ],
+  "tables": [
+    {
+      "$id": "teacher_application",
+      "name": "teacher_application",
+      "enabled": true,
+      "rowSecurity": true,
+      "$permissions": [],
+      "columns": [
+        {
+          "key": "teacher_id",
+          "type": "varchar",
+          "size": 36,
+          "required": true
+        },
+        {
+          "key": "status",
+          "type": "string",
+          "format": "enum",
+          "elements": [
+            "draft",
+            "submitted",
+            "under_review",
+            "action_needed",
+            "approved",
+            "not_approved"
+          ],
+          "required": false,
+          "default": "draft"
+        },
+        {
+          "key": "step",
+          "type": "integer",
+          "required": false,
+          "min": 0,
+          "max": 9
+        },
+        {
+          "key": "revision",
+          "type": "integer",
+          "required": true,
+          "min": 0
+        },
+        {
+          "key": "attempt",
+          "type": "integer",
+          "required": false,
+          "min": 0
+        },
+        {
+          "key": "teacher_type",
+          "type": "string",
+          "format": "enum",
+          "elements": [
+            "registered",
+            "graduate"
+          ],
+          "required": false
+        },
+        {
+          "key": "registration_number",
+          "type": "varchar",
+          "size": 40,
+          "required": false
+        },
+        {
+          "key": "highest_qualification",
+          "type": "varchar",
+          "size": 30,
+          "required": false
+        },
+        {
+          "key": "institution",
+          "type": "varchar",
+          "size": 120,
+          "required": false
+        },
+        {
+          "key": "years_teaching",
+          "type": "integer",
+          "required": false,
+          "min": 0,
+          "max": 60
+        },
+        {
+          "key": "current_school",
+          "type": "varchar",
+          "size": 120,
+          "required": false
+        },
+        {
+          "key": "travel_radius_km",
+          "type": "integer",
+          "required": false,
+          "min": 1,
+          "max": 100
+        },
+        {
+          "key": "content_json",
+          "type": "text",
+          "required": true
+        },
+        {
+          "key": "submit_key",
+          "type": "varchar",
+          "size": 64,
+          "required": false
+        },
+        {
+          "key": "submitted_at",
+          "type": "datetime",
+          "required": false
+        },
+        {
+          "key": "decided_at",
+          "type": "datetime",
+          "required": false
+        },
+        {
+          "key": "revoked_at",
+          "type": "datetime",
+          "required": false
+        }
+      ],
+      "indexes": [
+        {
+          "key": "unique_teacher",
+          "type": "unique",
+          "columns": [
+            "teacher_id"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_status_submitted",
+          "type": "key",
+          "columns": [
+            "status",
+            "submitted_at"
+          ],
+          "orders": [
+            "ASC",
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_teacher_type",
+          "type": "key",
+          "columns": [
+            "teacher_type"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        }
+      ]
+    },
+    {
+      "$id": "teacher_referee",
+      "name": "teacher_referee",
+      "enabled": true,
+      "rowSecurity": true,
+      "$permissions": [],
+      "columns": [
+        {
+          "key": "application_id",
+          "type": "varchar",
+          "size": 36,
+          "required": true
+        },
+        {
+          "key": "teacher_id",
+          "type": "varchar",
+          "size": 36,
+          "required": true
+        },
+        {
+          "key": "attempt",
+          "type": "integer",
+          "required": true,
+          "min": 1
+        },
+        {
+          "key": "position",
+          "type": "integer",
+          "required": true,
+          "min": 1,
+          "max": 2
+        },
+        {
+          "key": "name",
+          "type": "varchar",
+          "size": 100,
+          "required": true
+        },
+        {
+          "key": "relationship",
+          "type": "varchar",
+          "size": 40,
+          "required": true
+        },
+        {
+          "key": "phone",
+          "type": "varchar",
+          "size": 16,
+          "required": true
+        },
+        {
+          "key": "email",
+          "type": "varchar",
+          "size": 254,
+          "required": false
+        },
+        {
+          "key": "years_known",
+          "type": "integer",
+          "required": true,
+          "min": 0,
+          "max": 60
+        },
+        {
+          "key": "consent_at",
+          "type": "datetime",
+          "required": true
+        },
+        {
+          "key": "deleted_at",
+          "type": "datetime",
+          "required": false
+        }
+      ],
+      "indexes": [
+        {
+          "key": "by_application",
+          "type": "key",
+          "columns": [
+            "application_id",
+            "attempt"
+          ],
+          "orders": [
+            "ASC",
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_teacher",
+          "type": "key",
+          "columns": [
+            "teacher_id"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        }
+      ]
+    },
+    {
+      "$id": "teacher_application_subject",
+      "name": "teacher_application_subject",
+      "enabled": true,
+      "rowSecurity": true,
+      "$permissions": [],
+      "columns": [
+        {
+          "key": "application_id",
+          "type": "varchar",
+          "size": 36,
+          "required": true
+        },
+        {
+          "key": "teacher_id",
+          "type": "varchar",
+          "size": 36,
+          "required": true
+        },
+        {
+          "key": "curriculum_id",
+          "type": "varchar",
+          "size": 36,
+          "required": true
+        },
+        {
+          "key": "level_id",
+          "type": "varchar",
+          "size": 36,
+          "required": true
+        },
+        {
+          "key": "subject_id",
+          "type": "varchar",
+          "size": 36,
+          "required": true
+        },
+        {
+          "key": "attempt",
+          "type": "integer",
+          "required": true,
+          "min": 1
+        }
+      ],
+      "indexes": [
+        {
+          "key": "by_application",
+          "type": "key",
+          "columns": [
+            "application_id",
+            "attempt"
+          ],
+          "orders": [
+            "ASC",
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_teacher",
+          "type": "key",
+          "columns": [
+            "teacher_id"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_subject",
+          "type": "key",
+          "columns": [
+            "subject_id"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_curriculum",
+          "type": "key",
+          "columns": [
+            "curriculum_id"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_level",
+          "type": "key",
+          "columns": [
+            "level_id"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        }
+      ]
+    },
+    {
+      "$id": "teacher_application_claim",
+      "name": "teacher_application_claim",
+      "enabled": true,
+      "rowSecurity": true,
+      "$permissions": [],
+      "columns": [
+        {
+          "key": "kind",
+          "type": "string",
+          "format": "enum",
+          "elements": [
+            "submit",
+            "revision",
+            "bucket"
+          ],
+          "required": true
+        },
+        {
+          "key": "teacher_id",
+          "type": "varchar",
+          "size": 36,
+          "required": true
+        },
+        {
+          "key": "bucket",
+          "type": "varchar",
+          "size": 96,
+          "required": false
+        },
+        {
+          "key": "submit_key",
+          "type": "varchar",
+          "size": 64,
+          "required": false
+        },
+        {
+          "key": "created_at",
+          "type": "datetime",
+          "required": true
+        },
+        {
+          "key": "expires_at",
+          "type": "datetime",
+          "required": true
+        }
+      ],
+      "indexes": [
+        {
+          "key": "by_teacher_kind",
+          "type": "key",
+          "columns": [
+            "teacher_id",
+            "kind"
+          ],
+          "orders": [
+            "ASC",
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_bucket",
+          "type": "key",
+          "columns": [
+            "bucket"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_expires",
+          "type": "key",
+          "columns": [
+            "expires_at"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        }
+      ]
+    }
+  ]
+}

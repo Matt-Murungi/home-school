@@ -28,6 +28,10 @@ OTP_RANGES: dict[str, tuple[int, int]] = {
     "otp_phone_failures_per_hour": (1, 50),
     "otp_ip_verifies_per_hour": (1, 1000),
     "otp_dormant_days": (30, 3650),
+    "teacher_app_min_weekly_hours": (1, 40),
+    "teacher_app_reapply_cooldown_days": (0, 730),
+    "teacher_app_draft_saves_per_hour": (10, 2000),
+    "teacher_app_submits_per_hour": (1, 60),
 }
 # M06 audit: allowed (min, max) of the audit-recover tuning settings.
 AUDIT_RANGES: dict[str, tuple[int, int]] = {
@@ -104,6 +108,12 @@ class Settings(BaseSettings):
     otp_phone_failures_per_hour: int = 10
     otp_ip_verifies_per_hour: int = 60
     otp_dormant_days: int = 180
+
+    # Teacher application (V01). Defaults are recommendations until the owner confirms.
+    teacher_app_min_weekly_hours: int = 6
+    teacher_app_reapply_cooldown_days: int = 90
+    teacher_app_draft_saves_per_hour: int = 240
+    teacher_app_submits_per_hour: int = 10
     # Travel time (X01). No key = straight-line estimates only (flagged estimated).
     google_maps_server_key: SecretStr = SecretStr("")
     travel_daily_element_budget: int = 1000  # provider elements (origin x destination) per day

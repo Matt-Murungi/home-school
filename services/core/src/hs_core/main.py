@@ -36,6 +36,9 @@ from .observability import ErrorReporter, build_reporter, report_once
 from .permissions.wiring import wire_permissions
 from .repository import Repository, build_repository
 from .settings import Settings, load_settings
+from .teacher_application import build_application_service
+from .teacher_application import jobs as application_jobs
+from .teacher_application.api import router as application_router
 from .travel import jobs as travel_jobs
 from .travel.factory import build_travel_service
 
@@ -61,6 +64,7 @@ def create_app(
     sms_sender=None,
     user_directory=None,
     trust_proxy_ip: bool | None = None,
+    teacher_application=None,
 ) -> FastAPI:
     settings = settings or load_settings()
     app = FastAPI(
@@ -125,13 +129,18 @@ def create_app(
     app.state.trust_proxy_ip = (
         settings.hs_env != "dev" if trust_proxy_ip is None else trust_proxy_ip
     )
+    app.state.teacher_application = teacher_application or build_application_service(
+        settings, app.state.repository
+    )
     otp_jobs.bind(app.state.repository)
     notification_dispatch_job.bind(app.state.notifications)
+    application_jobs.bind(app.state.repository)
     errors.install(app)
     app.include_router(jobs_router)
     app.include_router(otp_router)
     app.include_router(audit_events_router)
     app.include_router(catalogue_router)
+    app.include_router(application_router)
 
     @app.middleware("http")
     async def request_context(request: Request, call_next):
