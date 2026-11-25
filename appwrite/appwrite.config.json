@@ -2523,6 +2523,175 @@
       ]
     },
     {
+      "$id": "travel_time_cache",
+      "databaseId": "main",
+      "name": "travel_time_cache",
+      "enabled": true,
+      "rowSecurity": true,
+      "$permissions": [],
+      "columns": [
+        {
+          "key": "origin_zone_id",
+          "type": "varchar",
+          "size": 36,
+          "required": true
+        },
+        {
+          "key": "dest_zone_id",
+          "type": "varchar",
+          "size": 36,
+          "required": true
+        },
+        {
+          "key": "band",
+          "type": "varchar",
+          "size": 16,
+          "required": true
+        },
+        {
+          "key": "pair_key",
+          "type": "varchar",
+          "size": 90,
+          "required": true
+        },
+        {
+          "key": "minutes",
+          "type": "integer",
+          "required": false,
+          "min": 1,
+          "max": 1440
+        },
+        {
+          "key": "fetched_at",
+          "type": "datetime",
+          "required": false
+        },
+        {
+          "key": "expires_at",
+          "type": "datetime",
+          "required": false
+        },
+        {
+          "key": "retry_at",
+          "type": "datetime",
+          "required": false
+        },
+        {
+          "key": "failure_reason",
+          "type": "varchar",
+          "size": 20,
+          "required": false
+        },
+        {
+          "key": "fail_count",
+          "type": "integer",
+          "required": false,
+          "min": 0,
+          "max": 100000
+        }
+      ],
+      "indexes": [
+        {
+          "key": "unique_pair_key",
+          "type": "unique",
+          "columns": [
+            "pair_key"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_origin_band",
+          "type": "key",
+          "columns": [
+            "origin_zone_id",
+            "band"
+          ],
+          "orders": [
+            "ASC",
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_dest_band",
+          "type": "key",
+          "columns": [
+            "dest_zone_id",
+            "band"
+          ],
+          "orders": [
+            "ASC",
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_expires",
+          "type": "key",
+          "columns": [
+            "expires_at"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        }
+      ]
+    },
+    {
+      "$id": "travel_usage",
+      "databaseId": "main",
+      "name": "travel_usage",
+      "enabled": true,
+      "rowSecurity": true,
+      "$permissions": [],
+      "columns": [
+        {
+          "key": "period_key",
+          "type": "varchar",
+          "size": 16,
+          "required": true
+        },
+        {
+          "key": "elements",
+          "type": "integer",
+          "required": false,
+          "min": 0,
+          "max": 2000000000
+        },
+        {
+          "key": "cost_micro_usd",
+          "type": "integer",
+          "required": false,
+          "min": 0,
+          "max": 2000000000
+        },
+        {
+          "key": "alerted_pct",
+          "type": "integer",
+          "required": false,
+          "min": 0,
+          "max": 100
+        },
+        {
+          "key": "updated_at",
+          "type": "datetime",
+          "required": false
+        }
+      ],
+      "indexes": [
+        {
+          "key": "unique_period_key",
+          "type": "unique",
+          "columns": [
+            "period_key"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        }
+      ]
+    },
+    {
       "$id": "tier",
       "databaseId": "main",
       "name": "tier",

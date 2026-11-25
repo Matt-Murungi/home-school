@@ -1,0 +1,193 @@
+{
+  "domain": "geo",
+  "description": "Travel-time cache and Google Routes usage counters (X01, SR 7.2 and 9). Zone ids and minutes only: no coordinates, no personal data.",
+  "tables": [
+    {
+      "$id": "travel_time_cache",
+      "name": "travel_time_cache",
+      "enabled": true,
+      "rowSecurity": true,
+      "$permissions": [],
+      "columns": [
+        {
+          "key": "origin_zone_id",
+          "type": "varchar",
+          "size": 36,
+          "required": true
+        },
+        {
+          "key": "dest_zone_id",
+          "type": "varchar",
+          "size": 36,
+          "required": true
+        },
+        {
+          "key": "band",
+          "type": "varchar",
+          "size": 16,
+          "required": true
+        },
+        {
+          "key": "pair_key",
+          "type": "varchar",
+          "size": 90,
+          "required": true
+        },
+        {
+          "key": "minutes",
+          "type": "integer",
+          "required": false,
+          "min": 1,
+          "max": 1440
+        },
+        {
+          "key": "fetched_at",
+          "type": "datetime",
+          "required": false
+        },
+        {
+          "key": "expires_at",
+          "type": "datetime",
+          "required": false
+        },
+        {
+          "key": "retry_at",
+          "type": "datetime",
+          "required": false
+        },
+        {
+          "key": "failure_reason",
+          "type": "varchar",
+          "size": 20,
+          "required": false
+        },
+        {
+          "key": "fail_count",
+          "type": "integer",
+          "required": false,
+          "min": 0,
+          "max": 100000
+        }
+      ],
+      "indexes": [
+        {
+          "key": "unique_pair_key",
+          "type": "unique",
+          "columns": [
+            "pair_key"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_origin_band",
+          "type": "key",
+          "columns": [
+            "origin_zone_id",
+            "band"
+          ],
+          "orders": [
+            "ASC",
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_dest_band",
+          "type": "key",
+          "columns": [
+            "dest_zone_id",
+            "band"
+          ],
+          "orders": [
+            "ASC",
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_expires",
+          "type": "key",
+          "columns": [
+            "expires_at"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        }
+      ]
+    },
+    {
+      "$id": "travel_usage",
+      "name": "travel_usage",
+      "enabled": true,
+      "rowSecurity": true,
+      "$permissions": [],
+      "columns": [
+        {
+          "key": "period_key",
+          "type": "varchar",
+          "size": 16,
+          "required": true
+        },
+        {
+          "key": "elements",
+          "type": "integer",
+          "required": false,
+          "min": 0,
+          "max": 2000000000
+        },
+        {
+          "key": "cost_micro_usd",
+          "type": "integer",
+          "required": false,
+          "min": 0,
+          "max": 2000000000
+        },
+        {
+          "key": "alerted_pct",
+          "type": "integer",
+          "required": false,
+          "min": 0,
+          "max": 100
+        },
+        {
+          "key": "updated_at",
+          "type": "datetime",
+          "required": false
+        }
+      ],
+      "indexes": [
+        {
+          "key": "unique_period_key",
+          "type": "unique",
+          "columns": [
+            "period_key"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        }
+      ]
+    }
+  ],
+  "meta": {
+    "travel_time_cache": {
+      "deletion": "hard",
+      "note": "Derived cache, safe to delete or rebuild at any time (no soft delete, no *_key soft-unique rule needed). Row $id = sha256(travel_time_cache, origin, dest, band)[:36], so create is atomic and a lost race falls back to update. `minutes`/`fetched_at`/`expires_at` are the LAST GOOD value; a failure only sets retry_at/failure_reason/fail_count (negative cache), never erases the good value. pair_key = origin:dest:band (unique, informational: the row id already enforces it). Rows of retired zones are harmless and may be purged by the retention job."
+    },
+    "travel_usage": {
+      "deletion": "hard",
+      "note": "One row per period_key `d:YYYY-MM-DD` (Africa/Kampala day) or `m:YYYY-MM`: provider elements used, estimated cost in micro-USD, highest alert percentage already sent. Read-modify-write without atomic increment: concurrent instances can overshoot a cap by about one batch (the Google Cloud budget and quota cap are the hard stop). Old rows may be purged after 13 months."
+    }
+  },
+  "relations": [
+    {
+      "from": "travel_time_cache.origin_zone_id",
+      "to": "zone"
+    },
+    {
+      "from": "travel_time_cache.dest_zone_id",
+      "to": "zone"
+    }
+  ]
+}

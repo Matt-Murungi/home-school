@@ -87,6 +87,39 @@ class Settings(BaseSettings):
     otp_phone_failures_per_hour: int = 10
     otp_ip_verifies_per_hour: int = 60
     otp_dormant_days: int = 180
+    # Travel time (X01). No key = straight-line estimates only (flagged estimated).
+    google_maps_server_key: SecretStr = SecretStr("")
+    travel_daily_element_budget: int = 1000  # provider elements (origin x destination) per day
+    travel_monthly_element_budget: int = 15000  # alert at 80% and 100%, hard stop at 100%
+    travel_cache_ttl_days: int = 7  # weekly refresh (SR 7.2)
+    travel_negative_ttl_s: int = 300  # how long a failed lookup is not retried
+    travel_fallback_speed_kmh: float = 20.0  # straight-line fallback; see travel/geo.py
+    travel_fallback_circuity: float = 1.4
+    travel_within_zone_minutes: int = 10  # two homes in the same zone
+    travel_element_cost_micro_usd: int = 10000  # USD 0.01 per element (estimate; owner to check)
+    travel_warm_bands: str = "evening_peak,off_peak"  # bands the daily warming job refreshes
+
+    def _travel_problems(self) -> list[str]:
+        from .travel.bands import BANDS
+
+        out: list[str] = []
+        for name in (
+            "travel_daily_element_budget",
+            "travel_monthly_element_budget",
+            "travel_cache_ttl_days",
+            "travel_negative_ttl_s",
+            "travel_element_cost_micro_usd",
+            "travel_within_zone_minutes",
+        ):
+            if getattr(self, name) <= 0:
+                out.append(f"{name.upper()} must be a positive number")
+        for name in ("travel_fallback_speed_kmh", "travel_fallback_circuity"):
+            if getattr(self, name) <= 0:
+                out.append(f"{name.upper()} must be a positive number")
+        bands = [b.strip() for b in self.travel_warm_bands.split(",") if b.strip()]
+        if not bands or any(b not in BANDS for b in bands):
+            out.append("TRAVEL_WARM_BANDS must list time bands: " + ", ".join(BANDS))
+        return out
 
     def problems(self) -> list[str]:
         """Variable-name-only list of what is wrong for this environment."""
@@ -97,6 +130,7 @@ class Settings(BaseSettings):
         for name, (lo, hi) in OTP_RANGES.items():
             if not lo <= getattr(self, name) <= hi:
                 out.append(f"{name.upper()} must be between {lo} and {hi}")
+        out += self._travel_problems()
         if self.hs_env == "dev":
             return out
         for name in REQUIRED_DEPLOYED:

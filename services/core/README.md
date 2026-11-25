@@ -37,3 +37,7 @@ Endpoints: `GET /health` (also `/healthz`, liveness: version + git SHA), `GET /r
 ## Not done here
 
 Fly.io app and deployment (owner-blocked, ADR 0003); seeing `heartbeat` run on staging (owner-blocked: needs F02 projects, Fly.io, the deployed function).
+
+## Travel time (X01)
+
+`src/hs_core/travel/`: zone-pair cached travel minutes for matching, with a provider interface (Google Routes adapter, unverified, plus a fake), cost guard, fallbacks and the `travel-cache-refresh` job. See `docs/ops/travel-time.md`.

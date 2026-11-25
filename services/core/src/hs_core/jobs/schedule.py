@@ -8,11 +8,12 @@ revocation, permission-reconcile, permission-audit) are added by their own ticke
 
 from __future__ import annotations
 
-from datetime import timedelta
+from datetime import datetime, timedelta
 
 from ..auth_otp.jobs import otp_cleanup
+from ..travel.jobs import travel_cache_refresh
 from .handlers import heartbeat
-from .model import JobSpec, Schedule
+from .model import KAMPALA, JobSpec, Schedule
 
 JOBS: list[JobSpec] = [
     JobSpec(
@@ -29,5 +30,13 @@ JOBS: list[JobSpec] = [
         schedule=Schedule(timedelta(hours=1)),
         max_attempts=3,
         catch_up=timedelta(hours=3),
+    ),
+    # X01: keeps the travel-time zone-pair cache warm (weekly TTL), 02:00 Kampala, chunked.
+    JobSpec(
+        "travel-cache-refresh",
+        travel_cache_refresh,
+        schedule=Schedule(timedelta(days=1), anchor=datetime(2026, 1, 1, 2, tzinfo=KAMPALA)),
+        max_attempts=3,
+        catch_up=timedelta(days=1),
     ),
 ]
