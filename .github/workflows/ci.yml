@@ -30,6 +30,7 @@ jobs:
       core: ${{ steps.filter.outputs.core }}
       appwrite: ${{ steps.filter.outputs.appwrite }}
       ops: ${{ steps.filter.outputs.ops }}
+      momo: ${{ steps.filter.outputs.momo }}
       scripts: ${{ steps.filter.outputs.scripts }}
       admin: ${{ steps.filter.outputs.admin }}
       docs: ${{ steps.filter.outputs.docs }}
@@ -129,6 +130,27 @@ jobs:
       - name: lint (command from packages.json)
         run: python3 scripts/run_packages.py lint --only core
 
+  momo:
+    name: py-momo package (uv, pytest, ruff)
+    needs: changes
+    if: needs.changes.outputs.momo == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      HS_PACKAGES: py-momo
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d # v10.4.0
+        with:
+          enable-cache: true
+          cache-dependency-glob: packages/py_momo/uv.lock
+      - name: test (command from packages.json)
+        run: python3 scripts/run_packages.py test --only py-momo
+      - name: lint (command from packages.json)
+        run: python3 scripts/run_packages.py lint --only py-momo
+
   appwrite:
     name: appwrite (migration runner and schema checks)
     needs: changes
@@ -223,7 +245,7 @@ jobs:
     name: ci-ok
     # The single required check. Jobs skipped by the path filter count as fine; failed or cancelled do not.
     if: always()
-    needs: [changes, repo-checks, scripts, docs, core, appwrite, ops, admin, flutter]
+    needs: [changes, repo-checks, scripts, docs, core, momo, appwrite, ops, admin, flutter]
     runs-on: ubuntu-24.04
     timeout-minutes: 2
     steps:

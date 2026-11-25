@@ -16,6 +16,10 @@ updates:
     groups:
       python-minor-patch:
         update-types: [minor, patch]
+  - package-ecosystem: uv
+    directory: /packages/py_momo
+    schedule:
+      interval: weekly
   - package-ecosystem: docker
     directory: /services/core
     schedule:

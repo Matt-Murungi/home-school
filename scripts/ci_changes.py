@@ -31,6 +31,7 @@ GROUPS: dict[str, tuple[str, ...]] = {
     ),  # job-tick tests run in the core suite
     "appwrite": ("appwrite/",),
     "ops": ("ops/",),
+    "momo": ("packages/py_momo/",),
     "scripts": ("scripts/", "docs/ops/", ".pre-commit-config.yaml", ".gitleaks.toml"),
     "admin": ("apps/admin/",),
     "docs": ("docs/",),

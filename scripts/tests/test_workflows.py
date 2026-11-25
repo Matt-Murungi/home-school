@@ -38,7 +38,11 @@ class Scratch:
         (self.dir / "docs" / "ops").mkdir(parents=True)
         shutil.copy(ROOT / "docs/ops/deploy.md", self.dir / "docs/ops/deploy.md")
         shutil.copy(ROOT / "packages.json", self.dir / "packages.json")
-        for lock in ("services/core/uv.lock", "apps/admin/package-lock.json"):
+        for lock in (
+            "services/core/uv.lock",
+            "packages/py_momo/uv.lock",
+            "apps/admin/package-lock.json",
+        ):
             (self.dir / lock).parent.mkdir(parents=True, exist_ok=True)
             (self.dir / lock).write_text("")
         for d in ("apps/parent", "apps/teacher", "packages/flutter_shared"):
@@ -403,7 +407,7 @@ class CiOkAggregate(unittest.TestCase):
 
     def test_ci_ok_missing_a_need_is_reported(self):
         s = Scratch(self).edit(
-            ".github/workflows/ci.yml", "core, appwrite, ops", "appwrite, ops"
+            ".github/workflows/ci.yml", "core, momo, appwrite, ops", "appwrite, ops"
         )
         self.assertTrue(
             any("ci-ok must need every other job" in p for p in s.problems())
