@@ -14,7 +14,7 @@ import urllib.parse
 import urllib.request
 import uuid
 
-from migrate import AppwriteClient
+from migrate import AppwriteClient, SchemaDrift, column_drift, index_drift, table_drift
 
 MIGRATION_TABLE = "schema_migration"
 
@@ -100,15 +100,19 @@ class HttpAppwriteClient(AppwriteClient):
         return {i["key"]: i["status"] for i in self._call("GET", f"/tables/{table}/indexes").get("indexes", [])}
 
     def ensure_table(self, spec):
-        """Create table, missing columns and indexes. Convergent, never alters. REST shapes written from the docs, not run
-        live: verify once against dev (owner step in memory.md, M01)."""
+        """Create table, missing columns and indexes; convergent, never alters. Waits for all columns to be `available`
+        before creating indexes (Appwrite processes columns asynchronously and rejects an index over one that is still
+        `processing`). Drift (column, index, rowSecurity/permissions) raises SchemaDrift. REST shapes written from the
+        docs, not run live: verify once against dev (owner step in memory.md, M01)."""
         name = spec["$id"]
         created = False
-        existing_cols, existing_idx = {}, set()
+        existing_cols, existing_idx = {}, {}
         try:
-            self._call("GET", f"/tables/{name}")
+            table = self._call("GET", f"/tables/{name}")
+            if diffs := table_drift(spec, table):
+                raise SchemaDrift(f"{name}: table exists with a different definition (drift): {'; '.join(diffs)}")
             existing_cols = {c["key"]: c for c in self._call("GET", f"/tables/{name}/columns").get("columns", [])}
-            existing_idx = {i["key"] for i in self._call("GET", f"/tables/{name}/indexes").get("indexes", [])}
+            existing_idx = {i["key"]: i for i in self._call("GET", f"/tables/{name}/indexes").get("indexes", [])}
         except AppwriteError as exc:
             if exc.status != 404:
                 raise
@@ -117,9 +121,8 @@ class HttpAppwriteClient(AppwriteClient):
         columns_added, indexes_added = [], []
         for c in spec["columns"]:
             if c["key"] in existing_cols:
-                have = existing_cols[c["key"]]
-                if have.get("required") is not None and bool(have["required"]) != bool(c["required"]):
-                    raise AppwriteError(f"{name}.{c['key']}: column exists with a different definition (drift)")
+                if diffs := column_drift(c, existing_cols[c["key"]]):
+                    raise SchemaDrift(f"{name}.{c['key']}: column exists with a different definition (drift): {'; '.join(diffs)}")
                 continue
             kind = "enum" if c.get("format") == "enum" else c["type"]
             body = {"key": c["key"], "required": c["required"]}
@@ -129,8 +132,12 @@ class HttpAppwriteClient(AppwriteClient):
             self._call("POST", f"/tables/{name}/columns/{kind}", body)
             columns_added.append(c["key"])
         for i in spec["indexes"]:
-            if i["key"] in existing_idx:
-                continue
+            if i["key"] in existing_idx and (diffs := index_drift(i, existing_idx[i["key"]])):
+                raise SchemaDrift(f"{name}.{i['key']}: index exists with a different definition (drift): {'; '.join(diffs)}")
+        new_indexes = [i for i in spec["indexes"] if i["key"] not in existing_idx]
+        if new_indexes:
+            self.wait_columns_available(name, [c["key"] for c in spec["columns"]])
+        for i in new_indexes:
             self._call("POST", f"/tables/{name}/indexes", {"key": i["key"], "type": i["type"], "columns": i["columns"], "orders": i["orders"]})
             indexes_added.append(i["key"])
         return {"created": created, "columns_added": columns_added, "indexes_added": indexes_added}

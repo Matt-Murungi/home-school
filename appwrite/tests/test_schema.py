@@ -447,7 +447,8 @@ class RealAdapter(unittest.TestCase):
         n_cols, n_idx = len(spec["columns"]), len(spec["indexes"])
         from urllib.error import HTTPError
 
-        responses = [HTTPError("u", 404, "nf", {}, io.BytesIO(b"{}"))] + [{}] * (1 + n_cols + n_idx)
+        available = {"columns": [{"key": c["key"], "status": "available"} for c in spec["columns"]]}
+        responses = [HTTPError("u", 404, "nf", {}, io.BytesIO(b"{}"))] + [{}] * (1 + n_cols) + [available] + [{}] * n_idx
         c, rec = make(responses)
         result = c.ensure_table(spec)
         self.assertTrue(result["created"])
@@ -508,3 +509,260 @@ class DiffLive(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class AsyncColumnProcessing(unittest.TestCase):
+    """Review round 1, finding 1: Appwrite creates columns/indexes asynchronously. An index over a column that is still
+    `processing` is rejected, so ensure_table must wait for `available` before creating indexes."""
+
+    def zone(self):
+        return copy.deepcopy(TABLES["zone"])
+
+    def test_fake_rejects_an_index_over_a_processing_column(self):
+        client = FakeAppwriteClient(polls_until_available=3)
+        spec = self.zone()
+        client.ensure_table(dict(spec, indexes=[]))
+        with self.assertRaisesRegex(ValueError, "not available|processing"):
+            client._create_index("zone", spec["indexes"][0])  # what ensure_table would do without waiting
+
+    def test_ensure_table_waits_for_columns_before_creating_indexes(self):
+        client = FakeAppwriteClient(polls_until_available=3)
+        result = client.ensure_table(self.zone())
+        self.assertTrue(result["indexes_added"])
+        self.assertTrue(client.slept, "ensure_table never waited")
+        self.assertTrue(all(s == "available" for s in client.column_statuses("zone").values()))
+
+    def test_whole_core_domain_applies_to_a_slow_project(self):
+        client = FakeAppwriteClient(polls_until_available=5)
+        out = io.StringIO()
+        result = migrate.run(client, "staging", str(APPWRITE_DIR / "migrations"), out=out, sleep=lambda s: None)
+        self.assertEqual(result.exit_code, 0, out.getvalue())
+
+    def test_wait_times_out_when_a_column_never_becomes_available(self):
+        client = FakeAppwriteClient(polls_until_available=10**9)
+        with self.assertRaisesRegex(migrate.MigrationError, "timed out"):
+            client.ensure_table(self.zone())
+
+    def test_wait_fails_fast_when_a_column_fails(self):
+        client = FakeAppwriteClient(polls_until_available=2, failing_columns={"zone.name"})
+        with self.assertRaisesRegex(migrate.MigrationError, "failed"):
+            client.ensure_table(self.zone())
+        self.assertLess(len(client.slept), 3)
+
+    def test_real_adapter_waits_before_creating_indexes(self):
+        from urllib.error import HTTPError
+
+        from test_adapter import make
+
+        spec = self.zone()
+        n_cols, n_idx = len(spec["columns"]), len(spec["indexes"])
+        keys = [c["key"] for c in spec["columns"]]
+        proc = {"columns": [{"key": k, "status": "processing"} for k in keys]}
+        done = {"columns": [{"key": k, "status": "available"} for k in keys]}
+        responses = [HTTPError("u", 404, "nf", {}, io.BytesIO(b"{}")), {}] + [{}] * n_cols + [proc, proc, done] + [{}] * n_idx
+        c, rec = make(responses)
+        c.sleep = lambda s: None
+        c.ensure_table(spec)
+        calls = [(r.get_method(), r.full_url.split("/tablesdb/main")[1].split("?")[0]) for r in rec.requests]
+        first_index = next(i for i, (m, p) in enumerate(calls) if m == "POST" and p.endswith("/indexes"))
+        polls = [i for i, (m, p) in enumerate(calls) if m == "GET" and p == "/tables/zone/columns"]
+        self.assertEqual(len(polls), 3)
+        self.assertTrue(all(i < first_index for i in polls))
+
+    def test_real_adapter_fails_fast_on_failed_column_and_times_out(self):
+        from urllib.error import HTTPError
+
+        from test_adapter import make
+
+        spec = self.zone()
+        keys = [c["key"] for c in spec["columns"]]
+        bad = {"columns": [{"key": k, "status": "failed" if k == keys[0] else "processing"} for k in keys]}
+        c, _ = make([HTTPError("u", 404, "nf", {}, io.BytesIO(b"{}")), {}] + [{}] * len(keys) + [bad])
+        c.sleep = lambda s: None
+        with self.assertRaisesRegex(migrate.MigrationError, "failed"):
+            c.ensure_table(spec)
+        proc = {"columns": [{"key": k, "status": "processing"} for k in keys]}
+        c, _ = make([HTTPError("u", 404, "nf", {}, io.BytesIO(b"{}")), {}] + [{}] * len(keys) + [proc] * 50)
+        clock = iter(range(0, 100000, 100))
+        c.sleep, c.now = (lambda s: None), (lambda: next(clock))
+        with self.assertRaisesRegex(migrate.MigrationError, "timed out"):
+            c.ensure_table(spec)
+
+
+class DriftDetection(unittest.TestCase):
+    """Review round 1, findings 1 and 4: drift is compared on type, size, required, array, enum elements and default, and
+    on index definitions and table permissions, in the fake and in the real adapter."""
+
+    def spec(self):
+        return copy.deepcopy(TABLES["user_profile"])
+
+    def drifted(self, mutate):
+        spec = self.spec()
+        client = FakeAppwriteClient()
+        client.ensure_table(spec)
+        mutate(spec)
+        with self.assertRaises(migrate.SchemaDrift):
+            client.ensure_table(spec)
+
+    def col(self, spec, key):
+        return next(c for c in spec["columns"] if c["key"] == key)
+
+    def test_fake_detects_column_drift_in_every_property(self):
+        self.drifted(lambda s: self.col(s, "status").update(elements=["active", "other"]))
+        self.drifted(lambda s: self.col(s, "status").update(default="suspended"))
+        self.drifted(lambda s: self.col(s, "email").update(size=100))
+        self.drifted(lambda s: self.col(s, "email").update(required=not self.col(s, "email")["required"]))
+        self.drifted(lambda s: self.col(s, "email").update(array=True))
+        self.drifted(lambda s: self.col(s, "email").update(type="text"))
+        self.drifted(lambda s: self.col(s, "status").pop("default"))
+
+    def test_fake_detects_index_definition_drift(self):
+        self.drifted(lambda s: s["indexes"][0].update(type="key" if s["indexes"][0]["type"] == "unique" else "unique"))
+        self.drifted(lambda s: s["indexes"][0].update(columns=list(reversed(s["indexes"][0]["columns"])) + ["status"]))
+        self.drifted(lambda s: s["indexes"][0].update(orders=["DESC"] * len(s["indexes"][0]["orders"])))
+
+    def test_fake_detects_table_permission_and_row_security_drift(self):
+        self.drifted(lambda s: s.update(rowSecurity=False))
+        self.drifted(lambda s: s.update({"$permissions": ['read("any")']}))
+
+    def test_unchanged_spec_is_not_drift(self):
+        client = FakeAppwriteClient()
+        client.ensure_table(self.spec())
+        client.ensure_table(self.spec())
+
+    def rest_column(self, c):
+        d = {"key": c["key"], "type": c["type"], "required": c["required"], "array": bool(c.get("array")), "status": "available"}
+        for k in ("size", "elements", "format", "min", "max"):
+            if k in c:
+                d[k] = c[k]
+        d["default"] = c.get("default")
+        return d
+
+    def rest_state(self, spec):
+        return [
+            {"$id": spec["$id"], "rowSecurity": spec["rowSecurity"], "$permissions": spec["$permissions"]},
+            {"columns": [self.rest_column(c) for c in spec["columns"]]},
+            {"indexes": [dict(i, status="available") for i in spec["indexes"]]},
+        ]
+
+    def real(self, spec, mutate):
+        from test_adapter import make
+
+        responses = self.rest_state(spec)
+        mutate(responses)
+        c, rec = make(responses)
+        c.sleep = lambda s: None
+        return c, rec
+
+    def test_real_adapter_matching_remote_state_is_a_noop(self):
+        spec = self.spec()
+        c, rec = self.real(spec, lambda r: None)
+        self.assertEqual(c.ensure_table(spec), {"created": False, "columns_added": [], "indexes_added": []})
+        self.assertTrue(all(r.get_method() == "GET" for r in rec.requests))
+
+    def test_real_adapter_detects_every_kind_of_drift(self):
+        spec = self.spec()
+        email = next(i for i, c in enumerate(spec["columns"]) if c["key"] == "email")
+        status = next(i for i, c in enumerate(spec["columns"]) if c["key"] == "status")
+        cases = {
+            "size": lambda r: r[1]["columns"][email].update(size=7),
+            "type": lambda r: r[1]["columns"][email].update(type="text"),
+            "required": lambda r: r[1]["columns"][email].update(required=not spec["columns"][email]["required"]),
+            "array": lambda r: r[1]["columns"][email].update(array=True),
+            "elements": lambda r: r[1]["columns"][status].update(elements=["x"]),
+            "default": lambda r: r[1]["columns"][status].update(default="suspended"),
+            "index type": lambda r: r[2]["indexes"][0].update(type="key" if spec["indexes"][0]["type"] == "unique" else "unique"),
+            "index columns": lambda r: r[2]["indexes"][0].update(columns=["status"]),
+            "row security": lambda r: r[0].update(rowSecurity=False),
+            "permissions": lambda r: r[0].update({"$permissions": ['read("label:opsadmin")']}),
+        }
+        for name, mutate in cases.items():
+            with self.subTest(name):
+                c, _ = self.real(spec, mutate)
+                with self.assertRaises(migrate.SchemaDrift):
+                    c.ensure_table(spec)
+
+
+class ForeignKeyRuleInValidator(unittest.TestCase):
+    """Review round 1, finding 2: the `*_id` rule applies to every domain, not just core."""
+
+    def scratch(self, **table_over):
+        table = {
+            "$id": "widget", "name": "widget", "rowSecurity": True, "$permissions": [],
+            "columns": [
+                {"key": "owner_id", "type": "varchar", "size": 36, "required": True},
+                {"key": "file_id", "type": "varchar", "size": 36, "required": False},
+            ],
+            "indexes": [{"key": "by_owner", "type": "key", "columns": ["owner_id"], "orders": ["ASC"]}],
+        }
+        table.update(table_over)
+        return {"domain": "scratch", "description": "x", "tables": [table], "meta": {"widget": {"deletion": "hard"}}, "relations": []}
+
+    def errors(self, scratch):
+        return sb.validate(copy.deepcopy(CORE) + [scratch])
+
+    def test_undeclared_owner_id_in_a_new_domain_fails(self):
+        errors = self.errors(self.scratch())
+        self.assertTrue(any("widget.owner_id" in e and "relation" in e for e in errors), errors)
+        self.assertTrue(any("widget.file_id" in e for e in errors), errors)
+
+    def test_declared_relation_and_marked_non_fk_pass(self):
+        s = self.scratch()
+        s["relations"] = [{"from": "widget.owner_id", "to": "user_profile"}]
+        s["meta"]["widget"]["non_fk"] = {"file_id": "Appwrite Storage file id, not a table row"}
+        self.assertEqual(self.errors(s), [])
+
+    def test_id_arrays_and_unknown_non_fk_entries_are_checked(self):
+        s = self.scratch()
+        s["relations"] = [{"from": "widget.owner_id", "to": "user_profile"}]
+        s["meta"]["widget"]["non_fk"] = {"file_id": "x", "ghost_id": "x"}
+        s["tables"][0]["columns"].append({"key": "tag_ids", "type": "varchar", "size": 36, "required": False, "array": True})
+        errors = self.errors(s)
+        self.assertTrue(any("tag_ids" in e for e in errors), errors)
+        self.assertTrue(any("ghost_id" in e for e in errors), errors)
+
+    def test_every_real_domain_is_clean(self):
+        self.assertEqual(sb.validate(CORE), [])
+
+
+class RetentionAndInsertOnlyWording(unittest.TestCase):
+    """Review round 1, finding 3: say exactly what is enforced today and what is a follow-up; state the retention rule."""
+
+    STATEMENT = "the retention job is the only allowed hard-deleter"
+
+    def test_notes_do_not_overstate_insert_only(self):
+        for t in ("consent_record", "policy_acceptance"):
+            note = CORE_DOMAIN["meta"][t]["note"].lower()
+            self.assertNotIn("exposes no update or delete", note, t)
+            self.assertIn("no client write permission", note, t)
+            self.assertIn("follow-up", note, t)
+            self.assertIn("m05", note, t)
+            self.assertIn("m06", note, t)
+            self.assertIn("create/list/get", note, t)
+            self.assertIn(self.STATEMENT, note, t)
+
+    def test_domain_description_readme_and_erd_state_the_retention_rule(self):
+        for name, text in (
+            ("core.json description", CORE_DOMAIN["description"]),
+            ("appwrite/README.md", (REPO / "appwrite" / "README.md").read_text()),
+            ("docs/erd/core.md", (REPO / "docs" / "erd" / "core.md").read_text()),
+        ):
+            flat = " ".join(text.lower().split())
+            self.assertIn(self.STATEMENT, flat, name)
+            self.assertIn("dp-6", flat, name)
+
+    def test_readme_explains_how_immutable_and_soft_tables_meet_retention(self):
+        flat = " ".join((REPO / "appwrite" / "README.md").read_text().lower().split())
+        for needle in ("immutable", "soft-delete", "removed with the child", "m05", "m06"):
+            self.assertIn(needle, flat)
+
+    def test_availability_slot_note_says_overlaps_are_merged_by_the_core_service(self):
+        note = CORE_DOMAIN["meta"]["availability_slot"]["note"].lower()
+        self.assertIn("overlap", note)
+        self.assertIn("core service", note)
+        self.assertIn("merge", note)
+
+    def test_ensure_table_docs_list_what_is_detected(self):
+        doc = migrate.AppwriteClient.ensure_table.__doc__.lower()
+        for needle in ("type", "size", "required", "array", "enum", "default", "index", "permission"):
+            self.assertIn(needle, doc)

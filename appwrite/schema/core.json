@@ -1,6 +1,6 @@
 {
   "domain": "core",
-  "description": "Users, roles, profiles, children, locations, consent, teachers, availability, zones (M01, SR 5.1).",
+  "description": "Users, roles, profiles, children, locations, consent, teachers, availability, zones (M01, SR 5.1). Deletion rule (DP-6, SR 5.5): rows are soft-deleted or never changed (immutable); the retention job is the only allowed hard-deleter, and it removes a child's consent rows together with the child under the retention policy.",
   "tables": [
     {
       "$id": "user_profile",
@@ -1243,15 +1243,18 @@
     },
     "consent_record": {
       "deletion": "immutable",
-      "note": "Insert-only. A withdrawal is a new row with decision=withdrawn. No client write permission, and the core service exposes no update or delete for it."
+      "note": "Insert-only by permission today: a withdrawal is a new row with decision=withdrawn, and no client write permission exists. The core service's own key can still update/delete (F03 Repository has no per-table guard); a consent/policy repository wrapper exposing only create/list/get (update/delete raise) is a follow-up for M05/M06. Retention (DP-6, SR 5.5): the retention job is the only allowed hard-deleter. A child's consent rows are removed with the child under the retention policy; no other code path hard-deletes them."
     },
     "policy_acceptance": {
       "deletion": "immutable",
-      "note": "Insert-only (teacher safeguarding policy, terms, privacy). Unique per user, policy and version, so a double submit is rejected."
+      "note": "Insert-only by permission today (teacher safeguarding policy, terms, privacy): unique per user, policy and version, so a double submit is rejected; no client write permission exists. The core service's own key can still update/delete; the consent/policy repository wrapper exposing only create/list/get is a follow-up for M05/M06. Retention (DP-6, SR 5.5): the retention job is the only allowed hard-deleter. Rows go only when the user's retention period ends."
     },
     "teacher_profile": {
       "deletion": "soft",
-      "note": "Zones are in teacher_zone. status becomes active only through the core service after all mandatory checks (SR 7.1). Bio is limited by the text column (16,383 chars max)."
+      "note": "Zones are in teacher_zone. status becomes active only through the core service after all mandatory checks (SR 7.1). Bio is limited by the text column (16,383 chars max).",
+      "non_fk": {
+        "photo_file_id": "Appwrite Storage file id, not a table row"
+      }
     },
     "teacher_zone": {
       "deletion": "join",
@@ -1259,7 +1262,10 @@
     },
     "teacher_document": {
       "deletion": "soft",
-      "note": "File lives in the private bucket teacher-docs (file permissions set by the core service). by_expiry serves the daily expiry job."
+      "note": "File lives in the private bucket teacher-docs (file permissions set by the core service). by_expiry serves the daily expiry job.",
+      "non_fk": {
+        "file_id": "Appwrite Storage file id in bucket teacher-docs, not a table row"
+      }
     },
     "teacher_approval": {
       "deletion": "soft",
@@ -1267,7 +1273,7 @@
     },
     "availability_slot": {
       "deletion": "soft",
-      "note": "Weekly pattern. weekday is ISO (1=Monday). Minutes since midnight in Africa/Kampala wall-clock time (no DST), because it is a recurring pattern, not an instant; end > start is checked by the core service."
+      "note": "Weekly pattern. weekday is ISO (1=Monday). Minutes since midnight in Africa/Kampala wall-clock time (no DST), because it is a recurring pattern, not an instant; end > start is checked by the core service. Overlapping slots for the same teacher and weekday are allowed by the schema (no exclusion constraints in Appwrite); the core service validates and merges overlaps when slots are saved."
     },
     "availability_exception": {
       "deletion": "soft",

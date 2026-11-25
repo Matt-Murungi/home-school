@@ -12,8 +12,10 @@ Generated (never edit by hand; `--write` regenerates, `--check` fails when stale
 Domain file shape:
   {"domain": "core", "description": "...",
    "tables": [Appwrite CLI table objects without databaseId],
-   "meta": {"<table>": {"deletion": "soft|history|immutable|join|hard", "note": "..."}},
+   "meta": {"<table>": {"deletion": "soft|history|immutable|join|hard", "note": "...", "non_fk": {"<id-like column>": "why"}}},
    "relations": [{"from": "table.column", "to": "table", "deferred": "why the target table is not here yet"}]}
+Every `*_id`/`*_ids` column must be a relation (varchar(36), indexed, target exists or deferred) or be listed in
+`meta[table].non_fk` with a reason (file ids): `validate()` enforces it for every domain.
 
 Applying: a numbered migration calls `apply_domain(client, "core")` (see migrations/0002_core_schema.py); a later schema
 change edits the domain file and adds a new migration that calls `apply_domain(client, "core", only=[...changed tables])`.
@@ -179,7 +181,27 @@ def validate(domains: list[dict]) -> list[str]:
             errors += _validate_table(t, meta.get(t["$id"]))
         for r in d.get("relations", []):
             errors += _validate_relation(r, all_tables)
+        errors += _validate_fk_like_columns(d)
     return errors
+
+
+def _validate_fk_like_columns(d: dict) -> list[str]:
+    """Every `*_id` / `*_ids` column is a declared relation (so its FK rules and index are enforced) or is listed in
+    `meta[table].non_fk` with a reason (e.g. an Appwrite Storage file id). Applies to every domain file."""
+    e, declared = [], {r["from"] for r in d.get("relations", [])}
+    for t in d["tables"]:
+        tid = t["$id"]
+        non_fk = (d.get("meta", {}).get(tid) or {}).get("non_fk", {})
+        keys = {c["key"] for c in t["columns"]}
+        for k in non_fk:
+            if k not in keys:
+                e.append(f"{tid}: meta.non_fk lists unknown column {k}")
+            elif f"{tid}.{k}" in declared:
+                e.append(f"{tid}.{k}: listed in non_fk but also declared as a relation")
+        for k in sorted(keys):
+            if (k.endswith("_id") or k.endswith("_ids")) and f"{tid}.{k}" not in declared and k not in non_fk:
+                e.append(f"{tid}.{k}: id-like column must be a declared relation (with an FK index) or listed in meta.non_fk with a reason")
+    return e
 
 
 def _validate_table(t: dict, meta: dict | None) -> list[str]:
