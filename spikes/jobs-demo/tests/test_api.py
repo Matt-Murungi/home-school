@@ -40,6 +40,7 @@ def test_rejects_unsigned_wrong_secret_and_stale_requests():
     assert c.post("/internal/jobs/tick", content=b"{}").status_code == 401
     assert post(c, secret="wrong").status_code == 401
     assert post(c, ts=str(int(time.time()) - 600)).status_code == 401
+    assert post(c, sig=("é" * 64).encode()).status_code == 401  # non-ASCII must be a 401, not a 500
     body, ts = b"{}", str(int(time.time()))
     assert post(c, body=b'{"tampered":1}', ts=ts, sig=sign(SECRET, ts, body)).status_code == 401
     assert store.list_rows("job_run") == []           # nothing ran

@@ -21,7 +21,7 @@ The platform depends on scheduled and background work. Examples:
 
 NFR-7 requires jobs to be idempotent and safe to re-run. Business rules belong in the core service (Python/FastAPI on Fly.io), not in scattered scripts.
 
-**What already exists.** The Home School Appwrite project already has `job_run` and `job_attempt` tables (no rows, no functions deployed). Their columns describe a database-backed queue:
+**What already exists.** A read-only inspection of the live Home School Appwrite project on 25 November 2026 found `job_run` and `job_attempt` tables (no rows, no functions deployed). The reviewer could not re-check this because the live project is read-only for agents, so **F04 must re-verify the columns and the `by_status_run_at` index against the schema built in F02** before relying on them. As inspected, the columns describe a database-backed queue:
 
 - `job_run`: `name`, `dedupe_key`, a `trigger` of schedule, enqueue or manual, and a `status` of queued, running, completed, failed or skipped.
 - Also on `job_run`: `attempts` and `max_attempts`, `run_at`, `scheduled_for`, and the lease field `locked_until`.
@@ -103,10 +103,10 @@ Appwrite cron (every minute)
 ### Rules
 
 1. **Dedupe by row ID.** A run's row ID is a hash of its `dedupe_key`, for example `auto-confirm:2027-01-18T09:00Z` or `payout:2027-W03`. Appwrite refuses a second row with the same ID, so a period or an enqueued task exists once however many ticks overlap. The existing `job_run` has no unique index on `dedupe_key`; the deterministic ID makes one unnecessary.
-2. **Claiming without a conditional update.** Appwrite cannot update a row only if it is unchanged. Instead, a worker claims an attempt by creating the `job_attempt` row with a deterministic ID derived from (run, chunk, attempt). Only one creator succeeds; the others get 409 Conflict and skip. The winner then sets `status=running`, increments `attempts` and sets the lease `locked_until = now + 5 min`.
+2. **Claiming without a conditional update.** Appwrite cannot update a row only if it is unchanged. Instead, a worker claims an attempt by creating the `job_attempt` row with a deterministic ID derived from (run, chunk, attempt). Only one creator succeeds; the others get 409 Conflict and skip. The winner then sets `status=running`, increments `attempts` and sets the lease `locked_until = now + 5 min`. If a worker dies after creating the attempt row but before updating `job_run`, the claim is **orphaned**: the run is still `queued`, but every later tick hits the same attempt ID. A claim whose attempt row is older than the lease is therefore taken over by creating the next generation ID (run, chunk, attempt, generation), which is again an atomic create, so exactly one taker wins and the handler runs once.
 3. **Catch-up, never lost.** Appwrite does not retry a failed scheduled execution. That is fine, because each tick creates runs for every period due within the job's catch-up window (at least one interval; default two days), not only the current minute. After an outage, the next tick creates and runs everything missed.
 4. **Retries with backoff.** A handler exception is a failed attempt. The run returns to `queued` with `run_at = now + base × 2^(attempt−1)`. At `max_attempts` it becomes `failed`, and the alert hook fires (NFR-17).
-5. **Crash recovery.** A run still `running` after its lease expires (worker crashed or timed out) counts as a failed attempt and is claimable again. `last_error` records "lease expired".
+5. **Crash recovery.** Two crash points are covered. (a) A run still `running` after its lease expires counts as a failed attempt and is claimable again; `last_error` records "lease expired". If that was the final attempt, the run becomes `failed` and the alert fires, and the handler is not run again. (b) A crash between creating the attempt row and updating the run leaves an orphaned claim, recovered as described under rule 2.
 6. **Long jobs in chunks.** Handlers do one bounded chunk and return `Continue(cursor)`. The run is re-queued at once with the cursor in `payload`, so payout batches and tier evaluation never exceed the tick budget or the function timeout.
 7. **Effects are idempotent too.** Each chunk gets an idempotency key (`dedupe_key#chunkN`). Side effects such as MoMo disbursements, emails and ledger postings use it, so a chunk that runs again after a crash cannot pay or post twice (NFR-8).
 8. **Authentication.**
@@ -132,6 +132,8 @@ Appwrite cron (every minute)
   - Query claimable runs with the existing `by_status_run_at` index (`status = queued AND run_at <= now`, ordered by `run_at`, limited) instead of scanning.
   - Confirm the function timeout and execution limits on the current Appwrite plan, and set the function timeout above the 25 s HTTP timeout.
   - Alert after N consecutive failed ticks, as well as on final run failure.
+  - `materialise` makes one create call per period in the catch-up window on every tick (about 2,880 per tick for a 1-minute job with a 2-day window, almost all 409s). Record a "last materialised" watermark or bound the window per job.
+  - `_claimable` lists every `job_run` row. Query by the `by_status_run_at` index with a limit (also noted above), because lists are capped at 5,000 rows (ADR 0004).
 
 ## Evidence
 
@@ -141,19 +143,22 @@ The demo is in [`spikes/jobs-demo/`](../../spikes/jobs-demo/). It contains:
 - the signed FastAPI tick endpoint
 - the `job-tick` Appwrite Function, written with the standard library only
 
-It runs on a store with Appwrite's 409-on-duplicate-ID behaviour. All 11 tests pass (25 Nov 2026):
+It runs on a store with Appwrite's 409-on-duplicate-ID behaviour. All 14 tests pass (25 Nov 2026), and the concurrency tests were repeated 25 times without a failure. The two orphan tests were checked to fail against the earlier runner that lacked the recovery:
 
 | Requirement | Test |
 |---|---|
 | Runs once per period despite repeated ticks | `test_scheduled_job_runs_once_per_period_even_if_ticked_repeatedly` |
 | Missed hour caught up, nothing lost | `test_missed_ticks_are_caught_up_not_lost` |
-| 8 concurrent ticks → each run applied exactly once | `test_concurrent_ticks_apply_each_run_exactly_once` |
+| 8 ticks forced to race on the same snapshot (barrier) → each run applied exactly once, and 49 claims lost | `test_concurrent_ticks_apply_each_run_exactly_once` |
 | Retry with backoff → failed → alert, never re-run | `test_failures_retry_with_backoff_then_fail_and_alert` |
 | Crashed worker: lease expires, reclaimed once | `test_crashed_worker_lease_expires_and_run_is_reclaimed_once` |
+| Crash between the attempt-row write and the run update: recovered after the lease, once | `test_claim_orphaned_by_crash_between_the_two_writes_is_recovered_once` |
+| Orphan takeover by 8 concurrent ticks: handler runs once | `test_orphan_takeover_is_atomic_across_concurrent_ticks` |
+| Lease expiry on the final attempt: failed, alert, handler not re-run | `test_lease_expiry_on_final_attempt_fails_and_alerts_without_rerunning` |
 | Long job in chunks, every item once | `test_long_job_continues_in_chunks_without_redoing_work` |
 | Idempotent enqueue, delayed and manual runs | `test_enqueue_is_idempotent_and_supports_delay_and_manual_runs` |
 | Daily schedules in Kampala time | `test_daily_schedule_uses_kampala_time` |
-| Signature, wrong secret, replay and tampering rejected | `test_rejects_unsigned_wrong_secret_and_stale_requests` |
+| Signature, wrong secret, non-ASCII signature, replay and tampering rejected | `test_rejects_unsigned_wrong_secret_and_stale_requests` |
 | The function's requests are accepted by the endpoint | `test_appwrite_function_signs_requests_the_api_accepts` |
 
 **Not yet done:** the ticket's "hello-world job running on staging". It needs:

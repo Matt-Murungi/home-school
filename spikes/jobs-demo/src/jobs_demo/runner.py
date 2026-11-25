@@ -166,12 +166,24 @@ class Runner:
         payload = json.loads(run["payload"] or "{}")
         chunk = payload.get("_chunk", 0)
         attempt = run["attempts"] + 1
-        try:
-            self.store.create_row("job_attempt", row_id("job_attempt", run["$id"], chunk, attempt), {
-                "run_id": run["$id"], "attempt": attempt, "started_at": _iso(now),
-            })
-        except Conflict:
-            return None  # another tick claimed this exact attempt first
+        # Claim = create the attempt row with a deterministic ID. If that row exists but
+        # the run never moved on (worker died between the two writes), the claim is
+        # orphaned once it is older than the lease: take over with the next generation
+        # ID, which is again an atomic create, so only one taker wins.
+        generation = 0
+        while True:
+            parts = ("job_attempt", run["$id"], chunk, attempt) + ((generation,) if generation else ())
+            try:
+                self.store.create_row("job_attempt", row_id(*parts), {
+                    "run_id": run["$id"], "attempt": attempt, "started_at": _iso(now),
+                })
+                break
+            except Conflict:
+                existing = self.store.get_row("job_attempt", row_id(*parts))
+                started = _dt(existing["started_at"]) if existing else None
+                if started is None or now - started < LEASE:
+                    return None  # a live claimer holds it (or it vanished): skip this tick
+                generation += 1  # orphaned: try the next generation
         expired = run["status"] == "running"
         return self.store.update_row("job_run", run["$id"], {
             "status": "running", "attempts": attempt, "locked_until": _iso(now + LEASE),

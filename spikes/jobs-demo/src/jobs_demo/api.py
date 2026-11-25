@@ -14,6 +14,7 @@ import time
 from dataclasses import asdict
 
 from fastapi import FastAPI, Header, HTTPException, Request
+from fastapi.concurrency import run_in_threadpool
 
 from .runner import Runner
 
@@ -39,8 +40,10 @@ def create_app(runner: Runner, secret: str | None = None) -> FastAPI:
             raise HTTPException(401, "missing or invalid timestamp") from None
         if age > MAX_SKEW_SECONDS:
             raise HTTPException(401, "stale timestamp")
-        if not hmac.compare_digest(sign(secret, x_job_timestamp, body), x_job_signature):
+        # Compare as bytes: str compare_digest raises TypeError on non-ASCII input (would be a 500).
+        if not hmac.compare_digest(sign(secret, x_job_timestamp, body).encode(), x_job_signature.encode()):
             raise HTTPException(401, "bad signature")
-        return asdict(runner.tick())
+        # tick() is synchronous (storage calls block); keep it off the event loop.
+        return asdict(await run_in_threadpool(runner.tick))
 
     return app
