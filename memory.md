@@ -73,6 +73,7 @@ Reviewer writes: commands run, results, criterion-by-criterion verdict, findings
 | appwrite schema (M01) | `cd appwrite && python3 -m unittest discover -s tests -v` (141 tests incl. `tests/test_schema.py`); `python3 appwrite/schema_build.py --check` (validate + generated files fresh), `--write` to regenerate config and `docs/erd`; `python3 appwrite/diff_live.py <snapshot.json>` (offline live diff) |
 | secrets (F09) | `python3 scripts/secrets_check.py` (validates `docs/ops/secrets-inventory.json`, `.env.example`, generated docs; `--write` regenerates tables), tests `python3 -m unittest scripts.tests.test_secrets` (36) and `cd services/core && uv run pytest tests/test_config_inventory.py`. Also part of `make test`/`make lint` via `root-tests`. Stdlib only, offline. |
 | py_momo ($02) | `cd packages/py_momo && uv run pytest -q` (130 tests, offline, stdlib-only package) and `uv run ruff check . && uv run ruff format --check .`; registered in `packages.json` as `py-momo`. Manual sandbox smoke test (owner only, network): `python packages/py_momo/scripts/manual_sandbox.py --yes-call-the-network` |
+| legal docs (C04) | `cd docs/legal && python3 -m unittest discover -s tests && python3 check-processors.py` (27 tests; validator checks `processors.json` vs `docs/ops/secrets-inventory.json` when F09 is on main, SR §9 integrations, required fields, register markdown). Stdlib, offline. Also in `make test` via `legal-docs` in packages.json. |
 
 (Add a row for each new package.)
 
@@ -226,6 +227,26 @@ Suggested order: E00 decisions (D01–D03, D05; D04, D06 later/owner) → E01 fo
 | Legal note linked from E17 and E18 | After merge: link from #139/#141/#142 and E18 (#19); not done |
 | Edge: lawyer advises against holiday packages | ADR option D2 (remove); no dependent ticket found |
 | Edge: registration slower than build | Declared launch blocker in ADR 0006; track in R07 #155 |
+
+### C04 · PDPO registration, processor agreements and breach procedure (#142)
+
+- Status: **ready-for-review** on branch `c04-dp-procedures` (commit fee50cb, pushed, no PR). Expected final status `blocked-foundation-merged` (registration, DPAs, lawyer review, tabletop are owner-blocked).
+- Built: `docs/legal/processors.json` + `processor-register.md` (12 processors: Appwrite Cloud, Fly.io, Resend, Africa's Talking, Firebase/FCM/APNs, Google Maps, Sentry, MTN MoMo, Airtel (Ph2), card gateway TBD (Ph2), uptime vendor, GitHub; each with data categories, purpose, region, cross-border note labelled unverified, agreement `not signed` owner-blocked, DPA link placeholder, sub-processors, exit/deletion steps, what to do if the DPA is refused, breach contact placeholder); `breach-procedure.md` (detection, roles, S1-S4 matrix, internal 72 h clock with statutory deadline labelled unverified, containment, evidence, PDPO and family notice, non-binding templates A-E, review, tabletop script + 4 scenarios, links to F09 `docs/runbooks/secrets.md` and F08 `ops/alerts.json`/`docs/ops/runbook.md`); `docs/runbooks/data-breach.md` pointer (ticket names that path); `pdpo-registration-plan.md` (18 checklist items with owner, relative due date, evidence slot EV-PDPO-nn); `check-processors.py`; `tests/test_check_processors.py`; `docs/legal/README.md`; `legal-docs` entry in packages.json.
+- Tests: `cd docs/legal && python3 -m unittest discover -s tests` -> 27 OK (1 skip: the real-inventory test skips until F09's `docs/ops/secrets-inventory.json` is on main; I checked the register against F09's branch inventory names by hand when writing it, re-run after F09 merges). `make lint` 0 failed, `make secrets` ok. Unrelated pre-existing failures in `scripts/tests/test_round2` (needs `npm ci` in apps/admin) in a fresh worktree.
+- Validator fails on: missing/empty field, unknown data category, bad status, duplicate id, missing required integration, secret/public key in inventory without a processor, secret claimed twice, stale secret name, `signed` without http link + date, `risk-accepted` without ref, unsigned but not owner_blocked, id missing from register markdown.
+
+| Criterion / edge case | Evidence |
+|---|---|
+| Registration certificate filed | OWNER-BLOCKED: plan with evidence slot EV-PDPO-17 and exact steps in `pdpo-registration-plan.md`; test `test_pdpo_plan_covers_every_checklist_item` |
+| DPAs filed | OWNER-BLOCKED: register shows all `not signed`; steps in `processor-register.md`; validator refuses `signed` without link and date (`test_signed_requires_real_link_and_date`) |
+| docs/runbooks/data-breach.md with timelines and contacts | Pointer at that path + full procedure `docs/legal/breach-procedure.md` (`test_breach_procedure_sections`, `test_runbook_pointer_exists`); timelines done; real contacts and lawyer-confirmed deadline OWNER-BLOCKED |
+| Edge: provider refuses a DPA | `if_dpa_refused` required on every entry (`test_every_entry_says_what_to_do_if_dpa_refused`), `risk-accepted` needs `risk_acceptance_ref` (`test_risk_accepted_requires_reference`) |
+| Launch checklist item with evidence links / evidence on ticket | OWNER-BLOCKED: evidence slots in the plan; tick in R07 #155 when filled |
+| DP-8 breach duties / 72 h | internal clock only; statutory deadline unverified, lawyer Q18/Q26 |
+| DP-9 DPAs with all processors | register + validator cross-check with secrets inventory (`test_uncovered_secret_fails`, `test_removed_required_processor_fails`) |
+
+- Owner steps (recommended defaults): engage lawyer (D06 brief); pick pilot date (plan assumes 8 weeks before; the 18 Jan 2027 pilot is already inside that window); appoint safeguarding lead and backup; open PDPO portal account; sign vendor standard DPAs and fill `processors.json`; choose EU region for Resend and Sentry; collect each vendor's breach contact and sub-processor list; run the tabletop once before launch.
+- Follow-ups: when F09 merges, remove nothing; the inventory test activates itself. F08 may add an uptime vendor secret (add to `secret_names`). Vendor facts (regions, parents) were recalled, not verified; owner/lawyer to confirm.
 
 ### F03 · Scaffold core service (FastAPI) (#29)
 
@@ -574,3 +595,4 @@ Suggested order: E00 decisions (D01–D03, D05; D04, D06 later/owner) → E01 fo
 - 2026-11-25: F05 built, ready-for-review on `f05-flutter-apps`.
 - 2026-11-25: F04 built, ready-for-review on `f04-job-scheduler`.
 - 2026-11-25: F04 reviewed, PR #165 merged, blocked-foundation-merged.
+- 2026-11-25: C04 built, ready-for-review on `c04-dp-procedures`.
