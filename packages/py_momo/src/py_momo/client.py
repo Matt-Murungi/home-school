@@ -6,6 +6,7 @@ Endpoint paths and headers: see README ("from public docs, unverified against th
 from __future__ import annotations
 
 import json
+import math
 import random
 import time
 import uuid
@@ -82,7 +83,7 @@ class _Base:
     def _backoff(self, attempt: int, retry_after: float | None = None) -> None:
         c = self.config
         if retry_after is not None:
-            delay = min(retry_after, c.backoff_max_seconds)
+            delay = self._clamp(retry_after)
         else:
             delay = min(c.backoff_max_seconds, c.backoff_base_seconds * 2**attempt)
             delay *= 0.5 + self._jitter() / 2
@@ -124,15 +125,27 @@ class _Base:
                 continue
             return resp
 
-    @staticmethod
-    def _raise_for(resp: HttpResponse) -> None:
+    def _retry_after(self, resp: HttpResponse) -> float | None:
+        """Retry-After in seconds, finite and clamped to [0, backoff_max_seconds]. Anything we
+        cannot parse as a plain number (HTTP dates, garbage, nan, inf) -> None (use backoff)."""
+        raw = next((v for k, v in resp.headers.items() if k.lower() == "retry-after"), None)
+        if raw is None or not raw.strip():
+            return None
+        try:
+            value = float(raw.strip())
+        except (ValueError, OverflowError):
+            return None
+        if not math.isfinite(value):
+            return None if math.isnan(value) else self._clamp(value)
+        return self._clamp(value)
+
+    def _clamp(self, value: float) -> float:
+        return max(0.0, min(value, self.config.backoff_max_seconds))
+
+    def _raise_for(self, resp: HttpResponse) -> None:
         s = resp.status
         if s == 429:
-            ra = resp.headers.get("Retry-After")
-            try:
-                raise RateLimited(float(ra) if ra else None)
-            except ValueError:
-                raise RateLimited(None) from None
+            raise RateLimited(self._retry_after(resp))
         if s >= 500:
             raise ServerError(s)
         if s >= 400:

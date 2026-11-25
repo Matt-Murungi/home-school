@@ -16,7 +16,7 @@ a `Transport`, so the real clients run against it in every test (no network, no 
 ## Test command
 
 ```
-cd packages/py_momo && uv run pytest -q          # 130 tests, offline
+cd packages/py_momo && uv run pytest -q          # 290+ tests, offline
 cd packages/py_momo && uv run ruff check . && uv run ruff format --check .
 ```
 
@@ -75,6 +75,13 @@ Manual sandbox smoke test (owner only, calls the network, never run in CI):
   are permanent only for that call. From a status poll they say nothing about whether the payment
   exists, so never treat them as "payment failed"; keep the reference. Creates convert them into
   `OutcomeUnknown` whenever a POST may have been accepted.
+- **Redirects:** never followed (`UrllibTransport` returns every 3xx as a response), because a followed
+  redirect would re-send the Bearer token, subscription key or Basic API key to another host and
+  turn a POST into a GET. A 3xx to a POST is ambiguous (status probe, never success, never a blind
+  re-POST); a 3xx from the token endpoint is `AuthError`.
+- **Retry-After:** parsed as a finite number of seconds and clamped to `[0, backoff_max_seconds]`
+  (stored clamped in `RateLimited.retry_after`); HTTP dates, `nan` and garbage are ignored (normal
+  backoff).
 - **Logging:** logger `py_momo`; MSISDNs masked (`256***456`); tokens, keys and raw bodies never logged.
 
 ## Endpoints and headers implemented

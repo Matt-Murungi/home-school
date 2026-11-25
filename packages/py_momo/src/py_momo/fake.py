@@ -102,6 +102,8 @@ class FakeMomo:
         self._valid_tokens.clear()
 
     def sleep(self, s: float) -> None:
+        if not isinstance(s, int | float) or s != s or s in (float("inf"), float("-inf")) or s < 0:
+            raise ValueError(f"invalid sleep argument {s!r} (time.sleep would fail)")
         self.sleeps.append(s)
         self.clock.advance(s)
 

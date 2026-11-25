@@ -33,13 +33,25 @@ class Transport(Protocol):
         ...
 
 
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    """Never follow a redirect: the request carries credentials (Bearer, subscription key, Basic
+    API key) and a followed 3xx would re-send them to another host and turn a POST into a GET.
+    redirect_request returning None makes urllib raise HTTPError, which we return as a response."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):  # noqa: D401
+        return None
+
+
+_OPENER = urllib.request.build_opener(_NoRedirect)
+
+
 class UrllibTransport:
     def send(self, request: HttpRequest) -> HttpResponse:
         req = urllib.request.Request(
             request.url, data=request.body, method=request.method, headers=request.headers
         )
         try:
-            with urllib.request.urlopen(req, timeout=request.timeout) as r:  # noqa: S310
+            with _OPENER.open(req, timeout=request.timeout) as r:  # noqa: S310
                 return HttpResponse(r.status, dict(r.headers.items()), r.read())
         except urllib.error.HTTPError as e:
             return HttpResponse(e.code, dict(e.headers.items()), e.read())
