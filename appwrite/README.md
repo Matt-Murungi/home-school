@@ -12,9 +12,14 @@ Appwrite project definition for the three Cloud projects (development, staging, 
 
 | File | What |
 |---|---|
-| `appwrite.config.json` | Skeleton in Appwrite CLI format: database `main`, `schema_migration` and sample table, bucket `teacher-docs`, function `job-tick`. ADR 0012 rules: row security on, empty table permissions, no client writes. Real tables arrive in M01-M04. |
+| `schema/*.json` | **Source of truth for tables**: one file per domain (`_base`, `core` (M01), later `catalogue`, `scheduling`, ...). A ticket edits only its own file. Format and rules in `schema_build.py`. |
+| `schema_build.py` | `--check` (default, also in `make lint`): validates every table (row security, no public/client-write permissions, field types and sizes, FK indexes, deletion policy per SR 5.5, UTC and integer-money naming rules) and fails if generated files are stale. `--write` regenerates them. |
+| `appwrite.config.json` | Appwrite CLI format. The `tables` array is **generated** from `schema/*.json` (never edit it by hand); database, bucket `teacher-docs` and functions (F04 `job-tick`) are hand-edited. |
+| `diff_live.py` | `python3 diff_live.py <snapshot.json> [--only a,b] [--alias repo=live]`: offline report of repo schema vs a read-only live structure snapshot (names and structure only). Snapshots are never committed. |
+| `../docs/erd/<domain>.md` | Generated Mermaid ERD per domain. |
 | `environments.example.json` | Names, endpoint, project-id placeholders, the env var that holds each key. Never a key. Copy to `environments.json` (git-ignored). |
 | `migrate.py` | Runner. `python3 migrate.py --env staging`. Reads each key from the env var named in `keyEnvVar`. Exit 0 ok, 1 failed (prints `PROMOTE=false`, also writes `promote=` to `$GITHUB_OUTPUT`), 2 invalid migrations, 3 seed refused in production. |
+| `migrations/0002_core_schema.py` | Creates the core tables through `client.ensure_table` (convergent: creates what is missing, errors on drift, never alters). A schema change = edit the domain JSON + a new migration calling `schema_build.apply_domain(client, domain, only=[...])`. |
 | `migrations/NNNN_name.py` | Each defines `up(ctx)` (`ctx.client`, `ctx.environment`). Names `NNNN_seed_*.py` are seeds: dev and staging only. Never edit an applied script; add a new one. |
 | `appwrite_client.py` | Real adapter (urllib over Appwrite REST). Tested with a mocked opener only. |
 | `fake_client.py` | In-memory stand-in used by the tests. |

@@ -1,0 +1,101 @@
+{
+  "domain": "base",
+  "description": "Runner bookkeeping and the CI sample table (F02). Not user data.",
+  "tables": [
+    {
+      "$id": "schema_migration",
+      "name": "schema_migration",
+      "enabled": true,
+      "rowSecurity": true,
+      "$permissions": [],
+      "columns": [
+        {
+          "key": "version",
+          "type": "integer",
+          "required": true
+        },
+        {
+          "key": "name",
+          "type": "varchar",
+          "size": 128,
+          "required": true
+        },
+        {
+          "key": "checksum",
+          "type": "varchar",
+          "size": 64,
+          "required": true
+        },
+        {
+          "key": "applied_at",
+          "type": "datetime",
+          "required": false
+        }
+      ],
+      "indexes": [
+        {
+          "key": "unique_version",
+          "type": "unique",
+          "columns": [
+            "version"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        }
+      ]
+    },
+    {
+      "$id": "sample_item",
+      "name": "sample_item",
+      "enabled": true,
+      "rowSecurity": true,
+      "$permissions": [],
+      "columns": [
+        {
+          "key": "title",
+          "type": "varchar",
+          "size": 255,
+          "required": true
+        },
+        {
+          "key": "status",
+          "type": "varchar",
+          "size": 32,
+          "required": false,
+          "default": "draft"
+        },
+        {
+          "key": "created_at",
+          "type": "datetime",
+          "required": true
+        }
+      ],
+      "indexes": [
+        {
+          "key": "by_status_created",
+          "type": "key",
+          "columns": [
+            "status",
+            "created_at"
+          ],
+          "orders": [
+            "ASC",
+            "DESC"
+          ]
+        }
+      ]
+    }
+  ],
+  "meta": {
+    "schema_migration": {
+      "deletion": "hard",
+      "note": "Runner bookkeeping."
+    },
+    "sample_item": {
+      "deletion": "hard",
+      "note": "Stand-in for CI sample schema changes."
+    }
+  },
+  "relations": []
+}

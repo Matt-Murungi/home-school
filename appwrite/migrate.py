@@ -62,6 +62,13 @@ class AppwriteClient(ABC):
     @abstractmethod
     def index_statuses(self, table: str) -> dict[str, str]: ...
 
+    def ensure_table(self, spec: dict) -> dict:
+        """Create the table described by `spec` (Appwrite CLI table format, see schema_build.py) if missing, and any
+        missing columns and indexes. Convergent: never alters or drops; a column that exists with a different type,
+        size or required flag is an error (drift). Returns {"created": bool, "columns_added": [...], "indexes_added": [...]}.
+        Used by schema migrations (M01+). Not abstract so existing test doubles keep working."""
+        raise NotImplementedError(f"{type(self).__name__} does not implement ensure_table")
+
 
 @dataclass
 class Migration:

@@ -99,6 +99,42 @@ class HttpAppwriteClient(AppwriteClient):
     def index_statuses(self, table):
         return {i["key"]: i["status"] for i in self._call("GET", f"/tables/{table}/indexes").get("indexes", [])}
 
+    def ensure_table(self, spec):
+        """Create table, missing columns and indexes. Convergent, never alters. REST shapes written from the docs, not run
+        live: verify once against dev (owner step in memory.md, M01)."""
+        name = spec["$id"]
+        created = False
+        existing_cols, existing_idx = {}, set()
+        try:
+            self._call("GET", f"/tables/{name}")
+            existing_cols = {c["key"]: c for c in self._call("GET", f"/tables/{name}/columns").get("columns", [])}
+            existing_idx = {i["key"] for i in self._call("GET", f"/tables/{name}/indexes").get("indexes", [])}
+        except AppwriteError as exc:
+            if exc.status != 404:
+                raise
+            self._call("POST", "/tables", {"tableId": name, "name": spec.get("name", name), "permissions": spec["$permissions"], "rowSecurity": spec["rowSecurity"]})
+            created = True
+        columns_added, indexes_added = [], []
+        for c in spec["columns"]:
+            if c["key"] in existing_cols:
+                have = existing_cols[c["key"]]
+                if have.get("required") is not None and bool(have["required"]) != bool(c["required"]):
+                    raise AppwriteError(f"{name}.{c['key']}: column exists with a different definition (drift)")
+                continue
+            kind = "enum" if c.get("format") == "enum" else c["type"]
+            body = {"key": c["key"], "required": c["required"]}
+            for k in ("size", "min", "max", "elements", "default", "array"):
+                if k in c:
+                    body[k] = c[k]
+            self._call("POST", f"/tables/{name}/columns/{kind}", body)
+            columns_added.append(c["key"])
+        for i in spec["indexes"]:
+            if i["key"] in existing_idx:
+                continue
+            self._call("POST", f"/tables/{name}/indexes", {"key": i["key"], "type": i["type"], "columns": i["columns"], "orders": i["orders"]})
+            indexes_added.append(i["key"])
+        return {"created": created, "columns_added": columns_added, "indexes_added": indexes_added}
+
 
 def from_environment(cfg, environ, opener=None):
     """Build a client from one entry of environments.json; the key comes from `environ[cfg.keyEnvVar]`
