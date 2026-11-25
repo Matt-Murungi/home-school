@@ -810,8 +810,8 @@ Files: Makefile, packages.json, scripts/run_packages.py, scripts/tests/test_layo
 3. Appwrite plan: one database only; function execution allowance for a once-a-minute tick?
 4. Security: `general_variables.md` in iCloud holds a plaintext GitHub token — revoke/rotate it.
 5. SR cites ADR 0013 (reduced pilot scope, 18 Jan 2027); no ticket and no ADR exist for it.
-6. (C04) The plan assumes registration 8 weeks before pilot; the 18 Jan 2027 pilot is already inside that window. Move the pilot, or ask the lawyer whether a closed pilot needs registration first.
-7. (D03) Sign off ADRs 0003 and 0012. Default: accept.
+5a. (C04) The plan assumes registration 8 weeks before pilot; the 18 Jan 2027 pilot is already inside that window. Move the pilot, or ask the lawyer whether a closed pilot needs registration first.
+6. (D03) Sign off ADRs 0003 and 0012. Default: accept.
 7. (D03) Appwrite plan: is Pro $25 per project or per member; do we need Pro for staging? Does the plan give point-in-time recovery (NFR-6)? Default: Pro for prod and staging; ask Appwrite in writing; if no PITR, add a nightly export job.
 8. (D03) Engage a Ugandan lawyer/DPO on the DP-7 brief (9 questions in ADR 0012). Default: before the pilot if real children's data is used, otherwise before public launch. If in-country hosting is required, ADRs 0003/0012 are revisited (self-hosted Appwrite).
 9. (D03) Create a Fly.io account and a throwaway app, and run the latency script from Kampala on fibre and on MTN and Airtel phones. Default: do it with the F03 staging deploy.
