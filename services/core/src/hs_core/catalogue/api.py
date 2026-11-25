@@ -69,7 +69,7 @@ def _translate(fn):
                 503,
                 "publish_in_progress",
                 "Catalogue is being published, retry shortly",
-                {"Retry-After": "1"},
+                {"Retry-After": "1", "Cache-Control": "no-store"},
             ) from None
 
     return run
@@ -139,9 +139,10 @@ def current(curriculum_id: str, request: Request, v: Viewer = Depends(_viewer)):
 def version(version_id: str, request: Request, v: Viewer = Depends(_viewer)):  # noqa: B008
     svc = _svc(request)
     row = _translate(svc.version)(v, version_id)
-    return _serve(
-        request, version_id, lambda: {"version": p_version(row)}, kind=_version_kind(svc, row)
-    )
+    # the body holds `status`/`retired_at`, which change when the next version is published:
+    # never `immutable`, only a short max-age with ETag revalidation
+    kind = "pointer" if svc.immutable(row) else "revalidate"
+    return _serve(request, version_id, lambda: {"version": p_version(row)}, kind=kind)
 
 
 # -------------------- content of one version
