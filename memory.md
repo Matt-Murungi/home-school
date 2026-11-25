@@ -48,7 +48,7 @@ Reviewer writes: commands run, results, criterion-by-criterion verdict, findings
 
 1. `git pull` main; read this file and the ticket block; read the issue.
 2. Verify in a separate worktree: run the documented test commands from a clean checkout (record the real output); try to break the new logic with your own repro scripts; check every acceptance criterion and edge case against code and tests (a criterion without a test that proves it is a finding); check the diff for secrets, accidental live-service calls, committed `.env`, and that the diff is only this ticket.
-3. If anything is amiss: ticket Status `changes-requested` with precise findings, commit to main, stop and report.
+3. **Reviewers do not fix code** (only trivial typos/formatting). Independence matters: code fixed by its own reviewer is unreviewed. If anything is amiss: ticket Status `changes-requested` with precise findings, commit to main, stop and report.
 4. If fine: open PR (title starts with backlog ID; body: summary, evidence, caveats, `Closes #N`, the 🤖 line), review the diff, `gh pr review --comment`, `gh pr merge --squash --delete-branch`, confirm the issue closed, set Status `merged` (or `blocked-foundation-merged` for owner-blocked tickets) with PR number and commands/results, commit and push memory.md to main.
 5. Report: verdict, commands and results, findings, PR URL.
 
