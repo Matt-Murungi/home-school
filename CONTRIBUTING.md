@@ -47,6 +47,7 @@ New code goes only in these folders. A new package under `apps/`, `packages/` or
 - `make test`, `make lint`, `make tools`, `make hooks` (see `make help`). Missing tools (flutter, uv, node, pre-commit) are skipped with a clear message; CI sets `HS_STRICT=1` so they fail there.
 - Pre-commit (`.pre-commit-config.yaml`): dart format, ruff check/format, prettier, eslint, gitleaks and `make lint`. `.editorconfig` sets whitespace.
 - Secret scan: `make secrets` (`scripts/secret_scan.py`, tested) and `.gitleaks.toml`.
+- CI/CD: `.github/workflows/` (`ci.yml` required check `ci-ok`; staging deploy and production promotion stay off until the owner sets `DEPLOY_ENABLED`). Rules and owner checklist: `docs/ops/ci.md`, `docs/ops/deploy.md`. Workflow rules are tested: `python3 scripts/ci_lint.py`.
 - CODEOWNERS: `@Matt-Murungi` owns everything.
 
 ## Rules that matter

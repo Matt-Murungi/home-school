@@ -1,0 +1,38 @@
+# F07 (#33): SKELETON for mobile builds to Play internal testing and TestFlight. OWNER-BLOCKED, documented only.
+# Nothing here builds or uploads: the owner has not chosen Codemagic vs Fastlane, has no signing keys,
+# Play Console or App Store Connect accounts, and the apps' bundle ids are placeholders (F05).
+# Plan and the exact owner steps for both options: docs/ops/mobile-builds.md.
+# Dispatch-only and behind DEPLOY_ENABLED so it can never run by accident.
+name: mobile-builds
+
+on:
+  workflow_dispatch:
+    inputs:
+      app:
+        description: "parent or teacher"
+        required: true
+        type: choice
+        options: [parent, teacher]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mobile-builds
+  cancel-in-progress: false
+
+jobs:
+  skeleton:
+    name: mobile build (skeleton, does nothing yet)
+    if: vars.DEPLOY_ENABLED == 'true' && vars.MOBILE_BUILDS_ENABLED == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Not implemented
+        if: vars.DEPLOY_ENABLED == 'true'
+        env:
+          APP: ${{ inputs.app }}
+        run: |
+          echo "::notice::Mobile builds are owner-blocked (docs/ops/mobile-builds.md). Requested app: $APP"
+          echo "Option A: Codemagic builds from codemagic.yaml on push to main and publishes to the internal tracks."
+          echo "Option B: Fastlane lanes android internal / ios beta run on a macOS runner with secrets from an environment."

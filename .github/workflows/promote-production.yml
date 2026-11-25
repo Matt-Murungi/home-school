@@ -1,0 +1,106 @@
+# F07 (#33): manual PRODUCTION promotion. Run it from the Actions tab (Run workflow, branch main) and give the
+# commit sha that is already healthy on staging. Nothing deploys until the owner sets DEPLOY_ENABLED=true.
+#
+# Approval: the job uses the `production` GitHub environment. The owner configures it with required
+# reviewers and a deployment-branch rule limited to `main` (docs/ops/ci.md); the run pauses until approved.
+#
+# One job, one approval, strict step order (schema first, API second, docs/ops/deploy.md):
+#   1 verify the sha is on main  2 migrations  3 core service  4 job-tick function  5 admin (host TBD)
+# Steps 3-5 run only if step 2 exited 0 AND printed promote=true. Rollback plan: docs/ops/deploy.md.
+name: promote-production
+
+on:
+  workflow_dispatch:
+    inputs:
+      sha:
+        description: "Full 40-character commit sha on main that is healthy on staging"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: promote-production
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: release ${{ inputs.sha }} (schema, then API)
+    if: vars.DEPLOY_ENABLED == 'true' && github.ref == 'refs/heads/main'
+    environment: production
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    # Two schema runs must never overlap (also covers a second dispatch queued behind this one).
+    concurrency:
+      group: appwrite-schema-production
+      cancel-in-progress: false
+    outputs:
+      promote: ${{ steps.migrate.outputs.promote }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Verify the sha is a full sha and an ancestor of origin/main
+        env:
+          SHA: ${{ inputs.sha }}
+        run: |
+          case "$SHA" in
+            *[!0-9a-f]*|"") echo "sha must be 40 lowercase hex characters"; exit 1 ;;
+          esac
+          [ "${#SHA}" -eq 40 ] || { echo "sha must be 40 characters"; exit 1; }
+          git fetch --no-tags origin main
+          git merge-base --is-ancestor "$SHA" origin/main || { echo "$SHA is not on main"; exit 1; }
+          [ "$(git rev-parse HEAD)" = "$SHA" ] || { echo "checked-out commit differs from $SHA"; exit 1; }
+      - name: Write appwrite/environments.json (no keys in it)
+        if: vars.DEPLOY_ENABLED == 'true'
+        env:
+          PROJECT_ID: ${{ vars.APPWRITE_PROJECT_ID }}
+        run: |
+          python3 - <<'PY'
+          import json, os
+          cfg = json.load(open("appwrite/environments.example.json"))
+          cfg["environments"]["production"]["projectId"] = os.environ["PROJECT_ID"]
+          json.dump(cfg, open("appwrite/environments.json", "w"), indent=2)
+          PY
+      - name: Run migrations (seeds are refused in production by the runner)
+        id: migrate
+        if: vars.DEPLOY_ENABLED == 'true'
+        env:
+          APPWRITE_API_KEY_PRODUCTION: ${{ secrets.APPWRITE_API_KEY }}
+        run: python3 appwrite/migrate.py --env production
+      - uses: superfly/flyctl-actions/setup-flyctl@fc53c09e1bc3be6f54706524e3b82c4f462f77be # 1.5
+        if: vars.DEPLOY_ENABLED == 'true' && steps.migrate.outcome == 'success' && steps.migrate.outputs.promote == 'true'
+      - name: fly deploy core (rolling; a failing health check keeps the previous release serving)
+        id: core
+        if: vars.DEPLOY_ENABLED == 'true' && steps.migrate.outcome == 'success' && steps.migrate.outputs.promote == 'true'
+        working-directory: services/core
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+          FLY_APP: ${{ vars.FLY_APP }}
+        run: flyctl deploy --config fly.production.toml --app "$FLY_APP" --remote-only --build-arg "GIT_SHA=${GITHUB_SHA::7}"
+      - name: Smoke check /health on the deployed URL
+        if: vars.DEPLOY_ENABLED == 'true' && steps.migrate.outcome == 'success' && steps.migrate.outputs.promote == 'true'
+        env:
+          CORE_URL: ${{ vars.PRODUCTION_CORE_URL }}
+        run: curl --fail --silent --show-error --retry 6 --retry-delay 10 --retry-all-errors "$CORE_URL/health"
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        if: vars.DEPLOY_ENABLED == 'true' && steps.migrate.outcome == 'success' && steps.migrate.outputs.promote == 'true'
+        with:
+          node-version: 22
+      # UNVERIFIED: CLI flags written from the Appwrite CLI docs, never run.
+      - name: appwrite push functions (job-tick)
+        if: vars.DEPLOY_ENABLED == 'true' && steps.migrate.outcome == 'success' && steps.migrate.outputs.promote == 'true'
+        working-directory: appwrite
+        env:
+          PROJECT_ID: ${{ vars.APPWRITE_PROJECT_ID }}
+          APPWRITE_API_KEY: ${{ secrets.APPWRITE_API_KEY }}
+        run: |
+          npx --yes appwrite-cli@28.16.0 client --endpoint "https://fra.cloud.appwrite.io/v1" --project-id "$PROJECT_ID" --key "$APPWRITE_API_KEY"
+          npx --yes appwrite-cli@28.16.0 push functions --function-id job-tick --force
+      - name: Deploy the admin app (TBD)
+        if: vars.DEPLOY_ENABLED == 'true' && steps.migrate.outcome == 'success' && steps.migrate.outputs.promote == 'true'
+        run: |
+          echo "::notice::Admin host not chosen: ADR 0004 names none. Owner decision (docs/ops/deploy.md, 'Admin host')."
