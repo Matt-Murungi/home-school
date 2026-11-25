@@ -58,6 +58,7 @@ Reviewer writes: commands run, results, criterion-by-criterion verdict, findings
 |---|---|
 | spikes/admin-appwrite | `cd spikes/admin-appwrite && npm ci && npx tsc --noEmit && npm run lint && npm run build` |
 | spikes/jobs-demo | `cd spikes/jobs-demo && uv run pytest -q` |
+| docs/legal (policy inventory) | `python3 docs/legal/check-policy-inventory.py` (fails on missing purpose/consumer ticket/owner/status or unknown ticket #) |
 | docs/adr (ADR lint; reuse for every decision ticket) | `python3 docs/adr/check-adrs.py` (all ADRs) or `python3 docs/adr/check-adrs.py docs/adr/00NN-x.md`. Needs `# ADR NNNN — title` (number = file name), `- **Status:**` (Proposed/Accepted/Superseded/Deprecated), `- **Date:**`, `- **Ticket:**`, and `## Context`, `## Decision`, `## Consequences`. Exit 1 on failure. Stdlib only. |
 | root tooling (F01) | `make test` (every implemented package per `packages.json`; planned ones skip with a message; `HS_STRICT=1` fails on missing tools, `HS_SKIP=id,id`) and `make lint` (layout guard + secret scan + package lint). F01 tests alone: `python3 -m unittest discover -s scripts/tests -v`. Stdlib only. |
 
@@ -165,12 +166,28 @@ Suggested order: E00 decisions (D01–D03, D05; D04, D06 later/owner) → E01 fo
 - Deviations: no CI workflow (F07). Planned packages have no placeholder test (honest skip instead). `gitleaks`/`pre-commit` not run locally.
 - Follow-ups: each scaffolding ticket (F02 appwrite, F03 core, F05 apps/shared, F06 admin) flips its `packages.json` status to `implemented` and adds its row to "How to run tests"; add a lint command for the spikes only if wanted.
 
+### D06 · Legal positioning, policies and PDPO plan (#26)
+- Status: **ready-for-review** (branch `d06-legal-brief`, commit 5b3389b; not a PR yet). Blocked on owner for lawyer, positioning choice and the registration itself.
+- Built: `docs/adr/0006-legal-positioning.md` (Proposed; options for positioning marketplace/provider/employer/hybrid, controller/processor roles, registration timing, holiday packages; default clearly labelled proposal; Ugandan-law claims labelled unverified/secondary-source with URLs and date 25 Nov 2026, statute not read), `docs/legal/policy-inventory.md` (8 policies + non-binding heading outlines), `docs/legal/lawyer-brief.md` (28 questions incl. the 9 DP-7 questions from ADR 0012), `docs/legal/pdpo-registration-checklist.md`, `docs/legal/check-policy-inventory.py`.
+- Tests: `python3 docs/legal/check-policy-inventory.py` -> ok; negative check (blank status, unknown ticket #999) -> FAIL lines, exit 1. `python3 docs/adr/check-adrs.py` -> 6/6 ok.
+- Note: no backlog ticket mentions holiday packages (only the Concept Note); the ADR proposes keeping them out of MVP.
+
+| Acceptance criterion | Evidence |
+|---|---|
+| Written legal note in docs/legal/ | Engineering-side note + lawyer brief done; the actual lawyer's note BLOCKED on owner |
+| List of required policies with owners | `docs/legal/policy-inventory.md` (owner column, consumer tickets, checked by script) |
+| PDPO registration steps and timeline | Checklist template done; real steps/fee/timeline BLOCKED (lawyer, owner; PDPO processing time unknown) |
+| Legal note linked from E17 and E18 | After merge: link from #139/#141/#142 and E18 (#19); not done |
+| Edge: lawyer advises against holiday packages | ADR option D2 (remove); no dependent ticket found |
+| Edge: registration slower than build | Declared launch blocker in ADR 0006; track in R07 #155 |
+
 ## Blocked on owner (credentials / deployments / accounts)
 
 - D02: staging demo of the job tick (needs deployed core service + non-live Appwrite project).
 - D03: Fly.io account/org and billing; throwaway Fly app to measure Kampala to `fra`; mobile-network latency (MTN, Airtel) to Appwrite and Fly; a non-live Appwrite project (`hs-staging`, Frankfurt) with a scoped API key; Appwrite plan/cost confirmation; lawyer/DPO review of the DP-7 note (ADR 0012).
 - D05: sending domain; Resend account (Free ok for staging); DNS access to add SPF/DKIM/MX/DMARC records for `mail.<domain>`; Resend API key + webhook secret into staging Fly secrets; DPA signed (DP-9); then the inbox test (Gmail, Yahoo, a Ugandan host). Exact steps: owner checklist in ADR 0005.
 - F01: GitHub branch protection on `main` (Settings > Branches > rule for `main`): require a pull request before merging (1 approval can stay 0 because the reviewer agent posts comment reviews under the owner's account; enable "Dismiss stale approvals" off), require status checks to pass and branch up to date, the checks being the F07 (#33) job names (suggest `lint` and `test`, running `make lint` and `HS_STRICT=1 make test`), restrict force-push and deletion, and allow squash merge only. Optionally a CODEOWNERS review requirement and a GitHub team in `.github/CODEOWNERS` (currently `@Matt-Murungi`). Can only be applied once F07 CI exists.
+- D06: engage a Ugandan lawyer; choose positioning; approve pilot registration route; do the PDPO registration, pay fee, sign DPAs; lawyer to deliver the written note and final policy texts.
 
 ## Questions for the owner (collected; ask at the end)
 
@@ -189,6 +206,7 @@ Suggested order: E00 decisions (D01–D03, D05; D04, D06 later/owner) → E01 fo
 13. (D05) Sign off ADR 0005 (Resend). Default: accept.
 14. (D05) Which domain sends mail? Default: `mail.<main domain>` subdomain, from `no-reply@` and `safeguarding@`, reply-to `support@<main domain>`. DNS checklist: add Resend's SPF TXT, bounce MX and DKIM records on `mail.<domain>`, then DMARC `v=DMARC1; p=none; rua=mailto:dmarc@<domain>` on `_dmarc.mail.<domain>` (tighten to quarantine/reject after 2-4 weeks of reports); verify in Resend.
 15. (D05) Run the inbox test from staging to Gmail, Yahoo and a Ugandan ISP/company address and send the headers (spf/dkim/dmarc pass). Default: fall back to Postmark if any fail.
+16. (D06) Sign off ADR 0006 and engage a lawyer on `docs/legal/lawyer-brief.md`. Default: hybrid marketplace positioning (independent teachers, vetting and safeguarding as conditions of use), platform as data controller, register before the pilot if real children's data is used, holiday packages out of MVP until cleared, language "home tutoring" only.
 
 ## Session log
 
@@ -200,3 +218,4 @@ Suggested order: E00 decisions (D01–D03, D05; D04, D06 later/owner) → E01 fo
 - 2026-11-25: D05 reviewed, PR #159 merged, status blocked-foundation-merged.
 - 2026-11-25: F01 built, ready-for-review on `f01-monorepo`.
 - 2026-11-25: F01 reviewed, changes-requested (3 findings).
+- 2026-11-25: D06 built (ADR 0006, docs/legal), ready-for-review on `d06-legal-brief`.
