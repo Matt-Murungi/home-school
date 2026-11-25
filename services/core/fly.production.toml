@@ -1,8 +1,8 @@
 # Fly.io config for the PRODUCTION core service (ADR 0003, F07). No secrets here: set them with
 # `fly secrets set --app <app>` (docs/ops/secrets.md). Never deployed by agents; the app must exist first:
-#   fly apps create homeschool-core-production --org <org-slug>
+#   fly apps create homeschool-core-prod --org <org-slug>
 # UNVERIFIED against a real Fly account (owner-blocked); check with `fly config validate`.
-app = "homeschool-core-production"
+app = "homeschool-core-prod"
 primary_region = "fra"
 
 [build]

@@ -471,7 +471,7 @@ class SecurityRules(unittest.TestCase):
     def test_secret_in_a_pull_request_workflow_is_reported(self):
         s = Scratch(self).edit(
             ".github/workflows/ci.yml",
-            "      - name: test (command from packages.json)\n        run: python3 scripts/run_packages.py test --only root-tests",
+            "      - name: lint (command from packages.json)\n        run: python3 scripts/run_packages.py lint --only root-tests",
             "      - name: unit tests\n        env:\n          K: ${{ secrets.APPWRITE_API_KEY }}\n        working-directory: scripts",
         )
         self.assertTrue(any("secrets.APPWRITE_API_KEY" in p for p in s.problems()))
@@ -625,6 +625,39 @@ class CriterionPerformanceRules(unittest.TestCase):
             if "flutter-action" in s.get("uses", "")
         )
         self.assertRegex(step["with"]["flutter-version"], r"^\d+\.\d+\.\d+$")
+
+
+class FlyAppNames(unittest.TestCase):
+    """Fly app names are the ADR 0003 set; F09's inventory uses the same."""
+
+    ALLOWED = frozenset(
+        {"homeschool-core-dev", "homeschool-core-staging", "homeschool-core-prod"}
+    )
+
+    def test_every_fly_app_name_matches_adr_0003(self):
+        files = list((ROOT / ".github").rglob("*.yml")) + list(
+            (ROOT / "docs/ops").glob("*.md")
+        )
+        files += list((ROOT / "services/core").glob("fly.*.toml"))
+        found = set()
+        for f in files:
+            for name in re.findall(r"\b(?:homeschool|hs)-core-[a-z]+\b", f.read_text()):
+                found.add(name)
+                self.assertIn(name, self.ALLOWED, f"{f.relative_to(ROOT)}: {name}")
+        self.assertIn("homeschool-core-prod", found)
+
+    def test_fly_toml_app_per_environment(self):
+        for env, app in (
+            ("staging", "homeschool-core-staging"),
+            ("production", "homeschool-core-prod"),
+        ):
+            t = (ROOT / f"services/core/fly.{env}.toml").read_text()
+            self.assertIn(f'app = "{app}"', t)
+
+    def test_adr_0003_is_the_source_of_the_allowed_set(self):
+        adr = next((ROOT / "docs/adr").glob("0003-*.md")).read_text()
+        for name in ("homeschool-core-staging", "homeschool-core-prod"):
+            self.assertIn(name, adr)
 
 
 class DeployWorkflows(unittest.TestCase):

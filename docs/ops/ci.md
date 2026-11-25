@@ -41,7 +41,7 @@ files when run locally by the builder.
 3. **Environments** (Settings > Environments): `staging` (no reviewers; deployment branches: `main`) and `production`
    (required reviewers: the owner; "prevent self-review" optional; deployment branches: `main` only).
 4. **Variables** (repository): `DEPLOY_ENABLED` = `true` only when ready. Per environment variables:
-   `APPWRITE_PROJECT_ID`, `FLY_APP` (e.g. `homeschool-core-staging` / `homeschool-core-production`, ADR 0003),
+   `APPWRITE_PROJECT_ID`, `FLY_APP` (e.g. `homeschool-core-staging` / `homeschool-core-prod`, ADR 0003),
    `STAGING_CORE_URL` (staging) / `PRODUCTION_CORE_URL` (production).
 5. **Environment secrets** (per environment, never repository-wide): `APPWRITE_API_KEY` (the `ci-deploy` key from
    `appwrite/keys.md`, scoped to that project), `FLY_API_TOKEN` (`fly tokens create deploy -a <app>`).

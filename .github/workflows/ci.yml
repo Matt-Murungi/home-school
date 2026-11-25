@@ -82,7 +82,11 @@ jobs:
         with:
           enable-cache: true
           cache-dependency-glob: services/core/uv.lock
+      # F01's Tooling tests assert the non-strict skip behaviour of run_packages.py, so this one step must not
+      # inherit HS_STRICT=1. Every package is tested strictly by its own job; the lint step below stays strict.
       - name: test (command from packages.json)
+        env:
+          HS_STRICT: "0"
         run: python3 scripts/run_packages.py test --only root-tests
       - name: lint (command from packages.json)
         run: python3 scripts/run_packages.py lint --only root-tests
