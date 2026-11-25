@@ -16,7 +16,7 @@ Home tutoring platform for Uganda: parent and teacher mobile apps, an admin dash
 | `apps/admin` | Admin dashboard (Next.js) | planned (F06) |
 | `packages/flutter_shared` | Shared Dart code | planned (F05) |
 | `services/core` | Core service (FastAPI) | implemented (F03) |
-| `appwrite/` | Appwrite config, migrations, seed | planned (F02) |
+| `appwrite/` | Appwrite config, migrations, seed | foundation (F02); real projects owner-blocked |
 | `docs/` | ADRs (`docs/adr`), product docs placeholder (`docs/product`) | implemented |
 | `scripts/` | Tooling and repo tests | implemented |
 | `spikes/` | Throwaway spikes from D01/D02 | kept as is |

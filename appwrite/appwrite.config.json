@@ -1,0 +1,52 @@
+{
+  "_comment": "Skeleton in Appwrite CLI format (appwrite push). Project id is injected per environment by CI (environments.json), never committed. Rules from ADR 0012: row security on, empty table-level permissions, no client create/update/delete. `sample_item` is a stand-in so CI can apply a sample schema change; M01-M04 replace it with the real tables (SR 5). Bucket `teacher-docs` follows ADR 0012 (owner + opsadmin only, set per file by the core service).",
+  "projectId": "<set-by-ci>",
+  "projectName": "<set-by-ci>",
+  "tablesDB": [{ "$id": "main", "name": "main", "enabled": true }],
+  "tables": [
+    {
+      "$id": "schema_migration",
+      "databaseId": "main",
+      "name": "schema_migration",
+      "enabled": true,
+      "rowSecurity": true,
+      "$permissions": [],
+      "columns": [
+        { "key": "version", "type": "integer", "required": true },
+        { "key": "name", "type": "varchar", "size": 128, "required": true },
+        { "key": "checksum", "type": "varchar", "size": 64, "required": true },
+        { "key": "applied_at", "type": "datetime", "required": false }
+      ],
+      "indexes": [{ "key": "unique_version", "type": "unique", "columns": ["version"], "orders": ["ASC"] }]
+    },
+    {
+      "$id": "sample_item",
+      "databaseId": "main",
+      "name": "sample_item",
+      "enabled": true,
+      "rowSecurity": true,
+      "$permissions": [],
+      "columns": [
+        { "key": "title", "type": "varchar", "size": 255, "required": true },
+        { "key": "status", "type": "varchar", "size": 32, "required": true, "default": "draft" },
+        { "key": "created_at", "type": "datetime", "required": true }
+      ],
+      "indexes": [{ "key": "by_status_created", "type": "key", "columns": ["status", "created_at"], "orders": ["ASC", "DESC"] }]
+    }
+  ],
+  "buckets": [
+    {
+      "$id": "teacher-docs",
+      "name": "teacher-docs",
+      "enabled": true,
+      "fileSecurity": true,
+      "$permissions": [],
+      "maximumFileSize": 10485760,
+      "allowedFileExtensions": ["pdf", "jpg", "jpeg", "png"],
+      "compression": "none",
+      "encryption": true,
+      "antivirus": true
+    }
+  ],
+  "functions": []
+}
