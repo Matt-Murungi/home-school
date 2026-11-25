@@ -40,6 +40,8 @@ def fresh_client():
     client = FakeAppwriteClient()
     for t in TABLES.values():
         client.ensure_table(t)
+    for sid in ("s1", "s2", "s3", "s9"):  # sessions of child1 (rows injected: only child_id matters to the log rules)
+        client.rows.setdefault("session", {})[sid] = {"$id": sid, "child_id": "child1"}
     return client
 
 
@@ -861,6 +863,158 @@ class Round2LevelEquivalence(unittest.TestCase):
         c.update_row("level", la["$id"], sb.soft_delete_patch(TABLES["level"], NOW))
         with self.assertRaises(rules.CatalogueError):
             rules.add_level_equivalence(c, la["$id"], lb["$id"])
+
+
+class Round3Liveness(unittest.TestCase):  # finding 1
+    def draft(self):
+        c = fresh_client()
+        v = make_version(c)
+        t = make_level_subject_topic(c, v, "T1")
+        return c, v, t
+
+    def test_topic_added_onto_a_soft_deleted_subject_is_rejected(self):
+        c, v, t = self.draft()
+        spare = c.create_row("subject", rules.with_subject_keys({"catalogue_version_id": v["$id"], "code": "ENG", "name": "English"}))
+        rules.soft_delete_catalogue_row(c, "subject", spare["$id"], NOW)
+        with self.assertRaises(rules.CatalogueError):
+            rules.add_catalogue_row(c, "topic", rules.with_topic_keys(
+                {"catalogue_version_id": v["$id"], "subject_id": spare["$id"], "level_id": t["level_id"], "code": "N", "title": "x", "sort_order": 3}))
+        with self.assertRaises(rules.CatalogueError):
+            rules.edit_catalogue_row(c, "topic", t["$id"], {"subject_id": spare["$id"]})
+
+    def test_deleted_level_strand_and_parent_are_rejected_on_add_and_edit(self):
+        c, v, t = self.draft()
+        lvl = c.create_row("level", rules.with_level_keys({"catalogue_version_id": v["$id"], "code": "P9", "name": "P9", "sort_order": 9}))
+        strand = rules.add_catalogue_row(c, "strand", {"catalogue_version_id": v["$id"], "subject_id": t["subject_id"], "level_id": t["level_id"], "name": "S", "sort_order": 1})
+        parent = make_level_subject_topic(c, v, "PAR")
+        rules.soft_delete_catalogue_row(c, "level", lvl["$id"], NOW)
+        rules.soft_delete_catalogue_row(c, "strand", strand["$id"], NOW)
+        rules.soft_delete_catalogue_row(c, "topic", parent["$id"], NOW)
+        for patch in ({"level_id": lvl["$id"]}, {"strand_id": strand["$id"]}, {"parent_topic_id": parent["$id"]}):
+            with self.assertRaises(rules.CatalogueError, msg=str(patch)):
+                rules.edit_catalogue_row(c, "topic", t["$id"], patch)
+        with self.assertRaises(rules.CatalogueError):
+            rules.add_catalogue_row(c, "strand", {"catalogue_version_id": v["$id"], "subject_id": t["subject_id"], "level_id": lvl["$id"], "name": "S2", "sort_order": 2})
+
+    def test_soft_delete_refuses_while_live_dependants_exist(self):
+        c, v, t = self.draft()
+        child = make_level_subject_topic(c, v, "CH", parent=t["$id"])
+        strand = rules.add_catalogue_row(c, "strand", {"catalogue_version_id": v["$id"], "subject_id": t["subject_id"], "level_id": t["level_id"], "name": "S", "sort_order": 1})
+        for table, rid in (("subject", t["subject_id"]), ("level", t["level_id"]), ("topic", t["$id"])):
+            with self.assertRaises(rules.CatalogueError, msg=table):
+                rules.soft_delete_catalogue_row(c, table, rid, NOW)
+        with self.assertRaises(rules.CatalogueError):  # the draft version still has live content
+            rules.soft_delete_catalogue_row(c, "catalogue_version", v["$id"], NOW)
+        rules.edit_catalogue_row(c, "topic", child["$id"], {"strand_id": strand["$id"]})
+        with self.assertRaises(rules.CatalogueError):
+            rules.soft_delete_catalogue_row(c, "strand", strand["$id"], NOW)
+        # leaves first works, then the parents
+        rules.soft_delete_catalogue_row(c, "topic", child["$id"], NOW)
+        rules.soft_delete_catalogue_row(c, "strand", strand["$id"], NOW)
+        rules.soft_delete_catalogue_row(c, "topic", t["$id"], NOW)
+        rules.soft_delete_catalogue_row(c, "subject", t["subject_id"], NOW)
+        rules.soft_delete_catalogue_row(c, "level", t["level_id"], NOW)
+        rules.soft_delete_catalogue_row(c, "catalogue_version", v["$id"], NOW)
+
+    def test_questions_and_blueprints_also_block_deleting_their_topic_subject_level(self):
+        c, v, t = self.draft()
+        c.create_row("question", {"topic_id": t["$id"], "level_id": t["level_id"], "format": "short_answer", "stem": "?", "answer_key": "x",
+                                  "difficulty": "easy", "status": "draft", "author_id": "u1"})
+        with self.assertRaises(rules.CatalogueError):
+            rules.soft_delete_catalogue_row(c, "topic", t["$id"], NOW)
+        c.create_row("assessment_blueprint", rules.with_blueprint_keys({"curriculum_id": "cur1", "level_id": t["level_id"], "subject_id": t["subject_id"], "type": "practice", "rules": "{}"}))
+        with self.assertRaises(rules.CatalogueError):
+            rules.soft_delete_catalogue_row(c, "subject", t["subject_id"], NOW)
+
+    def test_publish_then_copy_does_not_crash(self):
+        c, v, t = self.draft()
+        make_level_subject_topic(c, v, "T2", parent=t["$id"])
+        rules.publish_version(c, v["$id"], NOW)
+        draft = rules.copy_version_as_draft(c, v["$id"])
+        self.assertEqual(len(c.list_rows("topic", catalogue_version_id=draft["$id"])), 2)
+
+    def test_legacy_live_topic_under_a_deleted_subject_fails_clearly(self):
+        c, v, t = self.draft()
+        c.update_row("subject", t["subject_id"], {"deleted_at": NOW})  # legacy data written before the rule (bypassing the service)
+        with self.assertRaises(rules.CatalogueError) as cm:  # publish refuses broken content
+            rules.publish_version(c, v["$id"], NOW)
+        self.assertIn("deleted", str(cm.exception))
+        self.assertEqual(c.get_row("catalogue_version", v["$id"])["status"], "draft")
+        c.update_row("catalogue_version", v["$id"], {"status": "published"})  # forced into a published state
+        with self.assertRaises(rules.CatalogueError) as cm:  # copy: a clear error, never a KeyError
+            rules.copy_version_as_draft(c, v["$id"])
+        self.assertIn("deleted", str(cm.exception))
+        self.assertEqual(len(c.rows["catalogue_version"]), 1)  # no half-made draft left behind
+
+    def test_legacy_live_child_under_a_deleted_parent_fails_clearly(self):
+        c, v, t = self.draft()
+        child = make_level_subject_topic(c, v, "CH", parent=t["$id"])
+        c.update_row("topic", t["$id"], {"deleted_at": NOW})
+        c.update_row("catalogue_version", v["$id"], {"status": "published"})
+        with self.assertRaises(rules.CatalogueError):
+            rules.copy_version_as_draft(c, v["$id"])
+
+    def test_edit_patch_cannot_forge_row_identity(self):
+        c, v, t = self.draft()
+        out = rules.edit_catalogue_row(c, "topic", t["$id"], {"title": "New", "$id": "forged", "$createdAt": "x", "$permissions": ['read("any")']})
+        self.assertEqual((out["$id"], out["title"]), (t["$id"], "New"))
+        self.assertNotIn("forged", c.rows["topic"])
+        self.assertNotIn("$permissions", c.get_row("topic", t["$id"]))
+
+
+class Round3ChildDrift(unittest.TestCase):  # finding 2
+    def setup(self):
+        c = fresh_client()
+        v = make_version(c)
+        t = make_level_subject_topic(c, v)
+        return c, {"$id": "child1", "catalogue_version_id": v["$id"]}, {"$id": "child2", "catalogue_version_id": v["$id"]}, t
+
+    def test_wrong_child_on_first_submit_is_rejected_and_nothing_is_written(self):
+        c, ch1, ch2, t = self.setup()
+        with self.assertRaises(rules.ChildMismatch):
+            log_with(c, ch2, "s1", [(t["$id"], "secure")], D1)  # session s1 belongs to child1
+        for table in ("session_log", "session_log_topic", "topic_progress"):
+            self.assertEqual(c.rows.get(table, {}), {})
+
+    def test_wrong_child_on_resubmit_is_rejected_and_original_progress_untouched(self):
+        c, ch1, ch2, t = self.setup()
+        log_with(c, ch1, "s1", [(t["$id"], "developing")], D1)
+        before = {k: dict(v) for k, v in c.rows["topic_progress"].items()}
+        with self.assertRaises(rules.ChildMismatch):
+            log_with(c, ch2, "s1", [(t["$id"], "secure")], D2)
+        self.assertEqual(c.rows["topic_progress"], before)
+        (log,) = c.rows["session_log"].values()
+        self.assertEqual(log["child_id"], "child1")
+        self.assertEqual(len(c.rows["session_log_topic"]), 1)
+
+    def test_existing_log_with_a_drifted_child_id_is_rejected_even_if_the_session_matches(self):
+        c, ch1, ch2, t = self.setup()
+        log_with(c, ch1, "s1", [(t["$id"], "developing")], D1)
+        (log,) = c.rows["session_log"].values()
+        c.update_row("session_log", log["$id"], {"child_id": "other"})  # corrupted data
+        with self.assertRaises(rules.ChildMismatch):
+            log_with(c, ch1, "s1", [(t["$id"], "secure")], D2)
+
+    def test_unknown_session_is_rejected(self):
+        c, ch1, ch2, t = self.setup()
+        with self.assertRaises(rules.CatalogueError):
+            log_with(c, ch1, "nope", [(t["$id"], "secure")], D1)
+
+    def test_matching_child_still_works(self):
+        c, ch1, ch2, t = self.setup()
+        log_with(c, ch1, "s1", [(t["$id"], "secure")], D1)
+        log_with(c, ch1, "s1", [(t["$id"], "developing")], D2)
+        self.assertEqual(next(iter(c.rows["topic_progress"].values()))["current_mastery"], "developing")
+
+
+class Round3Handover(unittest.TestCase):
+    def test_assignment_and_session_together_is_an_error(self):
+        c = fresh_client()
+        with self.assertRaises(rules.CatalogueError):
+            rules.save_handover(c, child_id="c1", teacher_id="t1", content="{}", now=NOW, assignment_id="a1", session_id="s1")
+        with self.assertRaises(ValueError):
+            rules.handover_source_key(assignment_id="a1", session_id="s1")
+        self.assertEqual(c.rows.get("handover_summary", {}), {})
 
 
 class Questions(unittest.TestCase):

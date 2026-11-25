@@ -47,6 +47,10 @@ class VersionImmutable(CatalogueError):
     """A write to a published or retired catalogue version (or to something under it)."""
 
 
+class ChildMismatch(CatalogueError):
+    """A session log was submitted for a child that is not the session's child (or the stored log's child)."""
+
+
 class TwoPersonViolation(CatalogueError):
     """A question was approved by its own author, or without an approver."""
 
@@ -132,6 +136,18 @@ def _table(name: str) -> dict:
 
 
 # --- published versions are immutable ---------------------------------------------------------------------------------
+# Soft delete refuses while live rows still point at the row (no cascade: a cascade could silently remove curator work or
+# questions; the curator tools delete leaves first and the error names what is left).
+DEPENDANTS: dict[str, tuple[tuple[str, str], ...]] = {
+    "catalogue_version": (("level", "catalogue_version_id"), ("subject", "catalogue_version_id"), ("strand", "catalogue_version_id"), ("topic", "catalogue_version_id")),
+    "subject": (("topic", "subject_id"), ("strand", "subject_id"), ("assessment_blueprint", "subject_id")),
+    "level": (("topic", "level_id"), ("strand", "level_id"), ("level_equivalence", "level_id"), ("level_equivalence", "equivalent_level_id"),
+              ("question", "level_id"), ("assessment_blueprint", "level_id")),
+    "strand": (("topic", "strand_id"),),
+    "topic": (("topic", "parent_topic_id"), ("question", "topic_id")),
+}
+
+
 def assert_editable(version_status: str) -> None:
     """Only a draft version (and what is under it) can change. Published and retired versions never do (SR 5.3)."""
     if version_status not in EDITABLE_VERSION_STATUSES:
@@ -152,6 +168,7 @@ def edit_catalogue_row(client, table: str, row_id: str, patch: dict) -> dict:
     version/curriculum, the status columns and deleted_at cannot be changed here (publish_version, soft_delete_catalogue_row)."""
     if table not in VERSION_SCOPED_TABLES + ("catalogue_version",):
         raise CatalogueError(f"{table} is not a catalogue table")
+    patch = {k: v for k, v in patch.items() if not k.startswith("$")}  # never let a patch rewrite row identity or permissions
     row = client.get_row(table, row_id)
     assert_editable(_version_of(client, table, row)["status"])
     forbidden = PROTECTED_FIELDS & set(patch)
@@ -176,6 +193,10 @@ def add_catalogue_row(client, table: str, data: dict) -> dict:
 def soft_delete_catalogue_row(client, table: str, row_id: str, now: str) -> dict:
     row = client.get_row(table, row_id)
     assert_editable(_version_of(client, table, row)["status"])
+    for dep_table, column in DEPENDANTS.get(table, ()):
+        live = [r for r in client.list_rows(dep_table, **{column: row_id}) if _live(r)]
+        if live:
+            raise CatalogueError(f"{table} still has {len(live)} live {dep_table} row(s) ({column}); delete those first")
     return client.update_row(table, row_id, schema_build.soft_delete_patch(_table(table), now))
 
 
@@ -189,7 +210,10 @@ def _check_refs(client, table: str, row: dict) -> None:
 def check_strand_refs(client, strand: dict) -> None:
     """A strand's subject and level must belong to the strand's own catalogue version."""
     for table, col in (("subject", "subject_id"), ("level", "level_id")):
-        if client.get_row(table, strand[col])["catalogue_version_id"] != strand["catalogue_version_id"]:
+        target = client.get_row(table, strand[col])
+        if not _live(target):
+            raise CatalogueError(f"strand.{col} points at a deleted {table}")
+        if target["catalogue_version_id"] != strand["catalogue_version_id"]:
             raise CatalogueError(f"strand.{col} belongs to another catalogue version")
 
 
@@ -208,9 +232,36 @@ def check_topic_refs(client, topic: dict) -> None:
     version = topic["catalogue_version_id"]
     for table, col in (("subject", "subject_id"), ("level", "level_id"), ("strand", "strand_id"), ("topic", "parent_topic_id")):
         if topic.get(col):
-            if client.get_row(table, topic[col])["catalogue_version_id"] != version:
+            target = client.get_row(table, topic[col])
+            if not _live(target):
+                raise CatalogueError(f"topic.{col} points at a deleted {table}")
+            if target["catalogue_version_id"] != version:
                 raise CatalogueError(f"topic.{col} belongs to another catalogue version")
     check_parent_chain(client, topic)
+
+
+def version_integrity_problems(client, version_id: str) -> list[str]:
+    """Live strands and topics whose subject, level, strand or parent is missing, deleted or in another version (legacy data
+    written before the reference checks, or by a bypass). Empty list = the version can be published and copied."""
+    problems = []
+    for table, cols in (("strand", ("subject_id", "level_id")), ("topic", ("subject_id", "level_id", "strand_id", "parent_topic_id"))):
+        for row in client.list_rows(table, catalogue_version_id=version_id):
+            if not _live(row):
+                continue
+            for col in cols:
+                if not row.get(col):
+                    continue
+                target_table = {"subject_id": "subject", "level_id": "level", "strand_id": "strand", "parent_topic_id": "topic"}[col]
+                try:
+                    target = client.get_row(target_table, row[col])
+                except KeyError:
+                    problems.append(f"{table} {row['$id']}: {col} does not exist")
+                    continue
+                if not _live(target):
+                    problems.append(f"{table} {row['$id']}: {col} points at a deleted {target_table}")
+                elif target["catalogue_version_id"] != version_id:
+                    problems.append(f"{table} {row['$id']}: {col} belongs to another catalogue version")
+    return problems
 
 
 def publish_version(client, version_id: str, now: str) -> dict:
@@ -220,6 +271,8 @@ def publish_version(client, version_id: str, now: str) -> dict:
     v = client.get_row("catalogue_version", version_id)
     if v["status"] != "draft":
         raise CatalogueError(f"only a draft can be published (this one is {v['status']})")
+    if problems := version_integrity_problems(client, version_id):
+        raise CatalogueError("cannot publish, the draft has broken references (deleted or foreign rows): " + "; ".join(problems[:5]))
     for other in client.list_rows("catalogue_version", curriculum_id=v["curriculum_id"]):
         if other["$id"] != version_id and other["status"] == "published" and _live(other):
             retire_version(client, other["$id"], now)
@@ -237,6 +290,8 @@ def retire_version(client, version_id: str, now: str) -> dict:
 def copy_version_as_draft(client, version_id: str, created_by_id: str | None = None) -> dict:
     """New draft (version + 1) with copies of the live levels, subjects, strands and topics of `version_id`."""
     src = client.get_row("catalogue_version", version_id)
+    if problems := version_integrity_problems(client, version_id):  # before anything is written: no half-made draft
+        raise CatalogueError("cannot copy, the version has broken references (deleted or foreign rows): " + "; ".join(problems[:5]))
     latest = max(r["version"] for r in client.list_rows("catalogue_version", curriculum_id=src["curriculum_id"]))
     draft = client.create_row("catalogue_version", with_version_keys(
         {"curriculum_id": src["curriculum_id"], "version": latest + 1, "status": "draft",
@@ -296,6 +351,12 @@ def submit_session_log(client, *, child: dict, session_id: str, teacher_id: str,
     """Create or update the one log of a session (idempotent submit, SR 7.6) with its topics and struggles, then update
     topic_progress. `topics` = [(topic_id, mastery)], `struggles` = [(struggle_tag_id, topic_id or None)]. Validation
     happens before the first write, so a rejected submit leaves nothing behind."""
+    try:
+        session = client.get_row("session", session_id)
+    except KeyError:
+        raise CatalogueError(f"unknown session {session_id}") from None
+    if session["child_id"] != child["$id"]:
+        raise ChildMismatch("the session belongs to another child")
     resolved = {}
     for topic_id, mastery in topics:
         if mastery not in MASTERY:
@@ -309,6 +370,9 @@ def submit_session_log(client, *, child: dict, session_id: str, teacher_id: str,
     def find_log():
         return next((r for r in client.list_rows("session_log", session_id=session_id) if _live(r)), None)
 
+    stored = find_log()
+    if stored is not None and stored["child_id"] != child["$id"]:
+        raise ChildMismatch("the stored log belongs to another child")
     data = {"session_id": session_id, "child_id": child["$id"], "teacher_id": teacher_id, "submitted_at": now, "note": note, "homework": homework}
     log = _upsert(client, "session_log", find_log, data, with_session_log_keys,
                   patch={"note": note, "homework": homework, "edited_at": now})
@@ -408,6 +472,8 @@ def rebuild_topic_progress(client, child_id: str, entries=None) -> dict:
 def handover_source_key(*, assignment_id: str | None = None, session_id: str | None = None, generation: int = 1) -> str:
     if generation < 1:
         raise ValueError("generation starts at 1")
+    if assignment_id and session_id:
+        raise ValueError("a handover summary belongs to an assignment or a session, not both")
     if assignment_id:
         return f"assignment:{assignment_id}:gen:{generation}"
     if session_id:
@@ -418,6 +484,8 @@ def handover_source_key(*, assignment_id: str | None = None, session_id: str | N
 def save_handover(client, *, child_id: str, teacher_id: str, content: str, now: str, generation: int = 1,
                   assignment_id: str | None = None, session_id: str | None = None) -> dict:
     """Insert one generation. A duplicate of the same generation is a UniqueViolation (409); rows are never edited."""
+    if assignment_id and session_id:
+        raise CatalogueError("a handover summary belongs to an assignment or a session, not both")
     row = {"child_id": child_id, "teacher_id": teacher_id, "generation": generation, "snapshot_at": now, "content": content,
            "source_key": handover_source_key(assignment_id=assignment_id, session_id=session_id, generation=generation)}
     if assignment_id:
