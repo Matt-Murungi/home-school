@@ -17,7 +17,6 @@ export function rolesFromLabels(labels: readonly string[]): AdminRole[] {
 
 /** Longest-boundary match of a path against the nav routes; unknown routes are denied. */
 export function canAccessPath(pathname: string, roles: readonly AdminRole[]): boolean {
-  if (roles.includes("superadmin")) return NAV_ITEMS.some((n) => matches(n.href, pathname));
   const item = NAV_ITEMS.find((n) => matches(n.href, pathname));
   return !!item && item.roles.some((r) => roles.includes(r));
 }
