@@ -209,16 +209,16 @@ Owner steps to verify: see memory.md, ticket M05, "Owner-blocked".
 ### Service-only tables (no client read for anyone)
 
 - `access_window`: permission service bookkeeping (when time-limited access lapses)
-- `billing_claim`: B03 idempotency claims, server only (table arrives with its own ticket)
-- `billing_credit`: B03 billing credits, server only (table arrives with its own ticket)
-- `billing_payment`: B03 payment flags, server only (table arrives with its own ticket)
+- `billing_claim`: B03 idempotency claims, server only
+- `billing_credit`: B03 billing credits, server only
+- `billing_payment`: B03 payment flags, server only
 - `job_attempt`: F04 job runner attempts, server only (planned schema) (table arrives with its own ticket)
 - `job_run`: F04 job runner state, server only (planned schema) (table arrives with its own ticket)
 - `otp_challenge`: A01 one-time code hashes, server only (table arrives with its own ticket)
 - `sample_item`: CI sample table
 - `scheduling_issue`: S01 scheduling problems, server only (admin queue through an endpoint) (table arrives with its own ticket)
 - `schema_migration`: migration runner bookkeeping
-- `subscription_transition`: B03 subscription state log, server only (ops reads through an endpoint) (table arrives with its own ticket)
+- `subscription_transition`: B03 subscription state log, server only (ops reads through an endpoint)
 - `teacher_schedule_lease`: S01 per-teacher scheduling lease, server only (table arrives with its own ticket)
 - `travel_time_cache`: X01 zone-pair travel time cache, server only (table arrives with its own ticket)
 - `travel_usage`: X01 Google Routes usage counters, server only (table arrives with its own ticket)

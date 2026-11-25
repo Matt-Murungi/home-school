@@ -29,7 +29,11 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
+from ..audit import AuditContext, registry
+from ..audit.errors import ReasonRequired
+from ..audit.service import reason_is_enough
 from ..repository import NotFound, Repository
+from .audit_ctx import caller_ctx, system_ctx
 from .errors import (
     ChildAlreadySubscribed,
     ConcurrentTransition,
@@ -42,8 +46,6 @@ from .errors import (
     UnknownSubscription,
 )
 from .interfaces import (
-    AuditEntry,
-    AuditSink,
     BillingLedger,
     DiscountPolicy,
     DomainEvent,
@@ -98,7 +100,6 @@ class TransitionResult:
     events: tuple[DomainEvent, ...] = ()
     changed: bool = True
     dispatch_failures: int = 0
-    audit_failed: bool = False
 
 
 @dataclass
@@ -170,14 +171,13 @@ class BillingService:
         *,
         plans: PlanCatalog,
         ledger: BillingLedger,
-        audit: AuditSink,
         notifier: Notifier,
         scheduler: SessionScheduler,
         discounts: DiscountPolicy | None = None,
         config: BillingConfig | None = None,
     ) -> None:
         self.store = BillingStore(repo)
-        self.plans, self.ledger, self.audit = plans, ledger, audit
+        self.plans, self.ledger = plans, ledger
         self.notifier, self.scheduler, self.discounts = notifier, scheduler, discounts
         self.config = config or BillingConfig()
         self.repairs = 0  # claims rolled forward by `_load` (alerted via log.error)
@@ -234,25 +234,6 @@ class BillingService:
     ) -> tuple[DomainEvent, ...]:
         return self._events_for(sub.id, sub.version, names, sub.status.value, sub.plan_id, now)
 
-    def _audit_transition(self, sub, trigger, actor, reason, claim: dict | None = None) -> bool:
-        try:
-            self.audit.record(
-                AuditEntry(
-                    action=f"subscription.{trigger}",
-                    actor=actor,
-                    subject_type="subscription",
-                    subject_id=sub.id,
-                    before={"status": claim["from_status"] if claim else None},
-                    after={"status": sub.status.value, "version": sub.version},
-                    reason=reason,
-                    idempotency_key=f"sub:{sub.id}:{sub.version}",
-                )
-            )
-            return False
-        except Exception as e:  # noqa: BLE001
-            log.error("billing.audit_failed sub=%s err=%s", sub.id, type(e).__name__)
-            return True
-
     def _dispatch(self, sub: Subscription, events, trigger: str, at: datetime) -> int:
         """Hand events to their consumers. `at` is the transition instant (cancel_future's
         from_at). Returns the number of failures; every call is idempotent by `event_id`."""
@@ -291,7 +272,7 @@ class BillingService:
         failures = 0
         try:
             sub = self.store.get_subscription(claim["subscription_id"])
-            self._run_effects(sub, claim["trigger"], now)
+            self._run_effects(sub, claim["trigger"], now, claim["$id"])
         except Exception as ex:  # noqa: BLE001
             failures += 1
             log.error(
@@ -315,11 +296,14 @@ class BillingService:
         to_status: Status | None,
         event_names: list[str],
         now: datetime,
-        actor: str,
+        ctx: AuditContext,
         reason: str | None,
         dispatch: bool = True,
     ) -> TransitionResult:
         before = sub.status
+        action = self._audit_action(trigger, ctx)
+        if action in registry.REASON_REQUIRED and not reason_is_enough(reason):
+            raise ReasonRequired(action)  # before ANY write (not even the claim)
         new, claim = self.store.commit(
             sub,
             patch,
@@ -327,7 +311,8 @@ class BillingService:
             to_status=to_status.value if to_status else None,
             events=event_names,
             now=now,
-            actor=actor,
+            ctx=ctx,
+            action=action,
             reason=reason,
         )
         log.info(
@@ -339,13 +324,18 @@ class BillingService:
             new.version,
         )
         events = self._events(new, event_names, now)
-        audit_failed = self._audit_transition(
-            new, trigger, actor, reason, {"from_status": before.value}
-        )
         # dispatch=False: the caller takes the events; the claim stays undelivered, so the
         # redispatch sweep still sends them (idempotent by event_id).
         failures = self._complete(claim, events, now) if dispatch else 0
-        return TransitionResult(new, events, True, failures, audit_failed)
+        return TransitionResult(new, events, True, failures)
+
+    @staticmethod
+    def _audit_action(trigger: str, ctx: AuditContext) -> str:
+        """`subscription.<trigger>`; an admin's cancel is `subscription.cancel_admin`, which
+        requires a reason (registry.REASON_REQUIRED, SEC-6). System jobs and parents need none."""
+        if trigger in ("cancel", "cancel_at_period_end") and ctx.source == "admin":
+            return "subscription.cancel_admin"
+        return f"subscription.{trigger}"
 
     # ------------------------------------------------------------ state moves
     def transition(
@@ -354,12 +344,15 @@ class BillingService:
         trigger: Trigger | str,
         *,
         now: datetime | None = None,
-        actor: str = "system",
+        ctx: AuditContext | None = None,
         reason: str | None = None,
         patch: dict[str, Any] | None = None,
         dispatch: bool = True,
     ) -> TransitionResult:
-        """One state-machine move. Raises `ForbiddenTransition` or `ConcurrentTransition`."""
+        """One state-machine move. Raises `ForbiddenTransition` or `ConcurrentTransition`.
+        `ctx` (the verified actor, or a system context for system triggers) is required: with
+        none, `AuditContextMissing` (fail closed). The audit row is written BEFORE the change."""
+        actx = caller_ctx(ctx)
         now = self._now(now)
         sub = self._load(sub_id, now)
         t = transition(sub.status, trigger)
@@ -382,34 +375,39 @@ class BillingService:
             to_status=t.to,
             event_names=[e.value for e in t.events],
             now=now,
-            actor=actor,
+            ctx=actx,
             reason=reason,
             dispatch=dispatch,
         )
 
     def on_teacher_assigned(
-        self, sub_id, *, assignment_id: str, is_trial: bool, now=None, actor="system"
+        self, sub_id, *, assignment_id: str, is_trial: bool, now=None
     ) -> TransitionResult:
+        """From matching (system event): attributed to `system`, job `billing-assignment`."""
         return self.transition(
             sub_id,
             Trigger.teacher_assigned,
             now=now,
-            actor=actor,
+            ctx=system_ctx(f"assign:{sub_id}:{assignment_id}", "billing-assignment"),
             patch={"assignment_id": assignment_id, "is_trial": bool(is_trial)},
         )
 
-    def pause(self, sub_id, *, now=None, actor: str, reason: str | None = None) -> TransitionResult:
+    def pause(
+        self, sub_id, *, now=None, ctx: AuditContext | None = None, reason: str | None = None
+    ) -> TransitionResult:
+        actx = caller_ctx(ctx)
         now = self._now(now)
         sub = self._load(sub_id, now)
         if sub.status == Status.paused:  # a retry after a crash: finish the effects, no new move
             self._run_effects(sub, Trigger.pause.value, now)
             return TransitionResult(sub, (), False)
-        return self.transition(sub_id, Trigger.pause, now=now, actor=actor, reason=reason)
+        return self.transition(sub_id, Trigger.pause, now=now, ctx=actx, reason=reason)
 
-    def resume(self, sub_id, *, now=None, actor: str) -> TransitionResult:
+    def resume(self, sub_id, *, now=None, ctx: AuditContext | None = None) -> TransitionResult:
         """paused -> active. Resuming after the paid period ended re-anchors on the resume date;
         the new period's invoice (and the voiding of stale ones) is a recoverable effect of the
         transition (`_run_effects`), and the roll job also creates a missing current invoice."""
+        actx = caller_ctx(ctx)
         now = self._now(now)
         sub = self._load(sub_id, now)
         patch: dict[str, Any] = {}
@@ -424,7 +422,7 @@ class BillingService:
             }
             if sub.pending_plan_id:
                 patch.update(plan_id=sub.pending_plan_id, pending_plan_id=None)
-        return self.transition(sub_id, Trigger.resume, now=now, actor=actor, patch=patch)
+        return self.transition(sub_id, Trigger.resume, now=now, ctx=actx, patch=patch)
 
     def pause_limit_exceeded(self, sub: Subscription, now: datetime) -> bool:
         """Hook for B04/ops: the configured pause limit (SUB-4) has run out."""
@@ -436,8 +434,15 @@ class BillingService:
 
     # --------------------------------------------------------------- cancel
     def cancel(
-        self, sub_id, *, now=None, actor: str, reason: str | None = None, immediate: bool = False
+        self,
+        sub_id,
+        *,
+        now=None,
+        ctx: AuditContext | None = None,
+        reason: str | None = None,
+        immediate: bool = False,
     ) -> TransitionResult:
+        actx = caller_ctx(ctx)
         now = self._now(now)
         sub = self._load(sub_id, now)
         if sub.status == Status.cancelled:
@@ -454,45 +459,65 @@ class BillingService:
                 to_status=None,
                 event_names=[],
                 now=now,
-                actor=actor,
+                ctx=actx,
                 reason=reason,
             )
         return self.transition(
             sub_id,
             Trigger.cancel,
             now=now,
-            actor=actor,
+            ctx=actx,
             reason=reason,
             patch={"cancel_reason": reason and reason[:REASON_MAX]},
         )
 
     # ------------------------------------------------- recoverable effects
-    def _run_effects(self, sub: Subscription, trigger: str, now: datetime) -> None:
+    def _effect_cid(self, sub: Subscription, trigger: str, cid: str | None) -> str:
+        if cid:
+            return cid
+        mine = [c for c in self.store.claims(sub.id) if c["trigger"] == trigger]
+        return mine[-1]["$id"] if mine else f"v{sub.version}"
+
+    def _run_effects(
+        self, sub: Subscription, trigger: str, now: datetime, cid: str | None = None
+    ) -> None:
         """The state-derived, idempotent work a transition implies besides its events. Derived
         from the CURRENT state, so it is safe to run late, twice, or from the sweep; it does
-        nothing when the subscription has moved on."""
+        nothing when the subscription has moved on. Invoice writes are audited under keys derived
+        from the transition's claim id, so every retry replays the same audit row."""
         if trigger in (Trigger.cancel.value, Trigger.grace_expired.value):
             if sub.status == Status.cancelled:
-                self._heal_cancelled(sub)
+                self._heal_cancelled(sub, self._effect_cid(sub, trigger, cid))
         elif trigger == Trigger.pause.value:
             if sub.status == Status.paused:
-                self._void_open_renewals(sub)
+                self._void_open_renewals(sub, self._effect_cid(sub, trigger, cid))
         elif trigger == Trigger.resume.value:
             if sub.status == Status.active:
-                self._reconcile_invoices(sub, now)
+                self._reconcile_invoices(sub, now, self._effect_cid(sub, trigger, cid))
         elif trigger == Trigger.payment_overdue.value and sub.status == Status.past_due:
+            c = self._effect_cid(sub, trigger, cid)
             for inv in self.store.invoices_of(sub.id):
                 if inv.status == "open" and inv.due_at <= now - timedelta(
                     days=self.config.grace_days
                 ):
-                    self.store.update_invoice(inv.id, {"status": "past_due"})
+                    self.store.update_invoice(
+                        inv.id,
+                        {"status": "past_due"},
+                        key=f"inv-pastdue:{inv.id}:{c}",
+                        action="invoice.mark_past_due",
+                    )
 
-    def _heal_cancelled(self, sub: Subscription) -> None:
+    def _void(self, inv: Invoice, cid: str) -> None:
+        self.store.update_invoice(
+            inv.id, {"status": "void"}, key=f"inv-void:{inv.id}:{cid}", action="invoice.void"
+        )
+
+    def _heal_cancelled(self, sub: Subscription, cid: str) -> None:
         """Void what was never paid; a paid first period of a subscription that never got a
         teacher goes on the refund queue (idempotent: ledger key per invoice)."""
         for inv in self.store.invoices_of(sub.id):
             if inv.status in ("open", "past_due"):
-                self.store.update_invoice(inv.id, {"status": "void"})
+                self._void(inv, cid)
             elif (
                 inv.status == "paid"
                 and sub.assignment_id is None
@@ -506,8 +531,14 @@ class BillingService:
                     reason="cancelled_before_activation",
                     idempotency_key=f"refund:cancel:{inv.id}",
                 )
+                self._audit_note(
+                    f"refund-flag-cancel:{inv.id}",
+                    "refund.flag",
+                    inv.id,
+                    {"flag": "cancelled_before_activation", "amount_ugx": inv.amount},
+                )
 
-    def _void_open_renewals(self, sub: Subscription) -> None:
+    def _void_open_renewals(self, sub: Subscription, cid: str) -> None:
         """A paused subscription is not billed: void the open invoice of the next period."""
         nxt = period(sub.anchor_date, sub.period_index + 1)
         inv_id = rid("inv", sub.id, nxt.start.isoformat())
@@ -516,9 +547,9 @@ class BillingService:
         except UnknownInvoice:
             return
         if inv.status in ("open", "past_due"):
-            self.store.update_invoice(inv.id, {"status": "void"})
+            self._void(inv, cid)
 
-    def _reconcile_invoices(self, sub: Subscription, now: datetime) -> None:
+    def _reconcile_invoices(self, sub: Subscription, now: datetime, cid: str) -> None:
         """After a resume: void open invoices of an old anchor, make sure the current period has
         its invoice."""
         keep = {
@@ -527,10 +558,11 @@ class BillingService:
         }
         for inv in self.store.invoices_of(sub.id):
             if inv.id not in keep and inv.status in ("open", "past_due"):
-                self.store.update_invoice(inv.id, {"status": "void"})
+                self._void(inv, cid)
         self.generate_invoice(sub.id, sub.period_index, now=now)
 
-    def keep(self, sub_id, *, now=None, actor: str) -> TransitionResult:
+    def keep(self, sub_id, *, now=None, ctx: AuditContext | None = None) -> TransitionResult:
+        actx = caller_ctx(ctx)
         now = self._now(now)
         sub = self._load(sub_id, now)
         if not sub.cancel_at_period_end or sub.status == Status.cancelled:
@@ -542,12 +574,15 @@ class BillingService:
             to_status=None,
             event_names=[],
             now=now,
-            actor=actor,
+            ctx=actx,
             reason=None,
         )
 
     # ---------------------------------------------------------- plan change
-    def change_plan(self, sub_id, plan_id: str, *, now=None, actor: str) -> TransitionResult:
+    def change_plan(
+        self, sub_id, plan_id: str, *, now=None, ctx: AuditContext | None = None
+    ) -> TransitionResult:
+        actx = caller_ctx(ctx)
         now = self._now(now)
         plan = self.plans.get(plan_id)
         if plan is None or not plan.active:
@@ -565,15 +600,23 @@ class BillingService:
             to_status=None,
             event_names=[],
             now=now,
-            actor=actor,
+            ctx=actx,
             reason=f"plan:{plan_id}",
         )
 
     # ------------------------------------------------------------- creation
     def create_subscription(
-        self, *, parent_id: str, child_id: str, plan_id: str, now=None
+        self,
+        *,
+        parent_id: str,
+        child_id: str,
+        plan_id: str,
+        now=None,
+        ctx: AuditContext | None = None,
     ) -> CreateResult:
-        """Idempotent per child: a double tap returns the live subscription (and its invoice)."""
+        """Idempotent per child: a double tap returns the live subscription (and its invoice).
+        `ctx` (the verified parent/admin) is required: the subscription row is audited."""
+        actx = caller_ctx(ctx)
         now = self._now(now)
         plan = self.plans.get(plan_id)
         if plan is None or not plan.active:
@@ -616,10 +659,10 @@ class BillingService:
                         period_start_at=p0.start_at,
                         period_end_at=p0.end_at,
                         created_at=parse(row["created_at"]),
-                    )
+                    ),
+                    actx,
                 )
                 inv = self.generate_invoice(sid, 0, now=now)
-                self._audit_creation(sub)
                 sub = self._confirm_free_first_invoice(sub, inv, now)
                 return CreateResult(sub, inv, created)
         raise ChildAlreadySubscribed(child_id)  # pragma: no cover
@@ -637,28 +680,11 @@ class BillingService:
             return self.store.get_subscription(sub.id)
         return sub
 
-    def _audit_creation(self, sub: Subscription) -> None:
-        try:
-            self.audit.record(
-                AuditEntry(
-                    action="subscription.created",
-                    actor="system",
-                    subject_type="subscription",
-                    subject_id=sub.id,
-                    before={},
-                    after={"status": sub.status.value},
-                    reason=None,
-                    idempotency_key=f"sub:{sub.id}:created",
-                )
-            )
-        except Exception as e:  # noqa: BLE001
-            log.error("billing.audit_failed sub=%s err=%s", sub.id, type(e).__name__)
-
     # -------------------------------------------------------------- invoices
     def _invoices(self, sub_id: str) -> list[Invoice]:
         from appwrite.query import Query
 
-        rows = self.store.repo.list(
+        rows = self.store.audited_repo.list(
             "invoice", [Query.equal("subscription_id", [sub_id]), Query.limit(200)]
         )
         return [Invoice.from_row(r) for r in rows]
@@ -716,12 +742,14 @@ class BillingService:
             discount_ugx=discount,
             credit_ugx=credit_ugx,
             amount=amount,
-            due_at=max(p.start_at, now) if index == sub.period_index else p.start_at,
-            created_at=now,
+            # deterministic dates (invoice date = period start, SR 7.8): a retried creation yields
+            # the identical row, so its audit intent replays instead of colliding
+            due_at=p.start_at,
+            created_at=p.start_at,
             credit_ids=[c.id for c in taken],
             currency=plan.currency,
             status="paid" if amount == 0 else "open",
-            paid_at=now if amount == 0 else None,
+            paid_at=p.start_at if amount == 0 else None,
         )
         inv, created = self.store.create_invoice(inv)
         self._finalise_credits(inv)
@@ -745,7 +773,12 @@ class BillingService:
             and inv.period_end_date == p.end_inclusive.isoformat()
             and inv.amount > 0
         ):
-            inv = self.store.update_invoice(inv.id, {"status": "open"})
+            inv = self.store.update_invoice(
+                inv.id,
+                {"status": "open"},
+                key=f"inv-reopen:{inv.id}:{sub.version}",
+                action="invoice.reopen",
+            )
         return inv
 
     def _finalise_credits(self, inv: Invoice) -> None:
@@ -786,7 +819,7 @@ class BillingService:
         One credit per session however often it is reported."""
         now = self._now(now)
         self.store.get_subscription(sub_id)
-        c, created = self.store.create_credit(
+        c, _created = self.store.create_credit(
             Credit(
                 id=rid("credit", sub_id, "platform_miss", session_id),
                 subscription_id=sub_id,
@@ -797,22 +830,6 @@ class BillingService:
                 created_at=now,
             )
         )
-        if created:
-            try:
-                self.audit.record(
-                    AuditEntry(
-                        action="credit.recorded",
-                        actor="system",
-                        subject_type="subscription",
-                        subject_id=sub_id,
-                        before={},
-                        after={"sessions": 1, "kind": c.kind},
-                        reason=reason,
-                        idempotency_key=f"credit:{c.id}",
-                    )
-                )
-            except Exception as e:  # noqa: BLE001
-                log.error("billing.audit_failed sub=%s err=%s", sub_id, type(e).__name__)
         return c
 
     # -------------------------------------------------------------- payments
@@ -853,6 +870,7 @@ class BillingService:
         if amount_ugx is not None:
             ugx(amount_ugx, name="amount_ugx")
         inv = self.store.get_invoice(invoice_id)
+        job = f"billing-payment:{provider}"[:64]
         row, created = self.store.claim_payment(provider, payment_ref, invoice_id, now)
         if not created:
             if row["invoice_id"] != invoice_id:
@@ -873,6 +891,8 @@ class BillingService:
         paid, won = self.store.claim_invoice_paid(inv.id, key, now)
         if not won and paid["ref"] != key:
             return self._flag(inv, provider, payment_ref, amount_ugx, "duplicate_payment", now)
+        # audited under the provider-callback identity (system, job billing-payment:<provider>)
+        # with a key derived from the payment: a retried callback or poll replays the audit row
         self.store.update_invoice(
             inv.id,
             {
@@ -880,6 +900,9 @@ class BillingService:
                 "payment_ref": payment_ref,
                 "paid_at": iso(parse(paid["created_at"])),
             },
+            key=f"inv-paid:{inv.id}:{key}",
+            action="invoice.pay",
+            job=job,
         )
         if inv.amount > 0:  # a fully discounted/credited invoice moves no money
             self.ledger.record_payment(
@@ -888,7 +911,7 @@ class BillingService:
                 amount_ugx=inv.amount,
                 idempotency_key=f"payment:{key}",
             )
-        flag, events = self._advance_for_payment(inv, key, now)
+        flag, events = self._advance_for_payment(inv, key, now, job)
         if flag:
             return self._flag(inv, provider, payment_ref, amount_ugx, flag, now)
         return self._finish_payment(inv, provider, payment_ref, events, now)
@@ -897,21 +920,6 @@ class BillingService:
         self, inv: Invoice, provider: str, payment_ref: str, events, now
     ) -> PaymentResult:
         self.store.update_payment(provider, payment_ref, {"status": "applied"})
-        try:
-            self.audit.record(
-                AuditEntry(
-                    action="payment.applied",
-                    actor="system",
-                    subject_type="invoice",
-                    subject_id=inv.id,
-                    before={"status": "open"},
-                    after={"status": "paid"},
-                    reason=None,
-                    idempotency_key=f"payment:{provider}:{payment_ref}",
-                )
-            )
-        except Exception as e:  # noqa: BLE001
-            log.error("billing.audit_failed invoice=%s err=%s", inv.id, type(e).__name__)
         return PaymentResult("applied", None, tuple(events))
 
     def _flag(
@@ -925,25 +933,29 @@ class BillingService:
             idempotency_key=f"refund:{provider}:{payment_ref}",
         )
         self.store.update_payment(provider, payment_ref, {"status": "flagged", "flag": reason})
-        try:
-            self.audit.record(
-                AuditEntry(
-                    action="payment.flagged",
-                    actor="system",
-                    subject_type="invoice",
-                    subject_id=inv.id,
-                    before={},
-                    after={"flag": reason},
-                    reason=reason,
-                    idempotency_key=f"payment:{provider}:{payment_ref}",
-                )
-            )
-        except Exception as e:  # noqa: BLE001
-            log.error("billing.audit_failed invoice=%s err=%s", inv.id, type(e).__name__)
+        self._audit_note(
+            f"refund-flag:{provider}:{payment_ref}",
+            "refund.flag",
+            inv.id,
+            {"flag": reason, "amount_ugx": inv.amount if amount_ugx is None else amount_ugx},
+        )
         log.warning("billing.payment_flagged invoice=%s reason=%s", inv.id, reason)
         return PaymentResult("flagged", reason)
 
-    def _advance_for_payment(self, inv: Invoice, payment_ref: str, now: datetime):
+    def _audit_note(self, key: str, action: str, invoice_id: str, after: dict) -> None:
+        """One idempotent audit row for a billing decision that is not a table write (a refund
+        flag: the money side is a ledger call). Fails closed like every audited write."""
+        self.store.audited_repo.service.record(
+            system_ctx(key),
+            action=action,
+            entity="invoice",
+            entity_id=invoice_id,
+            after=after,
+        )
+
+    def _advance_for_payment(
+        self, inv: Invoice, payment_ref: str, now: datetime, job: str = "billing-payment"
+    ):
         """Move the subscription for a confirmed payment. Returns (flag or None, events)."""
         for _ in range(8):
             sub = self._load(inv.subscription_id, now)
@@ -973,7 +985,7 @@ class BillingService:
                     to_status=t.to,
                     event_names=names,
                     now=now,
-                    actor="system",
+                    ctx=system_ctx(f"pay:{payment_ref}", job),
                     reason=None,
                 )
             except ConcurrentTransition:
@@ -1023,7 +1035,7 @@ class BillingService:
             if i.status in ("open", "past_due") and i.due_at <= cutoff
         ]
 
-    def mark_past_due(self, sub_id: str, *, now=None, actor: str = "system") -> TransitionResult:
+    def mark_past_due(self, sub_id: str, *, now=None) -> TransitionResult:
         """Hook for B04: active -> past_due once an invoice is `grace_days` past its due date."""
         now = self._now(now)
         sub = self._load(sub_id, now)
@@ -1033,9 +1045,14 @@ class BillingService:
         transition(sub.status, Trigger.payment_overdue)  # forbidden transitions first
         if not self._unpaid_overdue(sub_id, now, self.config.grace_days):
             raise GraceNotExpired(sub_id)
-        return self.transition(sub_id, Trigger.payment_overdue, now=now, actor=actor)
+        return self.transition(
+            sub_id,
+            Trigger.payment_overdue,
+            now=now,
+            ctx=system_ctx(f"past-due:{sub_id}", "billing-past-due"),
+        )
 
-    def expire_past_due(self, sub_id: str, *, now=None, actor: str = "system") -> TransitionResult:
+    def expire_past_due(self, sub_id: str, *, now=None) -> TransitionResult:
         """Hook for B04: past_due -> cancelled after `past_due_cancel_days`."""
         now = self._now(now)
         sub = self._load(sub_id, now)
@@ -1048,7 +1065,11 @@ class BillingService:
         ):
             raise GraceNotExpired(sub_id)
         return self.transition(
-            sub_id, Trigger.grace_expired, now=now, actor=actor, reason="past_due_grace_expired"
+            sub_id,
+            Trigger.grace_expired,
+            now=now,
+            ctx=system_ctx(f"expire:{sub_id}", "billing-past-due"),
+            reason="past_due_grace_expired",
         )
 
     # ---------------------------------------------------------- period roll
@@ -1060,7 +1081,11 @@ class BillingService:
         if sub.cancel_at_period_end:
             if now >= sub.period_end_at:
                 self.cancel(
-                    sub_id, now=now, actor="system", reason=sub.cancel_reason, immediate=True
+                    sub_id,
+                    now=now,
+                    ctx=system_ctx(f"roll-cancel:{sub_id}", "billing-period-roll"),
+                    reason=sub.cancel_reason,
+                    immediate=True,
                 )
                 return RollResult("cancelled")
             return RollResult("none")
@@ -1109,7 +1134,7 @@ class BillingService:
                 to_status=None,
                 event_names=[EventName.sessions_regenerate_requested.value],
                 now=now,
-                actor="system",
+                ctx=system_ctx(f"advance:{sub.id}", "billing-period-roll"),
                 reason=None,
             )
         except ConcurrentTransition:
@@ -1191,7 +1216,7 @@ class BillingService:
                 sub = self._load(
                     claim["subscription_id"], now
                 )  # rolls a dead writer's claim forward
-                claim = self.store.repo.get("subscription_transition", claim["$id"])
+                claim = self.store.audited_repo.get("subscription_transition", claim["$id"])
                 if claim["status"] == "claimed":
                     continue  # still inside the lease of its writer
                 events = self._events_for(
@@ -1290,7 +1315,7 @@ class BillingService:
     def _payment_mismatch(self, r: dict) -> str | None:
         from appwrite.query import Query
 
-        m04 = self.store.repo.list(
+        m04 = self.store.audited_repo.list(
             "payment",
             [
                 Query.equal("provider", [r["provider"]]),

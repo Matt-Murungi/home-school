@@ -776,6 +776,18 @@
           "key": "dispatched_at",
           "type": "datetime",
           "required": false
+        },
+        {
+          "key": "job",
+          "type": "varchar",
+          "size": 64,
+          "required": false
+        },
+        {
+          "key": "audit_action",
+          "type": "varchar",
+          "size": 120,
+          "required": false
         }
       ],
       "indexes": [

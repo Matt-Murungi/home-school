@@ -1,6 +1,6 @@
 """Builds the BillingService for the app.
 
-Real adapters for the ledger ($01), audit (M06), notifications (N01/N03) and sessions (S01) are
+Real adapters for the ledger ($01), notifications (N01/N03) and sessions (S01) are
 not on main yet. In `dev` (and tests) the documented fakes are used so the job runs end to end on
 the in-memory repository. In staging and production NOTHING is faked: a missing adapter leaves the
 service unbound with the missing names listed, and `billing-period-roll` then FAILS (raises
@@ -14,17 +14,16 @@ from dataclasses import dataclass
 
 from ..repository import Repository
 from ..settings import Settings
-from .fakes import FakeAuditSink, FakeLedger, FakeNotifier, FakeScheduler, RepositoryPlans
+from .fakes import FakeLedger, FakeNotifier, FakeScheduler, RepositoryPlans
 from .jobs import BillingNotWired  # noqa: F401  (re-exported)
 from .service import BillingConfig, BillingService
 
-ADAPTERS = ("ledger", "audit", "notifier", "scheduler")
+ADAPTERS = ("ledger", "notifier", "scheduler")  # audit is the AuditedRepository (M06)
 
 
 @dataclass
 class BillingAdapters:
     ledger: object | None = None
-    audit: object | None = None
     notifier: object | None = None
     scheduler: object | None = None
     plans: object | None = None
@@ -56,7 +55,6 @@ def build_billing_service(
             repo,
             plans=a.plans or RepositoryPlans(repo),
             ledger=a.ledger or FakeLedger(),
-            audit=a.audit or FakeAuditSink(),
             notifier=a.notifier or FakeNotifier(),
             scheduler=a.scheduler or FakeScheduler(),
             config=config_from_settings(settings),

@@ -27,7 +27,10 @@ from typing import Any
 
 from appwrite.query import Query
 
+from ..audit import AuditContext
+from ..audit.errors import AuditContextMissing, AuditUnavailable, ReasonRequired
 from ..repository import Conflict, NotFound, Repository
+from .audit_ctx import SYSTEM_JOB, claim_ctx, derive, system_ctx
 from .errors import ConcurrentTransition, UnknownInvoice, UnknownSubscription
 from .models import Credit, Invoice, Subscription, iso, parse
 
@@ -47,25 +50,47 @@ def rid(*parts: object) -> str:
 
 
 class BillingStore:
+    """Every write goes through the app's `AuditedRepository` (M06): `subscription` and `invoice`
+    writes are audit-first with the contexts of `audit_ctx.py`; the billing_* tables and the
+    transition claims are not audited tables and pass through."""
+
     def __init__(self, repo: Repository) -> None:
-        self.repo = repo
+        from ..audit import AuditedRepository
+
+        if not isinstance(repo, AuditedRepository):
+            raise TypeError("billing needs the audited repository (app.state.repository)")
+        self.audited_repo = repo
 
     # ---- subscriptions
     def get_subscription(self, sub_id: str) -> Subscription:
         try:
-            return Subscription.from_row(self.repo.get(SUBSCRIPTION, sub_id))
+            return Subscription.from_row(self.audited_repo.get(SUBSCRIPTION, sub_id))
         except NotFound:
             raise UnknownSubscription(sub_id) from None
 
-    def create_subscription(self, sub: Subscription) -> Subscription:
-        """Idempotent for a retried creation (same ID)."""
+    def create_subscription(self, sub: Subscription, ctx: AuditContext) -> Subscription:
+        """Idempotent for a retried creation (same ID): an existing row is returned without a
+        second audit row."""
         try:
-            return Subscription.from_row(self.repo.create(SUBSCRIPTION, sub.id, sub.to_row()))
+            return self.get_subscription(sub.id)
+        except UnknownSubscription:
+            pass
+        try:
+            row = self.audited_repo.create(
+                SUBSCRIPTION,
+                sub.id,
+                sub.to_row(),
+                ctx=derive(ctx, f"sub-create:{sub.id}"),
+                action="subscription.create",
+            )
+            return Subscription.from_row(row)
         except Conflict:
             return self.get_subscription(sub.id)
 
     def child_subscriptions(self, child_id: str) -> list[Subscription]:
-        rows = self.repo.list(SUBSCRIPTION, [Query.equal("child_id", [child_id]), Query.limit(100)])
+        rows = self.audited_repo.list(
+            SUBSCRIPTION, [Query.equal("child_id", [child_id]), Query.limit(100)]
+        )
         return [Subscription.from_row(r) for r in rows if not r.get("deleted_at")]
 
     def claim_child_slot(self, child_id: str, n: int, sub_id: str, plan_id: str, now: datetime):
@@ -82,9 +107,9 @@ class BillingStore:
             "created_at": iso(now),
         }
         try:
-            return self.repo.create(BILLING_CLAIM, row_id, data), True
+            return self.audited_repo.create(BILLING_CLAIM, row_id, data), True
         except Conflict:
-            return self.repo.get(BILLING_CLAIM, row_id), False
+            return self.audited_repo.get(BILLING_CLAIM, row_id), False
 
     def list_due_for_roll(self, horizon: datetime, after_id: str | None, limit: int):
         q = [
@@ -95,7 +120,7 @@ class BillingStore:
         ]
         if after_id:
             q.insert(2, Query.greater_than("$id", after_id))
-        return [Subscription.from_row(r) for r in self.repo.list(SUBSCRIPTION, q)]
+        return [Subscription.from_row(r) for r in self.audited_repo.list(SUBSCRIPTION, q)]
 
     def list_recently_started(self, since: datetime, after_id: str | None, limit: int):
         q = [
@@ -106,13 +131,13 @@ class BillingStore:
         ]
         if after_id:
             q.insert(2, Query.greater_than("$id", after_id))
-        return [Subscription.from_row(r) for r in self.repo.list(SUBSCRIPTION, q)]
+        return [Subscription.from_row(r) for r in self.audited_repo.list(SUBSCRIPTION, q)]
 
     def list_active_ids_after(self, after_id: str | None, limit: int) -> list[str]:
         q = [Query.equal("status", ["active"]), Query.order_asc("$id"), Query.limit(limit)]
         if after_id:
             q.insert(1, Query.greater_than("$id", after_id))
-        return [r["$id"] for r in self.repo.list(SUBSCRIPTION, q)]
+        return [r["$id"] for r in self.audited_repo.list(SUBSCRIPTION, q)]
 
     # ---- optimistic commit
     def commit(
@@ -124,7 +149,8 @@ class BillingStore:
         to_status: str | None,
         events: list[str],
         now: datetime,
-        actor: str,
+        ctx: AuditContext,
+        action: str,
         reason: str | None,
     ) -> tuple[Subscription, dict]:
         """Move `sub` from its version to version+1 or raise `ConcurrentTransition`. Returns the
@@ -140,7 +166,9 @@ class BillingStore:
             "to_status": to_status,
             "patch": json.dumps(patch, sort_keys=True),
             "events": json.dumps(events),
-            "actor": actor[:64],
+            "actor": (ctx.actor_id or "system")[:64],
+            "job": ctx.job,
+            "audit_action": action[:120],
             "reason": reason[:REASON_MAX] if reason else None,
             "reason_truncated": truncated,
             "status": "claimed",
@@ -148,12 +176,29 @@ class BillingStore:
         }
         cid = rid("claim", sub.id, nv)
         try:
-            self.repo.create(CLAIM, cid, claim)
+            self.audited_repo.create(CLAIM, cid, claim)
         except Conflict:
             raise ConcurrentTransition(f"{sub.id} moved past version {sub.version}") from None
-        row = self.repo.update(SUBSCRIPTION, sub.id, {**patch, "version": nv})
-        claim_row = self.repo.update(CLAIM, cid, {"status": "applied"})
+        try:
+            row = self._update_subscription(sub.id, patch, nv, ctx, action, reason)
+        except (AuditUnavailable, AuditContextMissing, ReasonRequired):
+            # audit-first refused the change: NOTHING was written to the subscription, so the
+            # claim is withdrawn (fail closed); if this delete fails too, repair() rolls the
+            # claim forward after the lease, still under the same deterministic audit key
+            self.audited_repo.delete(CLAIM, cid)
+            raise
+        claim_row = self.audited_repo.update(CLAIM, cid, {"status": "applied"})
         return Subscription.from_row(row), claim_row
+
+    def _update_subscription(self, sub_id, patch, version, ctx, action, reason):
+        return self.audited_repo.update(
+            SUBSCRIPTION,
+            sub_id,
+            {**patch, "version": version},
+            ctx=derive(ctx, f"sub-tx:{sub_id}:{version}"),
+            action=action,
+            reason=reason,
+        )
 
     def repair(
         self, sub: Subscription, now: datetime, lease_s: int
@@ -170,17 +215,17 @@ class BillingStore:
         Returns (subscription, repaired claim rows)."""
         repaired: list[dict] = []
         try:  # the row is already at this claim's version but its writer died before saying so
-            cur = self.repo.get(CLAIM, rid("claim", sub.id, sub.version))
+            cur = self.audited_repo.get(CLAIM, rid("claim", sub.id, sub.version))
             if (
                 cur["status"] == "claimed"
                 and (now - parse(cur["created_at"])).total_seconds() >= lease_s
             ):
-                repaired.append(self.repo.update(CLAIM, cur["$id"], {"status": "applied"}))
+                repaired.append(self.audited_repo.update(CLAIM, cur["$id"], {"status": "applied"}))
         except NotFound:
             pass
         while True:
             try:
-                claim = self.repo.get(CLAIM, rid("claim", sub.id, sub.version + 1))
+                claim = self.audited_repo.get(CLAIM, rid("claim", sub.id, sub.version + 1))
             except NotFound:
                 break
             if (
@@ -192,17 +237,24 @@ class BillingStore:
             if fresh.version != sub.version:
                 sub = fresh
                 continue
-            row = self.repo.update(
-                SUBSCRIPTION, sub.id, {**json.loads(claim["patch"]), "version": claim["to_version"]}
+            row = self._update_subscription(
+                sub.id,
+                json.loads(claim["patch"]),
+                claim["to_version"],
+                claim_ctx(claim, f"sub-tx:{sub.id}:{claim['to_version']}"),
+                claim.get("audit_action") or f"subscription.{claim['trigger']}",
+                claim.get("reason"),
             )
             if claim["status"] == "claimed":
-                claim = self.repo.update(CLAIM, claim["$id"], {"status": "applied"})
+                claim = self.audited_repo.update(CLAIM, claim["$id"], {"status": "applied"})
             repaired.append(claim)
             sub = Subscription.from_row(row)
         return sub, repaired
 
     def mark_delivered(self, claim_id: str, now: datetime) -> None:
-        self.repo.update(CLAIM, claim_id, {"status": "delivered", "dispatched_at": iso(now)})
+        self.audited_repo.update(
+            CLAIM, claim_id, {"status": "delivered", "dispatched_at": iso(now)}
+        )
 
     def undelivered_claims(self, cutoff: datetime, after_id: str | None, limit: int) -> list[dict]:
         """Claims whose effects/events are not confirmed delivered (applied, or claimed and old)."""
@@ -214,7 +266,7 @@ class BillingStore:
         ]
         if after_id:
             q.insert(2, Query.greater_than("$id", after_id))
-        return self.repo.list(CLAIM, q)
+        return self.audited_repo.list(CLAIM, q)
 
     def list_cancelled_since(self, since: datetime, after_id: str | None, limit: int):
         q = [
@@ -225,37 +277,71 @@ class BillingStore:
         ]
         if after_id:
             q.insert(2, Query.greater_than("$id", after_id))
-        return [Subscription.from_row(r) for r in self.repo.list(SUBSCRIPTION, q)]
+        return [Subscription.from_row(r) for r in self.audited_repo.list(SUBSCRIPTION, q)]
 
     def list_paused(self, after_id: str | None, limit: int):
         q = [Query.equal("status", ["paused"]), Query.order_asc("$id"), Query.limit(limit)]
         if after_id:
             q.insert(1, Query.greater_than("$id", after_id))
-        return [Subscription.from_row(r) for r in self.repo.list(SUBSCRIPTION, q)]
+        return [Subscription.from_row(r) for r in self.audited_repo.list(SUBSCRIPTION, q)]
 
     def invoices_of(self, sub_id: str) -> list[Invoice]:
-        rows = self.repo.list(INVOICE, [Query.equal("subscription_id", [sub_id]), Query.limit(200)])
+        rows = self.audited_repo.list(
+            INVOICE, [Query.equal("subscription_id", [sub_id]), Query.limit(200)]
+        )
         return [Invoice.from_row(r) for r in rows]
 
     def claims(self, sub_id: str) -> list[dict]:
-        rows = self.repo.list(CLAIM, [Query.equal("subscription_id", [sub_id]), Query.limit(500)])
+        rows = self.audited_repo.list(
+            CLAIM, [Query.equal("subscription_id", [sub_id]), Query.limit(500)]
+        )
         return sorted(rows, key=lambda r: r["to_version"])
 
     # ---- invoices
     def get_invoice(self, invoice_id: str) -> Invoice:
         try:
-            return Invoice.from_row(self.repo.get(INVOICE, invoice_id))
+            return Invoice.from_row(self.audited_repo.get(INVOICE, invoice_id))
         except NotFound:
             raise UnknownInvoice(invoice_id) from None
 
     def create_invoice(self, inv: Invoice) -> tuple[Invoice, bool]:
+        """System-attributed, deterministic key: a retry adds no second audit row."""
         try:
-            return Invoice.from_row(self.repo.create(INVOICE, inv.id, inv.to_row())), True
+            return self.get_invoice(inv.id), False
+        except UnknownInvoice:
+            pass
+        try:
+            row = self.audited_repo.create(
+                INVOICE,
+                inv.id,
+                inv.to_row(),
+                ctx=system_ctx(f"inv-create:{inv.id}"),
+                action="invoice.create",
+            )
+            return Invoice.from_row(row), True
         except Conflict:
             return self.get_invoice(inv.id), False
 
-    def update_invoice(self, invoice_id: str, patch: dict[str, Any]) -> Invoice:
-        return Invoice.from_row(self.repo.update(INVOICE, invoice_id, patch))
+    def update_invoice(
+        self,
+        invoice_id: str,
+        patch: dict[str, Any],
+        *,
+        key: str,
+        action: str,
+        job: str = SYSTEM_JOB,
+    ) -> Invoice:
+        """`key` names the logical change (invoice + what + which transition or payment): the
+        audit row is idempotent by it. Always attributed to `system` (see audit_ctx.py)."""
+        return Invoice.from_row(
+            self.audited_repo.update(
+                INVOICE,
+                invoice_id,
+                patch,
+                ctx=system_ctx(f"{key}", job),
+                action=action,
+            )
+        )
 
     def claim_invoice_paid(self, invoice_id: str, payment_ref: str, now: datetime):
         """The payment that wins the invoice; `ref` is its provider reference."""
@@ -268,29 +354,31 @@ class BillingStore:
         }
         row_id = rid("paid", invoice_id)
         try:
-            return self.repo.create(BILLING_CLAIM, row_id, data), True
+            return self.audited_repo.create(BILLING_CLAIM, row_id, data), True
         except Conflict:
-            return self.repo.get(BILLING_CLAIM, row_id), False
+            return self.audited_repo.get(BILLING_CLAIM, row_id), False
 
     # ---- credits
     def create_credit(self, c: Credit) -> tuple[Credit, bool]:
         try:
-            return Credit.from_row(self.repo.create(CREDIT, c.id, c.to_row())), True
+            return Credit.from_row(self.audited_repo.create(CREDIT, c.id, c.to_row())), True
         except Conflict:
-            return Credit.from_row(self.repo.get(CREDIT, c.id)), False
+            return Credit.from_row(self.audited_repo.get(CREDIT, c.id)), False
 
     def unapplied_credits(self, sub_id: str) -> list[Credit]:
-        rows = self.repo.list(CREDIT, [Query.equal("subscription_id", [sub_id]), Query.limit(500)])
+        rows = self.audited_repo.list(
+            CREDIT, [Query.equal("subscription_id", [sub_id]), Query.limit(500)]
+        )
         cs = [Credit.from_row(r) for r in rows if not r.get("applied_invoice_id")]
         return sorted(cs, key=lambda c: (c.created_at, c.id))
 
     def get_credit(self, credit_id: str) -> Credit:
-        return Credit.from_row(self.repo.get(CREDIT, credit_id))
+        return Credit.from_row(self.audited_repo.get(CREDIT, credit_id))
 
     def mark_credit_applied(self, credit_id: str, invoice_id: str) -> None:
-        cur = self.repo.get(CREDIT, credit_id).get("applied_invoice_id")
+        cur = self.audited_repo.get(CREDIT, credit_id).get("applied_invoice_id")
         if cur is None:
-            self.repo.update(CREDIT, credit_id, {"applied_invoice_id": invoice_id})
+            self.audited_repo.update(CREDIT, credit_id, {"applied_invoice_id": invoice_id})
 
     def reserve_credit(self, credit_id: str, invoice_id: str, now: datetime) -> bool:
         """Claim a credit for ONE invoice (create-once). True if this invoice holds the claim
@@ -304,10 +392,10 @@ class BillingStore:
             "created_at": iso(now),
         }
         try:
-            self.repo.create(BILLING_CLAIM, row_id, data)
+            self.audited_repo.create(BILLING_CLAIM, row_id, data)
             return True
         except Conflict:
-            return self.repo.get(BILLING_CLAIM, row_id)["ref"] == invoice_id
+            return self.audited_repo.get(BILLING_CLAIM, row_id)["ref"] == invoice_id
 
     # ---- payments
     def claim_payment(self, provider: str, payment_ref: str, invoice_id: str, now: datetime):
@@ -321,15 +409,15 @@ class BillingStore:
         }
         row_id = rid("pay", provider, payment_ref)
         try:
-            return self.repo.create(PAYMENT, row_id, data), True
+            return self.audited_repo.create(PAYMENT, row_id, data), True
         except Conflict:
-            return self.repo.get(PAYMENT, row_id), False
+            return self.audited_repo.get(PAYMENT, row_id), False
 
     def update_payment(self, provider: str, payment_ref: str, patch: dict[str, Any]) -> None:
-        self.repo.update(PAYMENT, rid("pay", provider, payment_ref), patch)
+        self.audited_repo.update(PAYMENT, rid("pay", provider, payment_ref), patch)
 
     def list_payments(self, after_id: str | None, limit: int) -> list[dict]:
         q = [Query.order_asc("$id"), Query.limit(limit)]
         if after_id:
             q.insert(0, Query.greater_than("$id", after_id))
-        return self.repo.list(PAYMENT, q)
+        return self.audited_repo.list(PAYMENT, q)

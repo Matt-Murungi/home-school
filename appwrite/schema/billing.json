@@ -109,6 +109,18 @@
           "key": "dispatched_at",
           "type": "datetime",
           "required": false
+        },
+        {
+          "key": "job",
+          "type": "varchar",
+          "size": 64,
+          "required": false
+        },
+        {
+          "key": "audit_action",
+          "type": "varchar",
+          "size": 120,
+          "required": false
         }
       ],
       "indexes": [
@@ -400,7 +412,7 @@
   "meta": {
     "subscription_transition": {
       "deletion": "hard",
-      "note": "B03 optimistic-concurrency claim and history of every subscription change. Appwrite has no conditional update, so a writer that read version v creates the row with the deterministic id sha256(subscription, v+1): the second creator gets 409 and loses (ConcurrentTransition); unique (subscription_id, to_version) is the backstop. patch (the subscription columns to set, JSON text) and events (domain event names, JSON text) let a claim whose writer died be rolled forward by the core service after a lease. status moves claimed -> applied -> delivered (delivered = the post-commit effects were completed and the domain events handed to their consumers; dispatched_at is that instant); no other column changes after the insert, so this is not marked append-only. A sweep re-delivers claims that are not delivered; event ids are <subscription>:<to_version>:<index>, so consumers de-duplicate. reason_truncated is true when the free-text reason was cut to 200 characters. No personal data: ids, statuses and an actor id. Never soft-deleted: a soft delete would either hide a financial/idempotency record or free its unique value. Only the retention job hard-deletes it, after the retention period (DP-6, SR 5.5). Not reusing M04 audit_log: that table is the audit trail (M06); this one is the concurrency primitive and must exist even if audit is unavailable.",
+      "note": "B03 optimistic-concurrency claim and history of every subscription change. Appwrite has no conditional update, so a writer that read version v creates the row with the deterministic id sha256(subscription, v+1): the second creator gets 409 and loses (ConcurrentTransition); unique (subscription_id, to_version) is the backstop. patch (the subscription columns to set, JSON text) and events (domain event names, JSON text) let a claim whose writer died be rolled forward by the core service after a lease. status moves claimed -> applied -> delivered (delivered = the post-commit effects were completed and the domain events handed to their consumers; dispatched_at is that instant); no other column changes after the insert, so this is not marked append-only. A sweep re-delivers claims that are not delivered; event ids are <subscription>:<to_version>:<index>, so consumers de-duplicate. reason_truncated is true when the free-text reason was cut to 200 characters. No personal data: ids, statuses and an actor id. Never soft-deleted: a soft delete would either hide a financial/idempotency record or free its unique value. Only the retention job hard-deletes it, after the retention period (DP-6, SR 5.5). Not reusing M04 audit_log: that table is the audit trail (M06); this one is the concurrency primitive and must exist even if audit is unavailable. job and audit_action record how the change was attributed in the audit log (M06), so a repaired claim replays the SAME audit row (actor, action and key are deterministic).",
       "non_fk": {
         "actor": "user id or the literal system, informational"
       }

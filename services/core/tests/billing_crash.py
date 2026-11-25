@@ -12,10 +12,10 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 
-from billing_helpers import P2, P3, Rig
+from billing_helpers import P2, P3, Rig, contexts
+from hs_core.audit import AuditedRepository, AuditService
 from hs_core.billing.errors import BillingError
 from hs_core.billing.fakes import (
-    FakeAuditSink,
     FakeLedger,
     FakeNotifier,
     FakePlans,
@@ -78,28 +78,24 @@ def _wrap(obj, clock: CrashClock, names: tuple[str, ...]) -> None:
 
 def make_crash_rig(clock: CrashClock, config: BillingConfig | None = None, discounts=None) -> Rig:
     repo = CrashRepository(clock)
-    ledger, audit, notifier, scheduler = (
-        FakeLedger(),
-        FakeAuditSink(),
-        FakeNotifier(),
-        FakeScheduler(),
-    )
+    ledger, notifier, scheduler = FakeLedger(), FakeNotifier(), FakeScheduler()
+    audit = AuditService(repo)  # its audit_log writes go through the crashing repository: ticked
+    audited = AuditedRepository(repo, audit)
     _wrap(ledger, clock, ("record_payment", "record_credit_applied", "flag_refund_due"))
-    _wrap(audit, clock, ("record",))
     _wrap(notifier, clock, ("notify",))
     _wrap(scheduler, clock, ("cancel_future", "regenerate"))
     plans = FakePlans(P2, P3)
     svc = BillingService(
-        repo,
+        audited,
         plans=plans,
         ledger=ledger,
-        audit=audit,
         notifier=notifier,
         scheduler=scheduler,
         discounts=discounts,
         config=config or BillingConfig(renewal_lead_days=5),
     )
-    return Rig(repo, ledger, audit, notifier, scheduler, plans, svc)
+    parent, admin = contexts()
+    return Rig(repo, ledger, audit, notifier, scheduler, plans, svc, audited, parent, admin)
 
 
 def recover(rig: Rig, retry, now: datetime) -> None:
@@ -117,6 +113,23 @@ def recover(rig: Rig, retry, now: datetime) -> None:
         if cursor is None:
             break
     sweep(rig, later)
+    settle_audit(rig)
+
+
+def settle_audit(rig: Rig) -> None:
+    """`audit-recover`: settle intent rows a crash left without an outcome."""
+    from hs_core.audit.recover import recover_audit
+
+    res = recover_audit(
+        rig.repo,
+        rig.audit,
+        now=datetime.now(UTC) + timedelta(minutes=1),
+        grace=timedelta(seconds=0),
+        lookback=timedelta(days=1),
+    )
+    # intents of changes that were superseded later cannot be verified (documented in
+    # docs/ops/audit.md); what must hold is that the sweep itself never errors
+    assert res.errors == 0
 
 
 def sweep(rig: Rig, now: datetime) -> None:
@@ -128,8 +141,42 @@ def sweep(rig: Rig, now: datetime) -> None:
             break
 
 
+def check_audit(rig: Rig) -> None:
+    """ONE audit row per logical change, however often it was retried or recovered."""
+    import json as _json
+
+    rows = rig.repo.list("audit_log")
+    intents = [r for r in rows if _json.loads(r["after"])["meta"]["status"] == "intent"]
+    keys = [(r["entity"], r["entity_id"], _json.loads(r["after"])["meta"]["key"]) for r in intents]
+    assert len(keys) == len(set(keys)), "a change was audited twice"
+    for r in rows:
+        meta = _json.loads(r["after"])["meta"]
+        assert not meta.get("key_collision"), "audit key collision"
+        assert meta["status"] in ("intent", "recorded", "not_applied"), meta["status"]
+    for sub in rig.repo.list("subscription"):
+        n = len(
+            [r for r in intents if r["entity"] == "subscription" and r["entity_id"] == sub["$id"]]
+        )
+        claims = [
+            c
+            for c in rig.repo.list("subscription_transition")
+            if c["subscription_id"] == sub["$id"]
+        ]
+        assert n == len(claims) + 1, f"{n} subscription audit rows for {len(claims)} transitions"
+    for inv in rig.repo.list("invoice"):
+        creates = [
+            r
+            for r in intents
+            if r["entity"] == "invoice"
+            and r["entity_id"] == inv["$id"]
+            and r["action"] == "invoice.create"
+        ]
+        assert len(creates) == 1
+
+
 def check_invariants(rig: Rig) -> None:
     """Facts that must hold after ANY crash + recovery, for every subscription."""
+    check_audit(rig)
     repo = rig.repo
     invoices = [r for r in repo.list("invoice")]
     credits = {c["$id"]: c for c in repo.list("billing_credit")}

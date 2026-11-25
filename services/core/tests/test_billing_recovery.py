@@ -52,15 +52,15 @@ def test_a_ledger_failure_during_cancel_does_not_lose_the_refund_flag():
     rig = make_rig()
     sid = _matching_paid(rig)
     rig.ledger.fail = True
-    out = rig.svc.cancel(sid, now=T0 + DAY, actor="u")
+    out = rig.svc.cancel(sid, now=T0 + DAY, ctx=rig.parent)
     assert out.subscription.status == Status.cancelled and out.dispatch_failures >= 1
     assert rig.ledger.refunds_due == {}
     rig.ledger.fail = False
-    again = rig.svc.cancel(sid, now=T0 + 2 * DAY, actor="u")  # the SAME operation, retried
+    again = rig.svc.cancel(sid, now=T0 + 2 * DAY, ctx=rig.parent)  # the SAME operation, retried
     assert not again.changed
     (r,) = rig.ledger.refunds_due.values()
     assert r["reason"] == "cancelled_before_activation" and r["amount_ugx"] == 240_000
-    rig.svc.cancel(sid, now=T0 + 3 * DAY, actor="u")
+    rig.svc.cancel(sid, now=T0 + 3 * DAY, ctx=rig.parent)
     assert len(rig.ledger.refunds_due) == 1  # never twice
 
 
@@ -68,7 +68,7 @@ def test_the_sweep_alone_also_completes_a_cancel_whose_ledger_call_failed():
     rig = make_rig()
     sid = _matching_paid(rig)
     rig.ledger.fail = True
-    rig.svc.cancel(sid, now=T0 + DAY, actor="u")
+    rig.svc.cancel(sid, now=T0 + DAY, ctx=rig.parent)
     rig.ledger.fail = False
     res = rig.svc.redispatch_undelivered(now=T0 + 2 * DAY, older_than_s=0)
     assert res.delivered == 1 and len(rig.ledger.refunds_due) == 1
@@ -134,7 +134,7 @@ def test_pause_voids_the_open_renewal_and_a_payment_for_it_is_flagged_not_applie
     rig = make_rig()
     sid, _ = activate(rig)
     inv = rig.svc.generate_invoice(sid, 1, now=NXT - 3 * DAY)
-    rig.svc.pause(sid, now=NXT - 2 * DAY, actor="u")
+    rig.svc.pause(sid, now=NXT - 2 * DAY, ctx=rig.parent)
     assert rig.svc.get_invoice(inv.id).status == "void"
     out = rig.svc.on_payment_confirmed(inv.id, "late-pay", now=NXT - DAY)
     assert out.status == "flagged" and out.flag == "invoice_void"
@@ -151,8 +151,8 @@ def test_resume_inside_the_paid_period_reopens_the_voided_renewal_via_the_roll_j
     rig = make_rig(BillingConfig(renewal_lead_days=5))
     sid, _ = activate(rig)
     inv = rig.svc.generate_invoice(sid, 1, now=NXT - 3 * DAY)
-    rig.svc.pause(sid, now=NXT - 2 * DAY, actor="u")
-    rig.svc.resume(sid, now=NXT - DAY, actor="u")  # still inside the paid period
+    rig.svc.pause(sid, now=NXT - 2 * DAY, ctx=rig.parent)
+    rig.svc.resume(sid, now=NXT - DAY, ctx=rig.parent)  # still inside the paid period
     assert rig.svc.get_invoice(inv.id).status == "void"
     rig.svc.roll_subscription(sid, now=NXT - DAY)
     assert rig.svc.get_invoice(inv.id).status == "open"
@@ -163,8 +163,8 @@ def test_reanchored_resume_voids_the_old_invoices_and_old_payment_cannot_be_appl
     rig = make_rig()
     sid, _ = activate(rig)
     old = rig.svc.generate_invoice(sid, 1, now=NXT - 3 * DAY)
-    rig.svc.pause(sid, now=NXT - 2 * DAY, actor="u")
-    rig.svc.resume(sid, now=NXT + 20 * DAY, actor="u")
+    rig.svc.pause(sid, now=NXT - 2 * DAY, ctx=rig.parent)
+    rig.svc.resume(sid, now=NXT + 20 * DAY, ctx=rig.parent)
     s = rig.svc.get(sid)
     assert (
         s.period_index == 0
@@ -203,7 +203,7 @@ def test_a_failing_notifier_leaves_the_transition_undelivered_and_the_sweep_rede
 def test_event_ids_are_stable_across_redelivery_so_consumers_can_deduplicate():
     rig = make_rig()
     sid, _ = activate(rig)
-    out = rig.svc.pause(sid, now=T0 + DAY, actor="u")
+    out = rig.svc.pause(sid, now=T0 + DAY, ctx=rig.parent)
     ids = [e.event_id for e in out.events]
     assert ids == [f"{sid}:{out.subscription.version}:{i}" for i in range(len(ids))]
     # force a redelivery of an already delivered transition: same ids, consumers see no new event
@@ -249,7 +249,9 @@ def test_dispatch_false_leaves_delivery_to_the_sweep():
     res = new_sub(rig)
     from hs_core.billing.states import Trigger
 
-    rig.svc.transition(res.subscription.id, Trigger.payment_confirmed, now=T0, dispatch=False)
+    rig.svc.transition(
+        res.subscription.id, Trigger.payment_confirmed, now=T0, dispatch=False, ctx=rig.parent
+    )
     assert rig.notifier.events == {}
     rig.svc.redispatch_undelivered(now=T0 + DAY, older_than_s=0)
     assert "matching_requested" in rig.notifier.names()
@@ -260,8 +262,8 @@ def test_reconciler_cancels_sessions_left_on_cancelled_and_paused_subscriptions(
     a, _ = activate(rig, child="a")
     b, _ = activate(rig, child="b")
     c, _ = activate(rig, child="c")
-    rig.svc.cancel(a, now=T0 + DAY, actor="u", immediate=True)
-    rig.svc.pause(b, now=T0 + DAY, actor="u")
+    rig.svc.cancel(a, now=T0 + DAY, ctx=rig.parent, immediate=True)
+    rig.svc.pause(b, now=T0 + DAY, ctx=rig.parent)
     rig.scheduler.sessions = {a: 3, b: 2, c: 5}  # events were lost: sessions still scheduled
     res = rig.svc.reconcile_future_sessions(now=T0 + 2 * DAY)
     while res.next_cursor:
@@ -278,8 +280,8 @@ def test_reconciler_only_looks_at_recently_cancelled_subscriptions_and_isolates_
     rig = make_rig(BillingConfig(reconcile_lookback_days=7))
     a, _ = activate(rig, child="a")
     b, _ = activate(rig, child="b")
-    rig.svc.cancel(a, now=T0, actor="u", immediate=True)
-    rig.svc.cancel(b, now=T0 + 20 * DAY, actor="u", immediate=True)
+    rig.svc.cancel(a, now=T0, ctx=rig.parent, immediate=True)
+    rig.svc.cancel(b, now=T0 + 20 * DAY, ctx=rig.parent, immediate=True)
     rig.scheduler.sessions = {a: 1, b: 1}
     res = rig.svc.reconcile_future_sessions(now=T0 + 21 * DAY)
     assert res.cancelled_sessions_for == [b]
@@ -304,7 +306,7 @@ def test_new_jobs_are_registered_and_fail_closed_outside_dev():
 def test_new_jobs_run_to_done_on_a_bound_service():
     rig = make_rig()
     sid, _ = activate(rig)
-    rig.svc.cancel(sid, now=T0, actor="u", immediate=True)
+    rig.svc.cancel(sid, now=T0, ctx=rig.parent, immediate=True)
     rig.scheduler.sessions = {sid: 2}
     billing_jobs.bind(rig.svc)
     out = billing_jobs.billing_redispatch(ctx())
@@ -326,8 +328,8 @@ def test_repair_never_writes_when_the_subscription_already_moved_past_the_claim(
     rig = make_rig()
     sid, _ = activate(rig)
     stale = rig.svc.get(sid)
-    rig.svc.pause(sid, now=T0 + DAY, actor="u")
-    rig.svc.resume(sid, now=T0 + 2 * DAY, actor="u")
+    rig.svc.pause(sid, now=T0 + DAY, ctx=rig.parent)
+    rig.svc.resume(sid, now=T0 + 2 * DAY, ctx=rig.parent)
     writes = []
     real = rig.repo.update
     rig.repo.update = lambda t, i, d, p=None: (writes.append(t), real(t, i, d, p))[1]
@@ -339,8 +341,8 @@ def test_repair_never_writes_when_the_subscription_already_moved_past_the_claim(
 def test_a_subscription_row_left_behind_by_a_stale_repairer_heals_itself():
     rig = make_rig()
     sid, _ = activate(rig)
-    rig.svc.pause(sid, now=T0 + DAY, actor="u")
-    rig.svc.resume(sid, now=T0 + 2 * DAY, actor="u")
+    rig.svc.pause(sid, now=T0 + DAY, ctx=rig.parent)
+    rig.svc.resume(sid, now=T0 + 2 * DAY, ctx=rig.parent)
     good = rig.svc.get(sid)
     claim = [
         c for c in rig.repo.list(CLAIM) if c["subscription_id"] == sid and c["trigger"] == "pause"
@@ -370,23 +372,23 @@ def test_a_claim_stuck_beyond_its_lease_is_rolled_forward_instead_of_blocking_fo
 
     rig.repo.update = dying
     with pytest.raises(RuntimeError):
-        rig.svc.pause(sid, now=T0, actor="u")
+        rig.svc.pause(sid, now=T0, ctx=rig.parent)
     rig.repo.update = real
     with pytest.raises(ConcurrentTransition):
-        rig.svc.cancel(sid, now=T0 + timedelta(seconds=3), actor="u", immediate=True)
-    out = rig.svc.cancel(sid, now=T0 + timedelta(minutes=2), actor="u", immediate=True)
+        rig.svc.cancel(sid, now=T0 + timedelta(seconds=3), ctx=rig.parent, immediate=True)
+    out = rig.svc.cancel(sid, now=T0 + timedelta(minutes=2), ctx=rig.parent, immediate=True)
     assert out.subscription.version == sub.version + 2 and rig.svc.repairs == 1
 
 
 def test_a_long_cancel_reason_is_truncated_and_the_truncation_is_recorded():
     rig = make_rig()
     sid, _ = activate(rig)
-    rig.svc.cancel(sid, now=T0, actor="u", immediate=True, reason="r" * 450)
+    rig.svc.cancel(sid, now=T0, ctx=rig.parent, immediate=True, reason="r" * 450)
     c = [c for c in rig.repo.list(CLAIM) if c["trigger"] == "cancel"][0]
     assert len(c["reason"]) == 200 and c["reason_truncated"] is True
     assert len(rig.svc.get(sid).cancel_reason) == 200
     sid2, _ = activate(rig, child="c2")
-    rig.svc.cancel(sid2, now=T0, actor="u", immediate=True, reason="short")
+    rig.svc.cancel(sid2, now=T0, ctx=rig.parent, immediate=True, reason="short")
     c2 = [
         c for c in rig.repo.list(CLAIM) if c["subscription_id"] == sid2 and c["trigger"] == "cancel"
     ][0]

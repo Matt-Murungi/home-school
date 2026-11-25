@@ -6,7 +6,7 @@ import threading
 from datetime import datetime
 
 from ..repository import Repository
-from .interfaces import AuditEntry, DomainEvent
+from .interfaces import DomainEvent
 from .models import PlanInfo, Subscription
 from .periods import Period
 
@@ -50,22 +50,6 @@ class FakeLedger:
                 "reason": reason,
             },
         )
-
-
-class FakeAuditSink:
-    def __init__(self) -> None:
-        self._lock = threading.Lock()
-        self.entries: dict[str, AuditEntry] = {}
-        self.fail = False
-
-    def record(self, entry: AuditEntry) -> None:
-        if self.fail:
-            raise RuntimeError("audit down")
-        with self._lock:
-            self.entries.setdefault(entry.idempotency_key, entry)
-
-    def actions(self) -> list[str]:
-        return [e.action for e in self.entries.values()]
 
 
 class FakeNotifier:

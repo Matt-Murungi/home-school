@@ -575,6 +575,10 @@ SERVICE_ONLY_TABLES: dict[str, str] = {
     "schema_migration": "migration runner bookkeeping",
     "sample_item": "CI sample table",
     "access_window": "permission service bookkeeping (when time-limited access lapses)",
+    "subscription_transition": "B03 subscription state log, server only (ops reads through an endpoint)",
+    "billing_credit": "B03 billing credits, server only",
+    "billing_payment": "B03 payment flags, server only",
+    "billing_claim": "B03 idempotency claims, server only",
 }
 # Tables owned by tickets that are not on main yet. Decided now so their merge does not leave a
 # table without a decision; `test_decisions_cover_every_table` allows these to be absent.
@@ -584,10 +588,6 @@ PENDING_SERVICE_ONLY: dict[str, str] = {
     "travel_usage": "X01 Google Routes usage counters, server only",
     "job_run": "F04 job runner state, server only (planned schema)",
     "job_attempt": "F04 job runner attempts, server only (planned schema)",
-    "subscription_transition": "B03 subscription state log, server only (ops reads through an endpoint)",
-    "billing_credit": "B03 billing credits, server only",
-    "billing_payment": "B03 payment flags, server only",
-    "billing_claim": "B03 idempotency claims, server only",
     "teacher_schedule_lease": "S01 per-teacher scheduling lease, server only",
     "scheduling_issue": "S01 scheduling problems, server only (admin queue through an endpoint)",
 }

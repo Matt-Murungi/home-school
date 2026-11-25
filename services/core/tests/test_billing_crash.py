@@ -22,7 +22,9 @@ DAY = timedelta(days=1)
 
 
 def _activate(rig: Rig, child="c1"):
-    res = rig.svc.create_subscription(parent_id="p1", child_id=child, plan_id="plan2", now=T0)
+    res = rig.svc.create_subscription(
+        parent_id="p1", child_id=child, plan_id="plan2", now=T0, ctx=rig.parent
+    )
     rig.svc.on_payment_confirmed(res.invoice.id, f"pay-{child}", now=T0)
     rig.svc.on_teacher_assigned(res.subscription.id, assignment_id="a1", is_trial=False, now=T0)
     return res.subscription.id
@@ -37,12 +39,14 @@ def _next_start(rig, sid):
 
 def test_cancel_in_matching_with_a_paid_first_period_always_reaches_the_refund_queue():
     def setup(rig):
-        res = rig.svc.create_subscription(parent_id="p", child_id="c", plan_id="plan2", now=T0)
+        res = rig.svc.create_subscription(
+            parent_id="p", child_id="c", plan_id="plan2", now=T0, ctx=rig.parent
+        )
         rig.svc.on_payment_confirmed(res.invoice.id, "pay-1", now=T0)
         return {"sid": res.subscription.id}
 
     def op(rig, ctx, now):
-        rig.svc.cancel(ctx["sid"], now=now, actor="u_parent")
+        rig.svc.cancel(ctx["sid"], now=now, ctx=rig.parent)
 
     def expect(rig, ctx):
         assert rig.svc.get(ctx["sid"]).status == Status.cancelled
@@ -59,7 +63,9 @@ def test_immediate_cancel_of_an_active_subscription_voids_invoices_and_cancels_s
         return {"sid": sid}
 
     def op(rig, ctx, now):
-        rig.svc.cancel(ctx["sid"], now=now, actor="u_admin", immediate=True, reason="x")
+        rig.svc.cancel(
+            ctx["sid"], now=now, ctx=rig.admin, immediate=True, reason="duplicate account"
+        )
 
     def expect(rig, ctx):
         assert rig.svc.get(ctx["sid"]).status == Status.cancelled
@@ -109,11 +115,11 @@ def test_mark_past_due_marks_the_overdue_invoice_even_after_a_crash():
 def test_resume_after_the_period_ended_always_ends_with_an_invoice_for_the_new_period():
     def setup(rig):
         sid = _activate(rig)
-        rig.svc.pause(sid, now=T0 + DAY, actor="u")
+        rig.svc.pause(sid, now=T0 + DAY, ctx=rig.parent)
         return {"sid": sid}
 
     def op(rig, ctx, now):
-        rig.svc.resume(ctx["sid"], now=now, actor="u")
+        rig.svc.resume(ctx["sid"], now=now, ctx=rig.parent)
 
     def expect(rig, ctx):
         s = rig.svc.get(ctx["sid"])
@@ -136,7 +142,7 @@ def test_pause_voids_the_open_renewal_invoice_and_cancels_sessions():
         return {"sid": sid}
 
     def op(rig, ctx, now):
-        rig.svc.pause(ctx["sid"], now=now, actor="u")
+        rig.svc.pause(ctx["sid"], now=now, ctx=rig.parent)
 
     def expect(rig, ctx):
         assert rig.svc.get(ctx["sid"]).status == Status.paused
@@ -175,7 +181,9 @@ def test_roll_with_a_credit_takes_the_credit_exactly_once_whatever_crashes():
 
 def test_first_payment_always_ends_matching_with_the_match_request_event():
     def setup(rig):
-        res = rig.svc.create_subscription(parent_id="p", child_id="c", plan_id="plan2", now=T0)
+        res = rig.svc.create_subscription(
+            parent_id="p", child_id="c", plan_id="plan2", now=T0, ctx=rig.parent
+        )
         return {"sid": res.subscription.id, "inv": res.invoice.id}
 
     def op(rig, ctx, now):
@@ -196,7 +204,7 @@ def test_plan_change_survives_a_crash_at_every_write():
         return {"sid": _activate(rig)}
 
     def op(rig, ctx, now):
-        rig.svc.change_plan(ctx["sid"], "plan3", now=now, actor="u")
+        rig.svc.change_plan(ctx["sid"], "plan3", now=now, ctx=rig.parent)
 
     def expect(rig, ctx):
         assert rig.svc.get(ctx["sid"]).pending_plan_id == "plan3"
@@ -226,7 +234,7 @@ def test_renewal_advance_survives_a_crash_at_every_write():
 def test_cancel_at_period_end_then_the_boundary_cancel_survives_a_crash_at_every_write():
     def setup(rig):
         sid = _activate(rig)
-        rig.svc.cancel(sid, now=T0 + DAY, actor="u")
+        rig.svc.cancel(sid, now=T0 + DAY, ctx=rig.parent)
         return {"sid": sid}
 
     def op(rig, ctx, now):
@@ -244,7 +252,9 @@ def test_a_fully_discounted_first_invoice_confirms_itself_and_survives_every_cra
         return {}
 
     def op(rig, ctx, now):
-        rig.svc.create_subscription(parent_id="p", child_id="c", plan_id="plan2", now=now)
+        rig.svc.create_subscription(
+            parent_id="p", child_id="c", plan_id="plan2", now=now, ctx=rig.parent
+        )
 
     def expect(rig, ctx):
         (s,) = rig.repo.list("subscription")
@@ -273,12 +283,14 @@ def test_the_harness_itself_detects_a_missing_recovery(n):
     """Meta-test: a service whose effects are never retried must FAIL the harness."""
 
     def setup(rig):
-        res = rig.svc.create_subscription(parent_id="p", child_id="c", plan_id="plan2", now=T0)
+        res = rig.svc.create_subscription(
+            parent_id="p", child_id="c", plan_id="plan2", now=T0, ctx=rig.parent
+        )
         rig.svc.on_payment_confirmed(res.invoice.id, "pay-1", now=T0)
         return {"sid": res.subscription.id}
 
     def op(rig, ctx, now):
-        rig.svc.cancel(ctx["sid"], now=now, actor="u")
+        rig.svc.cancel(ctx["sid"], now=now, ctx=rig.parent)
 
     def expect(rig, ctx):
         assert len(rig.ledger.refunds_due) == 1

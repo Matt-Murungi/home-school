@@ -49,6 +49,7 @@ REASON_REQUIRED = frozenset(
         "payment.refund",
         "user.suspend",
         "payout.approve",
+        "subscription.cancel_admin",  # B03: an admin cancelling (a parent or a job needs none)
         "ledger.manual_adjustment",
         "setting.update",
         "app_setting.create",
@@ -121,5 +122,6 @@ TEXT_ALLOWED = frozenset(
         ("bonus_rule", "conditions"),
         ("subscription", "preferred_slots"),
         ("tier_history", "reason"),  # staff reason for a tier change
+        ("invoice", "credit_ids"),  # B03: JSON list of billing_credit ids (ids only, no text)
     }
 )

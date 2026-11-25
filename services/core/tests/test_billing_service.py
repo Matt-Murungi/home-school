@@ -38,7 +38,7 @@ def test_create_makes_a_pending_payment_subscription_and_the_first_invoice_at_pe
     assert (s.period_start_at, s.period_end_at) == (p.start_at, p.end_at)
     assert inv.period_start_date == "2027-01-15" and inv.period_end_date == "2027-02-14"
     assert inv.amount == 240_000 and type(inv.amount) is int and inv.status == "open"
-    assert inv.due_at == T0  # due at creation for the first period
+    assert inv.due_at == p.start_at  # invoice date = period start (deterministic, SR 7.8)
 
 
 def test_double_tap_creates_one_subscription_and_one_invoice():
@@ -88,7 +88,7 @@ def test_each_child_has_its_own_subscription_and_a_parent_can_hold_several():
 def test_after_cancellation_the_child_can_subscribe_again():
     rig = make_rig()
     a = new_sub(rig)
-    rig.svc.cancel(a.subscription.id, now=T0, actor="u_parent")
+    rig.svc.cancel(a.subscription.id, now=T0, ctx=rig.parent)
     b = new_sub(rig, now=T0 + DAY)
     assert b.created and b.subscription.id != a.subscription.id
 
@@ -108,7 +108,7 @@ def test_happy_path_pending_matching_active_with_events_and_audit():
     names = rig.notifier.names()
     for n in ("first_payment_confirmed", "matching_requested", "subscription_activated"):
         assert n in names
-    actions = rig.audit.actions()
+    actions = rig.actions()
     assert (
         "subscription.payment_confirmed" in actions and "subscription.teacher_assigned" in actions
     )
@@ -121,21 +121,21 @@ def test_forbidden_transitions_raise_and_change_nothing():
     with pytest.raises(ForbiddenTransition):
         rig.svc.on_teacher_assigned(res.subscription.id, assignment_id="a", is_trial=False, now=T0)
     with pytest.raises(ForbiddenTransition):
-        rig.svc.pause(res.subscription.id, now=T0, actor="u")
+        rig.svc.pause(res.subscription.id, now=T0, ctx=rig.parent)
     with pytest.raises(ForbiddenTransition):
-        rig.svc.transition(res.subscription.id, Trigger.resume, now=T0)
+        rig.svc.transition(res.subscription.id, Trigger.resume, now=T0, ctx=rig.parent)
     s = rig.svc.get(res.subscription.id)
     assert s.status == Status.pending_payment and s.version == 0
-    assert rig.audit.actions() == ["subscription.created"]
+    assert rig.actions() == ["subscription.create", "invoice.create"]
 
 
 def test_cancelled_is_terminal_for_the_service():
     rig = make_rig()
     sid, _ = activate(rig)
-    rig.svc.cancel(sid, now=T0, actor="u", immediate=True)
+    rig.svc.cancel(sid, now=T0, ctx=rig.parent, immediate=True)
     for fn in (
-        lambda: rig.svc.pause(sid, now=T0, actor="u"),
-        lambda: rig.svc.resume(sid, now=T0, actor="u"),
+        lambda: rig.svc.pause(sid, now=T0, ctx=rig.parent),
+        lambda: rig.svc.resume(sid, now=T0, ctx=rig.parent),
         lambda: rig.svc.on_teacher_assigned(sid, assignment_id="x", is_trial=False, now=T0),
     ):
         with pytest.raises(ForbiddenTransition):
@@ -146,10 +146,10 @@ def test_pause_cancels_future_sessions_and_resume_regenerates():
     rig = make_rig()
     sid, _ = activate(rig)
     t = T0 + 3 * DAY
-    s = rig.svc.pause(sid, now=t, actor="u_parent").subscription
+    s = rig.svc.pause(sid, now=t, ctx=rig.parent).subscription
     assert s.status == Status.paused and s.paused_at == t
     assert [c["reason"] for c in rig.scheduler.cancelled.values()] == ["paused"]
-    s = rig.svc.resume(sid, now=t + 2 * DAY, actor="u_parent").subscription
+    s = rig.svc.resume(sid, now=t + 2 * DAY, ctx=rig.parent).subscription
     assert s.status == Status.active and s.paused_at is None
     assert len(rig.scheduler.regenerated) == 1
 
@@ -158,8 +158,8 @@ def test_pause_does_not_extend_or_shorten_the_paid_period():
     rig = make_rig()
     sid, _ = activate(rig)
     before = rig.svc.get(sid)
-    rig.svc.pause(sid, now=T0 + DAY, actor="u")
-    rig.svc.resume(sid, now=T0 + 5 * DAY, actor="u")
+    rig.svc.pause(sid, now=T0 + DAY, ctx=rig.parent)
+    rig.svc.resume(sid, now=T0 + 5 * DAY, ctx=rig.parent)
     after = rig.svc.get(sid)
     assert (after.period_start_at, after.period_end_at) == (
         before.period_start_at,
@@ -171,8 +171,8 @@ def test_resume_after_the_period_ended_starts_a_new_period_on_the_resume_date():
     rig = make_rig()
     sid, _ = activate(rig)
     late = T0 + 50 * DAY  # 2027-03-06
-    rig.svc.pause(sid, now=T0 + DAY, actor="u")
-    r = rig.svc.resume(sid, now=late, actor="u")
+    rig.svc.pause(sid, now=T0 + DAY, ctx=rig.parent)
+    r = rig.svc.resume(sid, now=late, ctx=rig.parent)
     s = r.subscription
     assert s.anchor_date == date(2027, 3, 6) and s.period_index == 0
     assert s.period_start_at == period(date(2027, 3, 6), 0).start_at
@@ -183,7 +183,7 @@ def test_resume_after_the_period_ended_starts_a_new_period_on_the_resume_date():
 def test_pause_limit_predicate():
     rig = make_rig(BillingConfig(max_pause_days=30))
     sid, _ = activate(rig)
-    rig.svc.pause(sid, now=T0, actor="u")
+    rig.svc.pause(sid, now=T0, ctx=rig.parent)
     s = rig.svc.get(sid)
     assert not rig.svc.pause_limit_exceeded(s, T0 + 29 * DAY)
     assert rig.svc.pause_limit_exceeded(s, T0 + 30 * DAY)
@@ -319,7 +319,7 @@ def test_unknown_invoice():
 def test_late_payment_after_cancellation_is_flagged_for_refund_and_never_activates():
     rig = make_rig()
     res = new_sub(rig)
-    rig.svc.cancel(res.subscription.id, now=T0 + DAY, actor="u_parent")
+    rig.svc.cancel(res.subscription.id, now=T0 + DAY, ctx=rig.parent)
     out = rig.svc.on_payment_confirmed(res.invoice.id, "momo-late", now=T0 + 2 * DAY)
     assert out.status == "flagged" and out.flag == "late_payment_after_cancellation"
     assert rig.svc.get(res.subscription.id).status == Status.cancelled
@@ -332,7 +332,7 @@ def test_cancelling_after_the_first_payment_flags_it_for_refund_review():
     rig = make_rig()
     res = new_sub(rig)
     rig.svc.on_payment_confirmed(res.invoice.id, "momo-1", now=T0)
-    rig.svc.cancel(res.subscription.id, now=T0 + DAY, actor="u_parent")  # matching: immediate
+    rig.svc.cancel(res.subscription.id, now=T0 + DAY, ctx=rig.parent)  # matching: immediate
     assert rig.svc.get(res.subscription.id).status == Status.cancelled
     (r,) = rig.ledger.refunds_due.values()
     assert r["reason"] == "cancelled_before_activation" and r["amount_ugx"] == 240_000
@@ -515,7 +515,7 @@ def test_no_invoice_for_a_cancelled_subscription_or_a_far_future_period():
 
     with pytest.raises(InvoiceNotAllowed):
         rig.svc.generate_invoice(sid, 3, now=T0)
-    rig.svc.cancel(sid, now=T0, actor="u", immediate=True)
+    rig.svc.cancel(sid, now=T0, ctx=rig.parent, immediate=True)
     with pytest.raises(InvoiceNotAllowed):
         rig.svc.generate_invoice(sid, 1, now=T0)
 
@@ -524,7 +524,7 @@ def test_no_invoice_for_a_cancelled_subscription_or_a_far_future_period():
 def test_plan_change_applies_from_the_next_period_with_no_proration():
     rig = make_rig()
     sid, _ = activate(rig)
-    rig.svc.change_plan(sid, "plan3", now=T0 + 3 * DAY, actor="u_parent")
+    rig.svc.change_plan(sid, "plan3", now=T0 + 3 * DAY, ctx=rig.parent)
     s = rig.svc.get(sid)
     assert s.plan_id == "plan2" and s.pending_plan_id == "plan3"
     inv = rig.svc.generate_invoice(sid, 1, now=period(s.anchor_date, 1).start_at - 3 * DAY)
@@ -541,9 +541,9 @@ def test_plan_change_to_unknown_plan_is_refused_and_changing_back_clears_the_pen
     rig = make_rig()
     sid, _ = activate(rig)
     with pytest.raises(PlanUnavailable):
-        rig.svc.change_plan(sid, "nope", now=T0, actor="u")
-    rig.svc.change_plan(sid, "plan3", now=T0, actor="u")
-    rig.svc.change_plan(sid, "plan2", now=T0, actor="u")
+        rig.svc.change_plan(sid, "nope", now=T0, ctx=rig.parent)
+    rig.svc.change_plan(sid, "plan3", now=T0, ctx=rig.parent)
+    rig.svc.change_plan(sid, "plan2", now=T0, ctx=rig.parent)
     assert rig.svc.get(sid).pending_plan_id is None
 
 
@@ -551,28 +551,28 @@ def test_plan_change_to_unknown_plan_is_refused_and_changing_back_clears_the_pen
 def test_active_cancel_defaults_to_the_end_of_the_paid_period():
     rig = make_rig()
     sid, _ = activate(rig)
-    out = rig.svc.cancel(sid, now=T0 + 3 * DAY, actor="u_parent", reason="moving")
+    out = rig.svc.cancel(sid, now=T0 + 3 * DAY, ctx=rig.parent, reason="moving")
     s = out.subscription
     assert s.status == Status.active and s.cancel_at_period_end and s.cancel_reason == "moving"
     assert rig.scheduler.cancelled == {}  # sessions continue to the end of the paid period
     assert "subscription_cancelled" not in rig.notifier.names()
     # idempotent
-    rig.svc.cancel(sid, now=T0 + 4 * DAY, actor="u_parent", reason="moving")
+    rig.svc.cancel(sid, now=T0 + 4 * DAY, ctx=rig.parent, reason="moving")
     assert rig.svc.get(sid).version == s.version
 
 
 def test_keep_undoes_a_cancel_at_period_end():
     rig = make_rig()
     sid, _ = activate(rig)
-    rig.svc.cancel(sid, now=T0, actor="u")
-    rig.svc.keep(sid, now=T0, actor="u")
+    rig.svc.cancel(sid, now=T0, ctx=rig.parent)
+    rig.svc.keep(sid, now=T0, ctx=rig.parent)
     assert rig.svc.get(sid).cancel_at_period_end is False
 
 
 def test_immediate_cancel_cancels_future_sessions_and_emits_events():
     rig = make_rig()
     sid, _ = activate(rig)
-    out = rig.svc.cancel(sid, now=T0 + 3 * DAY, actor="u_admin", immediate=True, reason="fraud")
+    out = rig.svc.cancel(sid, now=T0 + 3 * DAY, ctx=rig.admin, immediate=True, reason="fraud")
     assert out.subscription.status == Status.cancelled and out.subscription.cancelled_at
     (c,) = rig.scheduler.cancelled.values()
     assert c["from_at"] == T0 + 3 * DAY and c["reason"] == "cancelled"
@@ -582,15 +582,15 @@ def test_immediate_cancel_cancels_future_sessions_and_emits_events():
 def test_past_due_and_paused_cancel_immediately():
     rig = make_rig()
     sid, _ = activate(rig)
-    rig.svc.pause(sid, now=T0, actor="u")
-    assert rig.svc.cancel(sid, now=T0, actor="u").subscription.status == Status.cancelled
+    rig.svc.pause(sid, now=T0, ctx=rig.parent)
+    assert rig.svc.cancel(sid, now=T0, ctx=rig.parent).subscription.status == Status.cancelled
 
 
 def test_cancel_twice_is_idempotent_and_emits_events_once():
     rig = make_rig()
     sid, _ = activate(rig)
-    rig.svc.cancel(sid, now=T0, actor="u", immediate=True)
-    again = rig.svc.cancel(sid, now=T0, actor="u", immediate=True)
+    rig.svc.cancel(sid, now=T0, ctx=rig.parent, immediate=True)
+    again = rig.svc.cancel(sid, now=T0, ctx=rig.parent, immediate=True)
     assert not again.changed
     assert rig.notifier.names().count("subscription_cancelled") == 1
 
@@ -701,7 +701,7 @@ def test_roll_skips_paused_pending_and_past_due_subscriptions():
     rig = make_rig(BillingConfig(renewal_lead_days=5))
     a, _ = activate(rig, child="a")
     b = new_sub(rig, child="b").subscription.id
-    rig.svc.pause(a, now=T0, actor="u")
+    rig.svc.pause(a, now=T0, ctx=rig.parent)
     now = T0 + 40 * DAY
     assert rig.svc.roll_subscription(a, now=now).action == "skipped"
     assert rig.svc.roll_subscription(b, now=now).action == "skipped"
@@ -711,7 +711,7 @@ def test_roll_skips_paused_pending_and_past_due_subscriptions():
 def test_roll_honours_cancel_at_period_end_no_invoice_then_cancelled_at_the_boundary():
     rig = make_rig(BillingConfig(renewal_lead_days=5))
     sid, _ = activate(rig)
-    rig.svc.cancel(sid, now=T0 + DAY, actor="u")
+    rig.svc.cancel(sid, now=T0 + DAY, ctx=rig.parent)
     s = rig.svc.get(sid)
     end = s.period_end_at
     assert rig.svc.roll_subscription(sid, now=end - 3 * DAY).action == "none"
@@ -787,7 +787,9 @@ def test_two_transitions_from_the_same_version_exactly_one_wins():
     sid, _ = activate(rig)
     stale_a = rig.svc.get(sid)
     stale_b = rig.svc.get(sid)
-    kw = dict(to_status=None, events=[], now=T0, actor="u", reason=None)
+    kw = dict(
+        to_status=None, events=[], now=T0, ctx=rig.parent, action="subscription.test", reason=None
+    )
     rig.svc.store.commit(stale_a, {"cancel_reason": "a"}, trigger="x", **kw)
     with pytest.raises(ConcurrentTransition):
         rig.svc.store.commit(stale_b, {"cancel_reason": "b"}, trigger="y", **kw)
@@ -802,8 +804,8 @@ def _pause_vs_cancel_once():
         rig,
         sid,
         [
-            ("pause", lambda: rig.svc.pause(sid, now=T0, actor="u")),
-            ("cancel", lambda: rig.svc.cancel(sid, now=T0, actor="u", immediate=True)),
+            ("pause", lambda: rig.svc.pause(sid, now=T0, ctx=rig.parent)),
+            ("cancel", lambda: rig.svc.cancel(sid, now=T0, ctx=rig.parent, immediate=True)),
         ],
     )
     s = rig.svc.get(sid)
@@ -831,9 +833,9 @@ def test_50_threads_pause_vs_cancel_leave_a_consistent_state():
         barrier.wait()
         try:
             if i % 2:
-                rig.svc.pause(sid, now=T0, actor="u")
+                rig.svc.pause(sid, now=T0, ctx=rig.parent)
             else:
-                rig.svc.cancel(sid, now=T0, actor="u", immediate=True)
+                rig.svc.cancel(sid, now=T0, ctx=rig.parent, immediate=True)
             outcomes.append("ok")
         except (ConcurrentTransition, ForbiddenTransition):
             outcomes.append("lost")
@@ -874,15 +876,15 @@ def test_a_stale_claim_from_a_dead_writer_is_repaired_before_the_next_transition
 
     rig.repo.update = dying_update
     with pytest.raises(RuntimeError):
-        rig.svc.pause(sid, now=T0, actor="u")
+        rig.svc.pause(sid, now=T0, ctx=rig.parent)
     state["die"] = False
     rig.repo.update = real_update
     assert rig.svc.get(sid).version == before.version  # claim exists, row not updated
     # within the lease nothing is repaired; the transition conflicts
     with pytest.raises(ConcurrentTransition):
-        rig.svc.cancel(sid, now=T0 + timedelta(seconds=5), actor="u", immediate=True)
+        rig.svc.cancel(sid, now=T0 + timedelta(seconds=5), ctx=rig.parent, immediate=True)
     # after the lease the stale claim is rolled forward (the pause happened), then cancel applies
-    out = rig.svc.cancel(sid, now=T0 + timedelta(minutes=5), actor="u", immediate=True)
+    out = rig.svc.cancel(sid, now=T0 + timedelta(minutes=5), ctx=rig.parent, immediate=True)
     assert out.subscription.status == Status.cancelled
     assert out.subscription.version == before.version + 2
 
@@ -893,24 +895,16 @@ def test_a_failing_notifier_or_scheduler_never_undoes_a_committed_transition():
     sid, _ = activate(rig)
     rig.notifier.fail = True
     rig.scheduler.fail = True
-    out = rig.svc.cancel(sid, now=T0, actor="u", immediate=True)
+    out = rig.svc.cancel(sid, now=T0, ctx=rig.parent, immediate=True)
     assert out.subscription.status == Status.cancelled and out.dispatch_failures == 2
     assert rig.svc.get(sid).status == Status.cancelled
-
-
-def test_a_failing_audit_sink_surfaces_but_the_transition_is_committed():
-    rig = make_rig()
-    sid, _ = activate(rig)
-    rig.audit.fail = True
-    out = rig.svc.pause(sid, now=T0, actor="u")
-    assert out.subscription.status == Status.paused and out.audit_failed
 
 
 def test_logs_carry_ids_only_no_phone_numbers_or_amounts_of_people(caplog):
     caplog.set_level(logging.DEBUG, logger="hs_core.billing")
     rig = make_rig()
     sid, inv = activate(rig, parent="parent-0771234567-ignore")
-    rig.svc.cancel(sid, now=T0, actor="u", immediate=True)
+    rig.svc.cancel(sid, now=T0, ctx=rig.parent, immediate=True)
     text = " ".join(r.getMessage() for r in caplog.records)
     assert "0771234567" not in text and "+256" not in text
 
@@ -918,7 +912,9 @@ def test_logs_carry_ids_only_no_phone_numbers_or_amounts_of_people(caplog):
 def test_events_are_returned_without_being_sent_by_the_pure_transition_call():
     rig = make_rig()
     res = new_sub(rig)
-    out = rig.svc.transition(res.subscription.id, Trigger.payment_confirmed, now=T0, dispatch=False)
+    out = rig.svc.transition(
+        res.subscription.id, Trigger.payment_confirmed, now=T0, dispatch=False, ctx=rig.parent
+    )
     assert [e.name for e in out.events][:2] == ["first_payment_confirmed", "matching_requested"]
     assert rig.notifier.events == {}
     assert all(e.event_id.startswith(res.subscription.id) for e in out.events)
@@ -963,19 +959,21 @@ def test_random_event_sequences_never_reach_a_forbidden_state_or_corrupt_invaria
                 elif op == "assign":
                     rig.svc.on_teacher_assigned(sid, assignment_id="a", is_trial=False, now=now)
                 elif op == "pause":
-                    rig.svc.pause(sid, now=now, actor="u")
+                    rig.svc.pause(sid, now=now, ctx=rig.parent)
                 elif op == "resume":
-                    rig.svc.resume(sid, now=now, actor="u")
+                    rig.svc.resume(sid, now=now, ctx=rig.parent)
                 elif op == "cancel":
-                    rig.svc.cancel(sid, now=now, actor="u")
+                    rig.svc.cancel(sid, now=now, ctx=rig.parent)
                 elif op == "cancel_now":
-                    rig.svc.cancel(sid, now=now, actor="u", immediate=True)
+                    rig.svc.cancel(sid, now=now, ctx=rig.parent, immediate=True)
                 elif op == "past_due":
                     rig.svc.mark_past_due(sid, now=now)
                 elif op == "expire":
                     rig.svc.expire_past_due(sid, now=now)
                 elif op == "plan":
-                    rig.svc.change_plan(sid, rng.choice(["plan2", "plan3"]), now=now, actor="u")
+                    rig.svc.change_plan(
+                        sid, rng.choice(["plan2", "plan3"]), now=now, ctx=rig.parent
+                    )
                 elif op == "roll":
                     rig.svc.roll_subscription(sid, now=now)
                     invoices = [i["$id"] for i in rig.repo.list("invoice")]

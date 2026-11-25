@@ -10,6 +10,7 @@ from pathlib import Path
 import pytest
 
 from billing_helpers import T0, activate, make_rig, new_sub
+from hs_core.audit import AuditedRepository, AuditService
 from hs_core.billing import jobs as billing_jobs
 from hs_core.billing.fakes import RepositoryPlans
 from hs_core.billing.models import Invoice, Subscription
@@ -187,8 +188,8 @@ def test_every_row_the_service_writes_matches_the_real_schema():
     i1 = rig.svc.generate_invoice(sid, 1, now=nxt.start_at - timedelta(days=3))
     rig.svc.on_payment_confirmed(i1.id, "r2", now=nxt.start_at)
     rig.svc.on_payment_confirmed(i1.id, "r3", now=nxt.start_at)  # duplicate payment -> flagged
-    rig.svc.change_plan(sid, "plan3", now=T0, actor="u")
-    rig.svc.cancel(sid, now=T0, actor="u", reason="r" * 500)
+    rig.svc.change_plan(sid, "plan3", now=T0, ctx=rig.parent)
+    rig.svc.cancel(sid, now=T0, ctx=rig.parent, reason="r" * 500)
     seen = set()
     for table in (
         "subscription",
@@ -303,11 +304,11 @@ def test_staging_and_production_refuse_to_run_billing_with_unwired_adapters():
 
 
 def test_staging_with_every_adapter_supplied_runs_the_job():
-    from hs_core.billing.fakes import FakeAuditSink, FakeLedger, FakeNotifier, FakeScheduler
+    from hs_core.billing.fakes import FakeLedger, FakeNotifier, FakeScheduler
     from hs_core.billing.wiring import BillingAdapters
     from hs_core.main import create_app
 
-    ad = BillingAdapters(FakeLedger(), FakeAuditSink(), FakeNotifier(), FakeScheduler())
+    ad = BillingAdapters(FakeLedger(), FakeNotifier(), FakeScheduler())
     app = create_app(
         settings=_settings("staging"), repository=InMemoryRepository(), billing_adapters=ad
     )
@@ -319,5 +320,6 @@ def test_settings_reach_the_service_config():
     from hs_core.billing.wiring import build_billing_service
 
     s = Settings(_env_file=None, billing_grace_days=1, billing_roll_chunk_size=7)
-    svc, _ = build_billing_service(s, InMemoryRepository())
+    raw = InMemoryRepository()
+    svc, _ = build_billing_service(s, AuditedRepository(raw, AuditService(raw)))
     assert svc.config.grace_days == 1 and svc.config.roll_chunk_size == 7

@@ -24,14 +24,17 @@ Test fixture: `tests/billing_crash.py` + `tests/test_billing_crash.py` crash eve
 * A confirmed payment for a void invoice (paused, cancelled, or an old anchor after a re-anchoring resume) is flagged `invoice_void` or `late_payment_after_cancellation` for the refund queue and never advances the subscription.
 * `cancel_reason` and transition reasons are cut to 200 characters; the transition row records `reason_truncated`.
 
-## Follow-ups for M06 (audit) and M05 (permissions)
+## Audit (M06, integrated in round 4) and permissions (M05)
 
-These are not on main yet. When M06's `AuditedRepository` refuses unaudited writes to audited tables:
+All billing writes go through the app's `AuditedRepository` (`BillingStore` refuses a raw repository). `subscription` and `invoice` are audited tables, so every change is audit-first: the intent row is written BEFORE the business write, and if the audit store is down the change is not made (`AuditUnavailable`; the transition claim is withdrawn, nothing dangles). Billing's own `AuditSink` is gone: there is exactly ONE audit row per logical change (a transition is one `subscription.<trigger>` row), and `subscription_transition` stays as business history.
 
-* Writes that need an audit context: `billing/store.py` (`create_subscription`, `commit`, `repair`, `create_invoice`, `update_invoice`, `mark_credit_applied`, `create_credit`, `claim_payment`/`update_payment`, `claim_child_slot`, `claim_invoice_paid`, `reserve_credit`, `mark_delivered`) and the service methods that call them: `BillingService.cancel`, `_heal_cancelled`, `_void_open_renewals`, `_reconcile_invoices`, `generate_invoice`, `on_payment_confirmed`, `redispatch_undelivered`.
-* The billing jobs (`billing-period-roll`, `billing-redispatch`, `billing-reconcile`) must run under M06's `job_scope` (system actor); any future API route calling the service needs `Depends(audit_context)`.
-* Billing's own `AuditSink` entries (`subscription.<trigger>`, `payment.applied`, `payment.flagged`, `credit.recorded`) would duplicate M06's intent rows: decide which survives and replace `AuditSink`, do not double-audit.
-* M05: `subscription_transition`, `billing_credit`, `billing_payment` and `billing_claim` are service-only (no client read or write); `subscription` and `invoice` keep their M02/M04 decisions.
+* **Deterministic keys, fixed actors** (`billing/audit_ctx.py`): every write has a key derived from server-side data (`sub-tx:<subscription>:<version>`, `sub-create:<id>`, `inv-create:<id>`, `inv-paid:<invoice>:<provider>:<ref>`, `inv-void:<invoice>:<claim id>`, `inv-reopen:...`), so a retry, a repair or a sweep REPLAYS the same audit row instead of adding one (M06 replays only when actor, action and after-state match, so the actor is fixed too). The claim stores `actor`, `job` and `audit_action`, and `repair` rebuilds the original context from it. Invoice dates are deterministic (invoice date = period start) for the same reason.
+* **Actors:** transitions made by a user are attributed to the verified principal (`ctx=` from `Depends(audit_context)`; required, no ctx = `AuditContextMissing`, never silently `system`); everything else is `system` with job `billing` (`billing-payment:<provider>` for payment confirmations and polls, `billing-assignment`, `billing-past-due`, `billing-period-roll`). The three jobs run under the runner's `job_scope`; they and the sweeps need no extra wiring.
+* **Reasons:** an admin cancelling (`subscription.cancel_admin`, in `REASON_REQUIRED`) must give a reason (checked before the claim is written); a parent's cancel, pause, resume, plan change and every system action need none. Refund flags are one `refund.flag` row (recorded) per flagged payment or cancellation.
+* **Audit outage on a payment confirmation:** audit-first means the handler fails (`AuditUnavailable`) BEFORE the invoice is marked paid; the provider callback is retried (or the poll job asks again), the `billing_payment` claim is resumed after its 120 s lease and the payment is applied once. A confirmed payment is therefore delayed during an audit outage, never lost or half applied (test `test_an_audit_outage_never_loses_a_confirmed_payment...`).
+* `audit-recover` settles intents a crash left without an outcome; the crash harness runs it and checks that each logical change has exactly one intent row and no key collision.
+* **M05:** `subscription_transition`, `billing_credit`, `billing_payment` and `billing_claim` are service-only in `permissions/rules.py` (`SERVICE_ONLY_TABLES`); `permissions_check.py` reports zero differences.
+* **Still open for the API ticket:** a route calling these methods passes `ctx=Depends(audit_context)` (the service never reads a request body for the actor). The B04 reminder/pause jobs call `mark_past_due`/`expire_past_due`, which attribute to `system`.
 
 ## Ledger ($01) mapping: why the real adapter is not wired yet
 
@@ -43,4 +46,4 @@ These are not on main yet. When M06's `AuditedRepository` refuses unaudited writ
 
 ## Wiring
 
-`create_app(billing_adapters=BillingAdapters(ledger, audit, notifier, scheduler))`. In dev the documented fakes are used; in staging and production a missing adapter leaves the service unbound and all three billing jobs raise `BillingNotWired`. Real adapters are owned by $01 (ledger), M06 (audit), N01/N03 (notifier) and S01 (scheduler).
+`create_app(billing_adapters=BillingAdapters(ledger, notifier, scheduler))` (audit is the app's `AuditedRepository`). In dev the documented fakes are used; in staging and production a missing adapter leaves the service unbound and all three billing jobs raise `BillingNotWired`. Real adapters are owned by $01 (ledger, mapping above), N01/N03 (notifier, mapping above) and S01 (scheduler).

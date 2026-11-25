@@ -23,18 +23,6 @@ class DomainEvent:
     data: dict[str, Any] = field(default_factory=dict)
 
 
-@dataclass(frozen=True)
-class AuditEntry:
-    action: str
-    actor: str  # user id or "system"
-    subject_type: str
-    subject_id: str
-    before: dict[str, Any]
-    after: dict[str, Any]
-    reason: str | None
-    idempotency_key: str  # same key twice = one audit row
-
-
 class BillingLedger(Protocol):
     """$01. Every method is idempotent by its `idempotency_key`."""
 
@@ -58,12 +46,6 @@ class BillingLedger(Protocol):
         """A confirmed payment that must not be applied (late after cancellation, duplicate,
         wrong amount): put it on the admin refund/credit queue (PAY-7)."""
         ...
-
-
-class AuditSink(Protocol):
-    """M06."""
-
-    def record(self, entry: AuditEntry) -> None: ...
 
 
 class Notifier(Protocol):
