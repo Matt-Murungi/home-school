@@ -86,7 +86,7 @@ Suggested order: E00 decisions (D01–D03, D05; D04, D06 later/owner) → E01 fo
 - Open: owner sign-off on ADR 0002; check Appwrite plan allows ~43,000 function runs/month.
 
 ### D03 · Hosting decisions (#23)
-- Status: **ready-for-review** (round 2; branch `d03-hosting-adrs`, fix commit on top of 517110f; PR not opened). Round-1 findings below were resolved 25 Nov 2026:
+- Status: **blocked-foundation-merged** (PR #158 squash-merged, #23 closed; round-2 review: all four findings verified resolved, `python3 docs/adr/check-adrs.py` 4/4 ok, #40/#45 notes correct, no underscore labels left in ADRs or any GitHub issue. Decision ADRs sound; still blocked on owner: Fly account, Kampala-to-Fly and mobile latency, staging Appwrite project, lawyer/DPO review, audit_log deviation sign-off). Previously: round 2 ready-for-review (branch `d03-hosting-adrs`). Round-1 findings below were resolved 25 Nov 2026:
   1. Labels: all `ops_admin`/`safeguarding_lead`/`super_admin` in ADR 0012 renamed `opsadmin`/`safeguardinglead`/`superadmin` (ADR 0003 had none); principle 4 states the SR §6.1-minus-underscores mapping and that the rule is from the SDK doc comment (users.d.ts), not verified live; re-verify in A03/M05 on staging. GitHub #40 and #45 edited (only issues with underscore labels; note line appended).
   2. Safeguarding scope: removed `label:safeguardinglead` from `child`, `home_address`, `session_log`, `teacher_document`; now `read("user:<S>")` per assigned lead while a case concerns the row, revoked on case close via `permission-reconcile` (new "Safeguarding scope" rule + divergence row). `safeguarding_case`/`case_status` keep the label. `audit_log` keeps blanket label read, marked as a deviation (new owner question).
   3. Substitute window: added to `child`, address, `session_log`, `handover_summary` rows, a rule paragraph and a divergence-table row; `desired_permissions` takes the window as input; revoked by `address-revoke`/`permission-reconcile`.
@@ -145,3 +145,4 @@ Suggested order: E00 decisions (D01–D03, D05; D04, D06 later/owner) → E01 fo
 - 2026-11-25: D01 merged (PR #156). D02 merged (PR #157) after round 2.
 - 2026-11-25: Repo bootstrapped; backlog (135 tickets) imported and updated for Appwrite; D01, D02 built; two-agent workflow agreed.
 - 2026-11-25: D03 built (ADRs 0003, 0012, ADR lint), ready-for-review on `d03-hosting-adrs`.
+- 2026-11-25: D03 round 2 reviewed, PR #158 merged, status blocked-foundation-merged.
