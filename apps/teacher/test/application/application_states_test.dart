@@ -295,5 +295,31 @@ void main() {
         expect((img.image as ResizeImage).width, 192);
       },
     );
+
+    for (final scale in [1.0, 2.0]) {
+      testWidgets(
+        'real 360x640 phone: every step scrolls without overflow at ${(scale * 100).round()}% text',
+        (t) async {
+          final c = await open(t, phone, scale: scale);
+          t.view.physicalSize = const Size(360, 640); // a small low-end phone
+          for (var i = 0; i < 6; i++) {
+            c.read(applicationControllerProvider.notifier).goToStep(i);
+            await t.pump(const Duration(milliseconds: 200));
+            for (var k = 0; k < 10; k++) {
+              await t.drag(
+                find.byType(Scrollable).first,
+                const Offset(0, -300),
+              );
+              await t.pump(const Duration(milliseconds: 100));
+            }
+            expect(
+              t.takeException(),
+              isNull,
+              reason: 'step $i at $scale on 360x640',
+            );
+          }
+        },
+      );
+    }
   });
 }
