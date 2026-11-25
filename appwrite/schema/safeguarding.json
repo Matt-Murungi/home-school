@@ -303,7 +303,7 @@
     "safeguarding_action": {
       "deletion": "immutable",
       "append_only": true,
-      "note": "APPEND-ONLY case log (SAF-5, SR 5.4). Same restricted per-row grants as the case. Insert-only in the core service (AppendOnlyRepository)."
+      "note": "APPEND-ONLY case log (SAF-5, SR 5.4). Same restricted per-row grants as the case. No client write permission. INTENDED insert-only via AppendOnlyRepository (opt-in, not wired yet: nothing uses it; see appwrite/README.md)."
     },
     "case_status": {
       "deletion": "hard",

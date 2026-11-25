@@ -503,7 +503,7 @@
     "audit_log": {
       "deletion": "immutable",
       "append_only": true,
-      "note": "APPEND-ONLY (SEC-6): who (actor_id, actor_roles), what (action, entity, entity_id), before/after JSON text, reason, ip, request_id, occurred_at (UTC). Read: opsadmin and safeguardinglead via per-row read grants written by the core service (no table-level label read). Insert-only in the core service (AppendOnlyRepository). Index prefix for lookups: (entity, entity_id, occurred_at); actor_id is NULL for system actions. before/after are text (about 16k chars): the core service must summarise or truncate larger diffs (M06 #41 / $01 follow-up).",
+      "note": "APPEND-ONLY (SEC-6): who (actor_id, actor_roles), what (action, entity, entity_id), before/after JSON text, reason, ip, request_id, occurred_at (UTC). Read: opsadmin and safeguardinglead via per-row read grants written by the core service (no table-level label read). No client write permission. INTENDED insert-only via AppendOnlyRepository (opt-in, not wired yet: nothing uses it; see appwrite/README.md). Index prefix for lookups: (entity, entity_id, occurred_at); actor_id is NULL for system actions. before/after are text (about 16k chars): the core service must summarise or truncate larger diffs (M06 #41 / $01 follow-up).",
       "non_fk": {
         "entity_id": "polymorphic reference to any audited row, discriminated by entity",
         "request_id": "correlation id of the HTTP request, not a row id"
@@ -523,7 +523,7 @@
     },
     "device_token": {
       "deletion": "history",
-      "note": "FCM tokens per user and app; revoked_at on logout or invalid token, row kept for history until retention. The token is a sensitive bearer-style secret: never logged (F08 scrubber), never listed to admins, rows carry per-row read/none permissions only (the core service reads them; no table-level or label permission). token_hash = sha256 hex of the token, unique: lookups by token on rotation or invalid-token feedback use the hash; a re-registered token after revoke reuses the row (clear revoked_at) instead of inserting."
+      "note": "FCM tokens per user and app; revoked_at on logout or invalid token, row kept for history until retention. The token is a sensitive bearer-style secret: never logged (F08 scrubber), never listed to admins, rows carry per-row read/none permissions only (the core service reads them; no table-level or label permission). token_hash = sha256 hex of the token, unique: lookups by token on rotation or invalid-token feedback use the hash; Upsert rule: register = look up by token_hash. If no row, insert. If a row exists for the same user (re-register after revoke), clear revoked_at and set last_seen_at. If the token arrives for a different user (shared device), update user_id to the new user, rewrite the row's read permission to that user, clear revoked_at and set last_seen_at: never keep two live rows for one token. Revoke on logout."
     }
   },
   "relations": [

@@ -48,7 +48,7 @@ erDiagram
 ## Tables
 
 - `safeguarding_case` (soft): RESTRICTED (ADR 0012): no table permission at all; the core service writes each row with read(user:<assigned lead>) per case only (no label read on the table: safeguarding scope rule). Reporters never read this row; they read case_status. Writes by the core service only. The involved teacher is never notified automatically (SAF-4).
-- `safeguarding_action` (immutable): APPEND-ONLY case log (SAF-5, SR 5.4). Same restricted per-row grants as the case. Insert-only in the core service (AppendOnlyRepository).
+- `safeguarding_action` (immutable): APPEND-ONLY case log (SAF-5, SR 5.4). Same restricted per-row grants as the case. No client write permission. INTENDED insert-only via AppendOnlyRepository (opt-in, not wired yet: nothing uses it; see appwrite/README.md).
 - `case_status` (hard): What the reporter may see (ADR 0012): reference, status and dates only, no content. read(user:<reporter>) plus the case's lead. Never soft-deleted (a soft delete would either hide a financial/idempotency record or free its unique value): the lifecycle is the status column; only the retention job hard-deletes it, after the retention period (DP-6, SR 5.5). One row per case (unique case_id); removed with the case under retention.
 
 ## Relations to tables that arrive in later tickets

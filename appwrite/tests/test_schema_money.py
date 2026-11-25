@@ -252,6 +252,61 @@ class RoundTwoNotes(unittest.TestCase):
         self.assertIn("summaris", META["audit_log"]["note"].lower())
 
 
+OVERCLAIM = re.compile(r"(?<!intended )insert-only[^.;(]{0,40}core service|only way|guarantee", re.I)
+
+
+def overclaims(text):
+    return OVERCLAIM.findall(text)
+
+
+class DocConsistency(unittest.TestCase):
+    """Schema notes must not claim enforcement that does not exist (the AppendOnlyRepository is opt-in, unused)."""
+
+    def all_texts(self):
+        for d in DOMAINS:
+            yield f"{d['domain']} description", d.get("description", "")
+            for t, m in d.get("meta", {}).items():
+                yield f"{d['domain']}.{t}", m.get("note", "")
+
+    def test_no_schema_note_overclaims_enforcement(self):
+        for where, text in self.all_texts():
+            self.assertEqual(overclaims(text), [], where)
+
+    def test_overclaim_detector_fails_on_mutations(self):
+        for bad in (
+            "Insert-only in the core service (AppendOnlyRepository).",
+            "insert-only repository in the core service",
+            "This is the only way to write it",
+            "The wrapper guarantees append-only",
+        ):
+            self.assertTrue(overclaims(bad), bad)
+        self.assertEqual(overclaims("INTENDED insert-only via AppendOnlyRepository (opt-in, not wired yet)"), [])
+
+    def test_append_only_notes_say_intended_opt_in_not_wired(self):
+        for t in APPEND_ONLY:
+            note = META[t]["note"]
+            self.assertIn("INTENDED", note, t)
+            self.assertIn("opt-in", note, t)
+            self.assertIn("not wired yet", note, t)
+            self.assertIn("appwrite/README.md", note, t)
+        for name in ("money", "platform", "safeguarding"):
+            self.assertNotIn("insert-only repository in the core service", BY_NAME[name]["description"])
+
+    def test_device_token_upsert_rule_for_a_different_user(self):
+        note = META["device_token"]["note"]
+        for phrase in (
+            "different user",
+            "look up by token_hash",
+            "update user_id",
+            "rewrite the row's read permission",
+            "clear revoked_at",
+            "set last_seen_at",
+            "never keep two live rows for one token",
+            "revoke on logout",
+        ):
+            self.assertIn(phrase, note.lower())
+
+
 class MoneyRules(unittest.TestCase):
     def test_money_columns_are_integer_ugx_and_no_floats(self):
         for t in M04:

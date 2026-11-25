@@ -1,6 +1,6 @@
 {
   "domain": "money",
-  "description": "Tiers, bonuses, invoices, payments, earnings, payouts, double-entry ledger, feedback (M04, SR 5.4, 7.8-7.11). Money is integer UGX; instants are UTC. ledger_transaction and ledger_entry are append-only (insert-only repository in the core service, no client write permission). Soft-delete rule: as M01: soft-deleted rows keep their unique values (idempotency keys, codes, periods are never reused), the retention job is the only hard-deleter.",
+  "description": "Tiers, bonuses, invoices, payments, earnings, payouts, double-entry ledger, feedback (M04, SR 5.4, 7.8-7.11). Money is integer UGX; instants are UTC. ledger_transaction and ledger_entry are append-only (no client write permission; core-service insert-only access is INTENDED via the opt-in AppendOnlyRepository, not wired yet, see appwrite/README.md). Soft-delete rule (M02): unique values on soft tables sit on derived nullable *_key columns; tables whose unique values must never be freed (payment, payout, invoice, earning, ledger_account) are not soft-deletable. The retention job is the only hard-deleter.",
   "tables": [
     {
       "$id": "tier",
@@ -1465,7 +1465,7 @@
     "ledger_transaction": {
       "deletion": "immutable",
       "append_only": true,
-      "note": "APPEND-ONLY header of a balanced posting (SR 7.10). Core-service rules (owner: $01 #76, not enforceable in Appwrite): sum(debit amounts) == sum(credit amounts) == total_amount, entry_count == number of lines, all in one currency, integer UGX > 0; idempotency_key unique so a retried posting cannot double post; corrections are a new transaction with kind=reversal and reverses_transaction_id (unique: reversed once). reference_type/reference_id are polymorphic (payment, earning, payout...).",
+      "note": "APPEND-ONLY header of a balanced posting (SR 7.10). Core-service rules (owner: $01 #76, not enforceable in Appwrite): sum(debit amounts) == sum(credit amounts) == total_amount, entry_count == number of lines, all in one currency, integer UGX > 0; idempotency_key unique so a retried posting cannot double post; corrections are a new transaction with kind=reversal and reverses_transaction_id (unique: reversed once). reference_type/reference_id are polymorphic (payment, earning, payout...). INTENDED insert-only via AppendOnlyRepository (opt-in, not wired yet: nothing uses it; see appwrite/README.md).",
       "non_fk": {
         "reference_id": "polymorphic reference to payment/earning/payout/invoice rows, discriminated by reference_type"
       }
@@ -1473,7 +1473,7 @@
     "ledger_entry": {
       "deletion": "immutable",
       "append_only": true,
-      "note": "APPEND-ONLY line of a transaction: one side (debit or credit) and a positive integer UGX amount. Unique (transaction_id, line). Insert-only in the core service (AppendOnlyRepository); no client write permission. Write all lines first, the header last so a crash leaves no header over partial lines (reconciliation job flags orphan lines).",
+      "note": "APPEND-ONLY line of a transaction: one side (debit or credit) and a positive integer UGX amount. Unique (transaction_id, line). No client write permission. INTENDED insert-only via AppendOnlyRepository (opt-in, not wired yet: nothing uses it; see appwrite/README.md). Write all lines first, the header last so a crash leaves no header over partial lines (reconciliation job flags orphan lines).",
       "non_fk": {
         "reference_id": "polymorphic reference, discriminated by reference_type"
       }

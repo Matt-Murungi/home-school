@@ -181,3 +181,22 @@ def test_raw_sdk_row_writes_exist_only_in_repository_module():
             if isinstance(n, ast.Attribute) and n.attr in WRITE_METHODS - {"update", "delete"}:
                 offenders.append(str(p))
     assert offenders == []
+
+
+def test_docs_list_the_extra_scan_gaps_and_function_local_constants():
+    readme = (SRC.parents[3] / "appwrite" / "README.md").read_text().lower()
+    doc = (SRC / "append_only.py").read_text().lower()
+    for text in (readme, doc):
+        assert "reassigned" in text and "two scopes" in text and "per file" in text
+        assert "module-level string constant" not in text
+        assert "function-local" in text
+
+
+def test_scan_catches_function_local_constants(tmp_path):
+    (tmp_path / "f.py").write_text('def f(repo):\n    t = "audit_log"\n    repo.delete(t, "x")\n')
+    assert find_append_only_violations(tmp_path)
+
+
+def test_reassigned_constant_hides_the_earlier_value(tmp_path):
+    (tmp_path / "g.py").write_text('T = "audit_log"\nT = "child"\nrepo.delete(T, "x")\n')
+    assert find_append_only_violations(tmp_path) == []  # documented miss

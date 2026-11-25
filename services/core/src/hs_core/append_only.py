@@ -11,13 +11,16 @@ two separate, partial things; nothing uses it yet (the wrapper is not wired in).
    and flags a call to a write-style method (WRITE_METHODS: update, delete,
    update_row(s), delete_row(s), upsert_row(s), increment/decrement_row_column,
    create_operations) when an argument is a string literal naming an append-only
-   table, or a name bound at module level (NAME = "x" or NAME: str = "x") to one.
+   table, or a name bound anywhere in the same file (module-level or function-local
+   NAME = "x" or NAME: str = "x") to one.
    It MISSES: table names that are computed (f-strings, concatenation, dynamic
    lookups), passed as a function parameter, held in a class attribute, tuple or
    other container constant, supplied through *args/**kwargs splats, reached via
    getattr(repo, "update"), a bound-method alias (u = repo.update; u("ledger_entry")),
-   or dict dispatch. It also cannot see write methods added to the SDK later; a
-   test compares the list with the installed SDK.
+   or dict dispatch. Constants are resolved per file, not per scope: a name reassigned
+   later in the same file hides the earlier value (last assignment wins), and the
+   same name bound in two scopes is conflated (two scopes, one value). It also cannot see write methods added to the SDK
+   later; a test compares the list with the installed SDK.
 The set of tables must equal the tables marked `append_only` in appwrite/schema/*.json
 (checked by a test).
 """
