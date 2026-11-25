@@ -190,3 +190,28 @@ def test_orphan_age_uses_the_first_attempts_timestamp():
     posted = env.restart().post(tx("payment:p1", 500))
     assert posted.posted_at == first  # lines and header agree on posted_at
     assert {e.posted_at for e in posted.lines} == {first}
+
+
+def test_recover_job_handler_completes_reports_abandoned_and_is_idempotent(caplog):
+    import logging
+
+    from hs_core.jobs.model import JobContext
+    from hs_core.ledger.jobs import make_recover_handler
+
+    env = Env("appwrite")
+    for key in ("payment:a", "payment:b"):
+        env.faulty.arm(1, "after")
+        with pytest.raises(CrashInjected):
+            env.svc.post(tx(key, 500))
+    env.faulty.arm(None)
+    env.clock.advance(hours=2)
+    handler = make_recover_handler(
+        lambda: env.svc, lambda g: tx("payment:a", 500) if True else None
+    )
+    ctx = JobContext("ledger-recover", "r1", "ledger-recover:1", None, {}, None, 0)
+    caplog.set_level(logging.WARNING, logger="hs_core.ledger.recover")
+    first = handler(ctx)
+    assert first.items == 2 and env.svc.get_by_key("payment:a") is not None
+    assert any("abandoned" in r.getMessage() for r in caplog.records)
+    assert handler(ctx).items == 1  # b is still abandoned; a does not repeat
+    assert env.svc.balance(CASH_MTN) == Money(500)

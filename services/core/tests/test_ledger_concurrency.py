@@ -33,6 +33,29 @@ def run_threads(fn, n=THREADS):
     return results
 
 
+def assert_as_of_consistent(env):
+    """At every distinct timestamp seen, balances/statements/trial balance are all or nothing."""
+    from hs_core.ledger.model import parse_ts
+
+    stamps = set()
+    for acct in env.store.list_accounts():
+        stamps |= {e.posted_at for e in env.svc.statement(acct.code)}
+    for stamp in sorted(stamps):
+        at = parse_ts(stamp)
+        assert env.svc.trial_balance(at).is_balanced
+        total_debits = 0
+        total_credits = 0
+        for acct in env.store.list_accounts():
+            entries = list(env.svc.statement(acct.code, at))
+            total_debits += sum(e.amount for e in entries if e.side.value == "debit")
+            total_credits += sum(e.amount for e in entries if e.side.value == "credit")
+            assert env.svc.balance(acct.code, at).amount == (
+                sum(e.amount for e in entries if e.side == acct.normal_side)
+                - sum(e.amount for e in entries if e.side != acct.normal_side)
+            )
+        assert total_debits == total_credits, stamp
+
+
 @pytest.fixture(params=["appwrite", "memory"])
 def env(request):
     return Env(request.param)
@@ -50,6 +73,7 @@ def test_50_threads_posting_the_same_key_make_one_transaction(env):
     if env.kind == "appwrite":
         assert len(env.raw._t["ledger_transaction"]) == 1 and len(env.raw._t["ledger_entry"]) == 2
     assert env.svc.trial_balance().is_balanced
+    assert_as_of_consistent(env)
 
 
 def test_50_threads_same_key_different_content_exactly_one_wins(env):
@@ -72,6 +96,7 @@ def test_50_threads_different_transactions_on_one_teacher_payable_lose_no_update
     assert env.svc.balance(code) == Money(sum(100 + i for i in range(THREADS)))
     assert env.svc.trial_balance().is_balanced
     assert len(list(env.svc.statement(code))) == THREADS
+    assert_as_of_consistent(env)
 
 
 def test_50_threads_creating_the_same_teacher_payable_make_one_account(env):

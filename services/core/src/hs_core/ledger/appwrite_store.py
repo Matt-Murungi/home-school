@@ -150,21 +150,39 @@ class AppwriteLedgerStore:
             raise IdempotencyConflict(tx.idempotency_key, diff)
         return dataclasses.replace(posted, replayed=True)
 
-    def _write_line(self, tx: PreparedTransaction, ln: Any, posted_at: str) -> None:
-        row = tx.entry_row(ln, posted_at)
+    def _write_line(self, tx: PreparedTransaction, ln: Any) -> dict[str, Any]:
+        """Create the line, or on a 409 read the persisted one; return the PERSISTED row after
+        verifying it carries what this request would have written (posted_at included)."""
+        row = tx.entry_row(ln)
+        row_id = entry_id_for(tx.id, ln.line)
         try:
-            self._ao.create(ENTRY, entry_id_for(tx.id, ln.line), row)
+            self._ao.create(ENTRY, row_id, row)
+            return row
         except Conflict:  # a retry or a concurrent poster of the same key wrote it first
-            self._verify_line(tx, ln, self._ao.get(ENTRY, entry_id_for(tx.id, ln.line)))
+            have = self._ao.get(ENTRY, row_id)
+            self._verify_line(tx, ln, have)
+            return have
 
     @staticmethod
     def _verify_line(tx: PreparedTransaction, ln: Any, have: dict[str, Any]) -> None:
-        if (have["account_id"], have["side"], have["amount"], have["transaction_id"]) != (
-            ln.account_id,
-            ln.side.value,
-            ln.amount,
-            tx.id,
-        ):
+        """Everything a line stores must match this request (the header-only fields, kind,
+        description, created_by, cannot be checked against orphans: the first sealer wins)."""
+        want = tx.entry_row(ln)
+        same = (
+            all(
+                (have.get(k) or None) == (want.get(k) or None)
+                for k in (
+                    "transaction_id",
+                    "account_id",
+                    "side",
+                    "amount",
+                    "reference_type",
+                    "reference_id",
+                )
+            )
+            and (have.get("currency") or "UGX") == want["currency"]
+        )
+        if not same or parse_ts(have["posted_at"]) != parse_ts(want["posted_at"]):
             raise IdempotencyConflict(tx.idempotency_key, ["lines"])
 
     def _seal(self, tx: PreparedTransaction) -> bool:
@@ -189,15 +207,23 @@ class AppwriteLedgerStore:
         if set(existing) - {ln.line for ln in tx.lines}:
             raise IdempotencyConflict(tx.idempotency_key, ["lines"])
         # an earlier attempt fixed posted_at on its first line; reuse it so lines and header agree
+        # Line 1 is the single source of posted_at: write it (or read the winner of a 409) and
+        # adopt ITS timestamp for every other line and the header, whichever clock we have.
         first = existing.get(1)
-        if first is not None:
-            tx = dataclasses.replace(tx, posted_at=first["posted_at"])
+        if first is None:
+            first_ln = tx.lines[0]
+            try:
+                self._ao.create(ENTRY, entry_id_for(tx.id, 1), tx.entry_row(first_ln))
+                first = tx.entry_row(first_ln)
+            except Conflict:
+                first = self._ao.get(ENTRY, entry_id_for(tx.id, 1))
+        tx = dataclasses.replace(tx, posted_at=first["posted_at"])
         for ln in tx.lines:
-            have = existing.get(ln.line)
+            have = existing.get(ln.line) if ln.line != 1 else first
             if have is not None:
                 self._verify_line(tx, ln, have)
             else:
-                self._write_line(tx, ln, tx.posted_at)
+                self._write_line(tx, ln)
         sealed_here = self._seal(tx)
         posted = self.get_transaction(tx.id)
         assert posted is not None

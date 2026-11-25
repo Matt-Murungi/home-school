@@ -88,3 +88,21 @@ def test_docs_write_down_the_swap_boundary_and_key_convention():
         "reversal:<original transaction id>",
     ):
         assert needle in doc, needle
+
+
+def test_docs_state_scope_cost_order_and_recovery():
+    from pathlib import Path
+
+    doc = (Path(__file__).parents[3] / "docs" / "ops" / "ledger.md").read_text()
+    head = doc.split("## What it guarantees", 1)[1][:600]
+    assert "opt-in" in head and "server API key can still update or delete" in head
+    for needle in (
+        "O(entries of the account)",
+        "about 111 calls",
+        "creation order, NOT `posted_at` order",
+        "Partial reversal is NOT supported",
+        "different reason raises `IdempotencyConflict`",
+        "make_recover_handler",
+        "line 1",
+    ):
+        assert needle in doc, needle

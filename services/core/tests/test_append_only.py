@@ -168,7 +168,10 @@ def test_docs_say_tripwire_and_opt_in_and_never_claim_only_way():
         low = text.lower()
         assert "tripwire" in low and "opt-in" in low
         assert "only way" not in low
-    assert "nothing uses it yet" in readme.lower() and "nothing uses it yet" in doc.lower()
+    for text in (readme, doc):
+        low = text.lower()
+        assert "used by the ledger service" in low and "opt-in elsewhere" in low
+        assert "nothing uses it yet" not in low
 
 
 def test_raw_sdk_row_writes_exist_only_in_repository_module():
