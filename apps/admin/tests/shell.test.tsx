@@ -3,7 +3,10 @@ import { describe, expect, it, vi } from "vitest";
 import { AdminShell } from "@/components/AdminShell";
 import { EnvBadge } from "@/components/EnvBadge";
 
-vi.mock("next/navigation", () => ({ usePathname: () => "/queues" }));
+vi.mock("next/navigation", () => ({
+  usePathname: () => "/queues",
+  useRouter: () => ({ push: () => {} }),
+}));
 
 const admin = { name: "Amina K", email: "a@x.test", roles: ["opsadmin" as const] };
 
@@ -40,9 +43,9 @@ describe("layout shell", () => {
         <p>body</p>
       </AdminShell>,
     );
-    expect(screen.getByRole("searchbox")).toHaveAttribute(
+    expect(screen.getByRole("combobox", { name: "Search" })).toHaveAttribute(
       "placeholder",
-      expect.stringMatching(/people, sessions, payments/i),
+      expect.stringMatching(/parents.*sessions.*payments/i),
     );
     expect(screen.getByText("Amina K")).toBeInTheDocument();
     expect(screen.getByText("Operations admin")).toBeInTheDocument();
