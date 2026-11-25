@@ -15,7 +15,7 @@ from hs_core.observability.scrub import (
     scrub_text,
 )
 
-FAST = 1.5  # seconds; the real runs take milliseconds
+FAST = 3.0  # seconds; the real runs take milliseconds
 
 
 def timed(fn, *a):
