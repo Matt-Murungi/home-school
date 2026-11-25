@@ -92,6 +92,7 @@ Failures such as `eslint: command not found`, `apps/admin needs npm ci first` or
 | legal docs (C04) | `cd docs/legal && python3 -m unittest discover -s tests && python3 check-processors.py` (39 tests; validator checks `processors.json` vs `docs/ops/secrets-inventory.json` when F09 is on main, SR §9 integrations, required fields, register markdown). Stdlib, offline. Also in `make test` via `legal-docs` in packages.json. |
 
 | CI/CD (F07) | `python3 scripts/ci_lint.py` (workflow rules) and `python3 -m unittest scripts.tests.test_workflows` (83 tests, stdlib; PyYAML cross-check via uv if online). actionlint: `uvx --from actionlint-py==1.7.12.25 actionlint .github/workflows/*.yml`. Part of `make test`/`make lint` via `root-tests`. Real verification = the PR's checks. |
+| core audit (M06) | same command as services/core (`uv run pytest -q`); M06 only: `uv run pytest -q tests/test_audit_*.py` (~230 tests incl. fault injection and mutation tests). Docs: `docs/ops/audit.md`. |
 
 (Add a row for each new package.)
 
@@ -994,6 +995,33 @@ Files: Makefile, packages.json, scripts/run_packages.py, scripts/tests/test_layo
 - **Deviations/notes:** (1) The task's status names deferred/suppressed are not in the M04 enum: stored as queued(+future time)/blocked, exposed via `public_status`. (2) Per-channel opt-outs (marketing only) work in logic and the fake store, but `notification_preference` has no column: `RepositoryPreferenceStore.set_muted_channels` raises `NotPersistable` (issue says "marketing mute only"; follow-up: add `marketing_muted_channels` via a migration if the owner wants it). (3) `device_token`/preferences/notification rows get per-row `read(user:<id>)` only. (4) No cross-process claim for dispatch (no conditional update in Appwrite): protection is lease + provider idempotency key (N02 must verify Resend honours the key; ADR 0005 says to). (5) Blocked-template audit rows have no `dedupe_key` (a corrected retry with the same key must work). (6) Admin dashboard-only matrix cells (payment to admin, disputes to admin, document expiry to admin) create no notification. (7) Rate limit is approximate under concurrent sends. (8) Hard bounces do not yet feed a suppression list (N02, ADR 0005). (9) A-50 screen, the audit-log write (M06 hook `TemplateStore.audit`) and the FastAPI route to publish are not built.
 - **Owner-blocked / defaults to confirm:** copy approval (all English text is a draft); FCM/APNs/Resend accounts (N02); which events are `urgent` (default: assignment offer, 1-hour reminder); that quiet hours stay global 21:00-07:00; critical set (substitute assigned, session cancelled, payment failed, all safeguarding); rate limit 5 per 10 min; safeguarding escalation 15 minutes; max 4 attempts; whether per-channel marketing opt-out is wanted (needs a schema column).
 - **Follow-ups:** N02 real adapters + webhook endpoint calling `record_delivery`; G tickets implement `EscalationHooks`; M05 permissions use `notification_owner_id`; M06 audit via `TemplateStore.audit`; A-50 UI; C03 calls `expire_payloads`; a `ContactDirectory` backed by Appwrite users (email lookup); in-app inbox API (list own rows, `read_at`).
+
+### M06 · Audit logging for admin actions and sensitive changes (#41)
+- Status: **ready-for-review**. Branch `m06-audit-logging` (commit 5c7a7bd, rebased on main; pushed --force-with-lease; PR not opened). Blocked on owner: nothing (Q12 answered by default: flag `AUDIT_LEAD_BLANKET_READ`, default true).
+- **Built:** `services/core/src/hs_core/audit/` (errors, registry, payload, context, service, repository, reads, query, recover, tripwire, api) + docs `docs/ops/audit.md`. `app.state.repository` is now an `AuditedRepository` over the raw repo (`app.state.audit` = `AuditService`): audited tables (registry.py: money, tiers, plans/sessions and children, logs, safeguarding, `app_setting` reserved, role_assignment, user_profile, teacher_*) need an `AuditContext` (`Depends(audit_context)` from `hs_core.audit.api`; runner wraps handlers in `job_scope` = actor `system` + job name). Hooks outside the module: `main.py` (wiring, client-IP contextvar), `jobs/runner.py` (3 lines), `jobs/schedule.py` (`audit-recover`, every 10 min), `auth_otp/accounts.py` (A01 sign-up writes bound to the new user), `settings.py` (3 settings), `repository.py` (fake supports `cursorAfter`), `.env.example`, F09 inventory (80 entries).
+- **Protocol (chosen, justified in docs/ops/audit.md):** audit-first. Intent row (deterministic id from request/job key + entity + id + n) created BEFORE the business write (audit store down = change refused); seen failure adds a `failed` outcome row; crash settled by `audit-recover` (entity state hash vs intent before/after hash -> `not_applied` row, or counted `unverifiable`, never guessed). Happy path = exactly one row. No schema change (envelope JSON in existing `before`/`after`, meta in `after`).
+- **Tests (offline):** `tests/test_audit_{payload,service,recovery,reads,query,wiring,mutations,docs}.py` + `audit_helpers.py`. Core suite on rebased tree: 1326 passed, ruff clean. NOTE honestly: tests were written before the code but I did not run them red first (module absent = import errors only); the mutation tests are the evidence that they bite.
+- **Redaction decision:** answer keys never logged; names/contact/coords/files/raw payloads redacted by key; strings through F08 `scrub_text`; schema-driven test forces a decision for every free-text column of audited tables.
+
+| Criterion / edge case (#41) | Test |
+|---|---|
+| Single audit helper called by every write path | `test_audit_service.TestChokePoint`, `TestEveryAuditedTableIsCovered`, `test_audit_wiring.TestAppState`, tripwire `test_audit_reads.TestUnauditedWriteTripwire` |
+| Reason captured where required | `TestReasonRegistry` (every registry action x None/blank/whitespace) |
+| Reads of cases logged | `test_audit_reads.TestReadAudited` (fail closed, ids only, retries), `TestCaseReadTripwire`, `test_plain_reads_of_case_tables_are_refused` |
+| Setting change / dispute resolve / case open = exactly one row | `TestAcceptanceOneRowPerChange` |
+| System job actor + job name | `TestSystemActor`, `test_audit_wiring.TestJobContext`, `test_audit_recovery...handler_runs_as_a_system_job` |
+| Console bypass | documented limit (docs/ops/audit.md "Limits"), `test_audit_docs` |
+| Concurrent updates ordered | `TestOrderingAndConcurrency` (12 threads, chain check) |
+| Huge / unicode / redaction | `test_audit_payload.TestTruncation`, `TestRedaction`, `TestPayloadThroughTheRepository` |
+| Failed write; crash recovery; no double rows | `TestFailedBusinessWrite`, `TestIdempotencyAndRetries`, `test_audit_recovery.TestCrashAfterEveryWrite` (create/update/delete x every write x before/after, retry and recover in both orders) |
+| Actor from verified JWT only; trusted IP | `TestActorBinding`, `test_audit_wiring.TestRequestContext` |
+| Query side, cursor, visibility, Q12 flag | `test_audit_query.py`, `TestSettings` |
+| Mutations (skip audit on update, double-write on retry, log secrets, +5) | `test_audit_mutations.TestMutationsFailTheContract` |
+| Tripwire honesty | `test_audit_docs`, `test_known_misses_are_real_and_documented` |
+
+- **Limits (documented):** raw repo holders can still write; `seq` can tie across multiple instances; recovery window bounded and ~2 reads per intent; redacted-only/no-op changes are unverifiable; console edits invisible.
+- **Follow-ups:** M05/G/S tickets must take the audited repository and pass `ctx`/`action`/`reason`; settings ticket creates `app_setting`; H08 builds the viewer on `list_audit`; consider adding `status/source/job/seq` columns later if queries by them are needed.
+- Results (rebased tree): `cd services/core && uv sync && uv run pytest -q` 1326 passed; ruff check/format clean; `make setup && make lint` 11 ok 2 skipped 0 failed; `make test` 13 ok 0 failed (before final rebase onto X01/$01 memory commits; core pytest and lint re-run after rebase).
 
 ### H09 · Global search (#138)
 
