@@ -61,6 +61,7 @@ Reviewer writes: commands run, results, criterion-by-criterion verdict, findings
 | docs/legal (policy inventory) | `python3 docs/legal/check-policy-inventory.py` (fails on missing purpose/consumer ticket/owner/status or unknown ticket #) |
 | docs/adr (ADR lint; reuse for every decision ticket) | `python3 docs/adr/check-adrs.py` (all ADRs) or `python3 docs/adr/check-adrs.py docs/adr/00NN-x.md`. Needs `# ADR NNNN — title` (number = file name), `- **Status:**` (Proposed/Accepted/Superseded/Deprecated), `- **Date:**`, `- **Ticket:**`, and `## Context`, `## Decision`, `## Consequences`. Exit 1 on failure. Stdlib only. |
 | root tooling (F01) | `make test` (every implemented package per `packages.json`; planned ones skip with a message; `HS_STRICT=1` fails on missing tools, `HS_SKIP=id,id`) and `make lint` (layout guard + secret scan + package lint). F01 tests alone: `python3 -m unittest discover -s scripts/tests -v`. Stdlib only. |
+| appwrite (F02) | `cd appwrite && python3 -m unittest discover -s tests -v` (60 tests, stdlib only, offline). Also `python3 appwrite/check_keys.py` validates `appwrite/keys.md`. Migration runner: `python3 appwrite/migrate.py --env staging` (needs real env, owner-blocked). |
 
 (Add a row for each new package.)
 
@@ -175,6 +176,29 @@ Suggested order: E00 decisions (D01–D03, D05; D04, D06 later/owner) → E01 fo
 - Deviations: no CI workflow (F07). Planned packages have no placeholder test (honest skip instead). `gitleaks`/`pre-commit` not run locally.
 - Follow-ups: each scaffolding ticket (F02 appwrite, F03 core, F05 apps/shared, F06 admin) flips its `packages.json` status to `implemented` and adds its row to "How to run tests"; add a lint command for the spikes only if wanted.
 
+### F02 · Appwrite projects for dev, staging, production (#28)
+- Status: **ready-for-review** (builder done; foundation only, so expect `blocked-foundation-merged`). Branch `f02-appwrite-envs` (commit 3420802, rebased on main 763519f), not PR'd.
+- Built (all under `appwrite/`, plus packages.json entry flipped to implemented, README layout row, `.gitignore` entry for `appwrite/environments.json`): `appwrite.config.json` (CLI-format skeleton: db `main`, tables `schema_migration` + sample `sample_item`, bucket `teacher-docs`, no functions; ADR 0012 rules: rowSecurity on, empty `$permissions`, fileSecurity on); `environments.example.json` (3 envs, Frankfurt endpoint, placeholder project ids, `keyEnvVar` names the env var holding each key, `seedAllowed`); `migrate.py` (runner + `AppwriteClient` interface); `fake_client.py` (test stand-in); `appwrite_client.py` (urllib REST adapter, mocked-only, key from `os.environ` only); `migrations/0001_schema_baseline.py`; `keys.md` + `check_keys.py`; `tests/` (60 tests).
+- Test command: `cd appwrite && python3 -m unittest discover -s tests -v` -> Ran 60 OK (red first: import errors, then green). `make test` runs it as package `appwrite`.
+- Runner contract: scripts `NNNN_name.py` with `up(ctx)`; `NNNN_seed_*.py` are seeds; exit 0 ok / 1 failed / 2 invalid / 3 seed refused in production; always prints `PROMOTE=true|false` and writes `promote=` to `$GITHUB_OUTPUT`. Also detects edited applied scripts, duplicate versions, applied-but-missing scripts.
+
+| Criterion / edge case | Evidence |
+|---|---|
+| Three projects, separate keys, buckets, platforms (Android/iOS/web) | OWNER-BLOCKED (create projects). Foundation: `test_config.Environments` (3 envs, distinct key env var each, platforms listed, placeholders only) |
+| Schema applies to staging from CI, re-run no-op | `appwrite push` from CI OWNER-BLOCKED (needs staging project + F07 CI). Runner no-op: `Ordering.test_rerun_is_a_noop`, `test_new_script_after_rerun_runs_only_the_new_one`; config shape: `test_config.Config` |
+| Keys scoped per consumer, fewest scopes | `test_keys` (allowlist per consumer, no wildcard, core cannot hold deploy scopes, CI cannot hold users.*, expiry, one row per consumer+env, repo `keys.md` passes). Creating the keys is OWNER-BLOCKED |
+| Seed only dev/staging, never production | `SeedGuard` (production refused before anything runs, alias/case variants, already-recorded seed, CLI exit 3, unknown env) |
+| Keys in secrets manager not repo | `NoSecretsCommitted` (secret_scan on appwrite/, key-like value scan, no .env files, adapter never reads key from a file); entries themselves OWNER-BLOCKED |
+| Edge: push fails halfway -> CI stops, no production | `FailureStopsEverything` (stops at first failure, later scripts not run, PROMOTE=false, retried next run, CLI exit 1) |
+| Edge: column/index still processing | `WaitsForAvailable` (waits and polls, script sees only available, timeout fails without running script, `failed` fails fast) |
+| CI job applies sample schema change to staging | OWNER-BLOCKED (needs staging + F07). `sample_item` + `0001` are the sample |
+| Secret scan finds no keys | `test_secret_scan_clean_on_appwrite_dir` (note: whole-repo scan currently fails on main at `memory.md:145`, F01 reviewer text quoting a sample password; not mine, reword that line) |
+| Real adapter | `test_adapter` (mocked opener, no network). REST paths (`/tablesdb/{db}/tables/{t}/columns|indexes|rows`) written from docs, NOT run live: verify once against dev |
+
+- Owner steps (exact): 1) In Appwrite Cloud (Frankfurt) create projects `hs-development`, `hs-staging`, `hs-production` (the existing live project may be re-used as production only after the owner decides; agents never touch it); in each add platforms Android, iOS, Web, create database `main`. 2) Create keys per `appwrite/keys.md` (two per project: core-service, ci-deploy; scopes exactly as listed; 90-day expiry). 3) Store: core keys as Fly secret `APPWRITE_API_KEY` per Fly app; CI keys as GitHub environment secrets (`development`, `staging`, `production` with required reviewers) named `APPWRITE_API_KEY`, plus project ids as environment variables; copy `environments.example.json` to a CI-generated `environments.json`. 4) Run `appwrite push` + `python3 appwrite/migrate.py --env development` once by hand and confirm the REST adapter works, then F07 wires staging. 5) Replace the "scopes to re-check" with the console's actual scope names if they differ.
+- Deviations: Python runner instead of Node (`appwrite` package was `requires: node`; now python3); config JSON uses `varchar` column type from the TablesDB CLI format, check against `appwrite init tables` output; no `appwrite` Python SDK dependency (stdlib HTTP adapter). Not covered: `desired_permissions` tests from ADR 0012 belong with F03/M tickets (no permissions code here).
+- Follow-ups: F07 CI job (push, migrate, promote gate on `PROMOTE`); M01-M04 replace `sample_item`; F04 adds the job-tick function to `functions`.
+
 ### D06 · Legal positioning, policies and PDPO plan (#26)
 - Status: **blocked-foundation-merged** (PR #160, squash; issue #26 closed). Blocked on owner for lawyer, positioning choice and the registration itself.
 - Review: `check-adrs.py` 6/6 ok; `check-policy-inventory.py` ok, and blank status / blank owner / unknown ticket #999 each FAIL exit 1. All 12 ticket refs real (gh). DPPA s.29 registration and s.19 cross-border confirmed against statute text via search. Minor: ADR paraphrases s.19 as safeguards/contractual protection; text says equivalent protection or consent (labelled unverified; lawyer Q20). Follow-up: link the lawyer brief/ADR 0006 from #139, #141, #142 and E18 (#19).
@@ -193,6 +217,7 @@ Suggested order: E00 decisions (D01–D03, D05; D04, D06 later/owner) → E01 fo
 
 ## Blocked on owner (credentials / deployments / accounts)
 
+- F02: create the three Appwrite projects, keys and secrets-manager entries; run `appwrite push` and the runner against dev; staging push from CI (F07). Steps in the F02 ticket block.
 - D02: staging demo of the job tick (needs deployed core service + non-live Appwrite project).
 - D03: Fly.io account/org and billing; throwaway Fly app to measure Kampala to `fra`; mobile-network latency (MTN, Airtel) to Appwrite and Fly; a non-live Appwrite project (`hs-staging`, Frankfurt) with a scoped API key; Appwrite plan/cost confirmation; lawyer/DPO review of the DP-7 note (ADR 0012).
 - D05: sending domain; Resend account (Free ok for staging); DNS access to add SPF/DKIM/MX/DMARC records for `mail.<domain>`; Resend API key + webhook secret into staging Fly secrets; DPA signed (DP-9); then the inbox test (Gmail, Yahoo, a Ugandan host). Exact steps: owner checklist in ADR 0005.
