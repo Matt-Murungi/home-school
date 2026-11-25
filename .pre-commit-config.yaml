@@ -1,0 +1,51 @@
+# Install: `make hooks` (needs pre-commit). Hooks per language; each is a no-op until that package exists.
+# Language tools are run through `local` hooks so versions come from each package's own lockfile.
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.6.0
+    hooks:
+      - id: end-of-file-fixer
+      - id: trailing-whitespace
+        args: [--markdown-linebreak-ext=md]
+      - id: check-added-large-files
+      - id: check-merge-conflict
+      - id: detect-private-key
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.18.4
+    hooks:
+      - id: gitleaks
+        args: [--config=.gitleaks.toml]
+  # spikes/ are throwaway and keep their own tooling; docs/ python is checked by `make lint` (ADR lint).
+  - repo: local
+    hooks:
+      - id: dart-format
+        name: dart format (apps/*, packages/flutter_shared)
+        entry: dart format --set-exit-if-changed
+        language: system
+        files: ^(apps|packages)/.*\.dart$
+      - id: ruff-check
+        name: ruff check (services/core, scripts)
+        entry: uvx ruff check
+        language: system
+        files: ^(services/core|scripts)/.*\.py$
+      - id: ruff-format
+        name: ruff format (services/core, scripts)
+        entry: uvx ruff format --check
+        language: system
+        files: ^(services/core|scripts)/.*\.py$
+      - id: prettier
+        name: prettier (apps/admin)
+        entry: bash -c 'test -f apps/admin/package.json || exit 0; npx --no-install prettier --check "$@"' --
+        language: system
+        files: ^apps/admin/.*\.(ts|tsx|js|jsx|json|css)$
+      - id: eslint
+        name: eslint (apps/admin)
+        entry: bash -c 'test -f apps/admin/package.json || exit 0; npx --no-install eslint "$@"' --
+        language: system
+        files: ^apps/admin/.*\.(ts|tsx|js|jsx)$
+      - id: make-lint
+        name: make lint (layout, secret scan, package lint)
+        entry: make lint
+        language: system
+        pass_filenames: false
+        always_run: true
