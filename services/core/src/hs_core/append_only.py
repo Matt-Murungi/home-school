@@ -19,8 +19,8 @@ two separate, partial things; nothing uses it yet (the wrapper is not wired in).
    getattr(repo, "update"), a bound-method alias (u = repo.update; u("ledger_entry")),
    or dict dispatch. Constants are resolved per file, not per scope: a name reassigned
    later in the same file hides the earlier value (last assignment wins), and the
-   same name bound in two scopes is conflated (two scopes, one value). It also cannot see write methods added to the SDK
-   later; a test compares the list with the installed SDK.
+   same name bound in two scopes is conflated (two scopes, one value). It also cannot see write methods added to
+   the SDK later; a test compares the list with the installed SDK.
 The set of tables must equal the tables marked `append_only` in appwrite/schema/*.json
 (checked by a test).
 """
