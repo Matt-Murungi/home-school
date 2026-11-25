@@ -1,0 +1,36 @@
+"""N01 (#126): notification service and template store. See README section in memory.md."""
+
+from __future__ import annotations
+
+from ..jobs.alerts import AlertSink
+from ..repository import Repository
+from ..settings import Settings
+from .channels import StoredInAppChannel, UnconfiguredChannel, UnconfiguredEmailSender
+from .config import NotificationConfig
+from .devices import DeviceRegistry
+from .preferences import RepositoryPreferenceStore
+from .service import NoDirectory, NotificationService, NullEscalation
+from .templates import TemplateStore
+
+
+def build_notification_service(
+    settings: Settings, repo: Repository, alerts: AlertSink | None = None
+) -> NotificationService:
+    """Wiring until N02 (#127): push and email channels are 'unconfigured' (every send fails
+    permanently and loudly), the in-app channel is real (the row is the message)."""
+    return NotificationService(
+        repo,
+        store=TemplateStore(repo),
+        push=UnconfiguredChannel(),
+        email_sender=UnconfiguredEmailSender(),
+        in_app=StoredInAppChannel(),
+        directory=NoDirectory(),
+        devices=DeviceRegistry(repo),
+        preferences=RepositoryPreferenceStore(repo),
+        config=NotificationConfig.from_settings(settings),
+        alerts=alerts,
+        escalation=NullEscalation(),
+    )
+
+
+__all__ = ["NotificationService", "build_notification_service"]

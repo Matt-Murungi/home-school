@@ -11,6 +11,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 
 from ..auth_otp.jobs import otp_cleanup
+from ..notifications.dispatch import notification_dispatch
 from ..travel.jobs import travel_cache_refresh
 from .handlers import heartbeat
 from .model import KAMPALA, JobSpec, Schedule
@@ -38,5 +39,15 @@ JOBS: list[JobSpec] = [
         schedule=Schedule(timedelta(days=1), anchor=datetime(2026, 1, 1, 2, tzinfo=KAMPALA)),
         max_attempts=3,
         catch_up=timedelta(days=1),
+    ),
+    # N01: send notifications deferred by quiet hours and retry transient failures. Idempotent.
+    # Small catch_up: a missed minute is simply covered by the next run (F04 follow-up 1).
+    JobSpec(
+        "notification-dispatch",
+        notification_dispatch,
+        schedule=Schedule(timedelta(minutes=1)),
+        max_attempts=3,
+        catch_up=timedelta(minutes=5),
+        timeout=timedelta(seconds=30),
     ),
 ]

@@ -20,6 +20,8 @@ from .jobs.api import router as jobs_router
 from .jobs.runner import Runner
 from .jobs.schedule import JOBS
 from .logging_setup import configure_logging, request_id_var
+from .notifications import build_notification_service
+from .notifications import dispatch as notification_dispatch_job
 from .observability import ErrorReporter, build_reporter, report_once
 from .repository import Repository, build_repository
 from .settings import Settings, load_settings
@@ -43,6 +45,7 @@ def create_app(
     alert_sink: AlertSink | None = None,
     reporter: ErrorReporter | None = None,
     otp_service=None,
+    notification_service=None,
     sms_sender=None,
     user_directory=None,
     trust_proxy_ip: bool | None = None,
@@ -72,11 +75,15 @@ def create_app(
     app.state.otp = otp_service or build_otp_service(
         settings, app.state.repository, sms_sender, user_directory
     )
+    app.state.notifications = notification_service or build_notification_service(
+        settings, app.state.repository, alert_sink
+    )
     # Fly sets Fly-Client-IP at its edge; outside dev we are always behind it.
     app.state.trust_proxy_ip = (
         settings.hs_env != "dev" if trust_proxy_ip is None else trust_proxy_ip
     )
     otp_jobs.bind(app.state.repository)
+    notification_dispatch_job.bind(app.state.notifications)
     errors.install(app)
     app.include_router(jobs_router)
     app.include_router(otp_router)
