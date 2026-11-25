@@ -19,7 +19,7 @@
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3",
-    "@testing-library/jest-dom": "^6",
+    "@testing-library/jest-dom": "^8",
     "@testing-library/react": "^16",
     "@testing-library/user-event": "^14",
     "@types/node": "^20",
