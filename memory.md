@@ -841,3 +841,4 @@ Files: Makefile, packages.json, scripts/run_packages.py, scripts/tests/test_layo
 - 2026-11-25: F04 reviewed, PR #165 merged, blocked-foundation-merged.
 - 2026-11-25: C04 built, ready-for-review on `c04-dp-procedures`.
 - 2026-11-25: M02 round 2 reviewed, PR #182 merged, status merged.
+- memory: Fly name chore merged (PR #183): `docs/ops/secrets.md` wording fixed, `test_workflows.FlyAppNames` passes, main's `make test` failure from the F07/F09 interaction resolved.
