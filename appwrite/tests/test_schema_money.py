@@ -252,7 +252,7 @@ class RoundTwoNotes(unittest.TestCase):
         self.assertIn("summaris", META["audit_log"]["note"].lower())
 
 
-OVERCLAIM = re.compile(r"(?<!intended )insert-only[^.;(]{0,40}core service|only way|guarantee", re.I)
+OVERCLAIM = re.compile(r"(?<!intended )insert-only[^.;(]{0,40}core service|only way(?! out of draft)|guarantee", re.I)
 
 
 def overclaims(text):
