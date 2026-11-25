@@ -5,7 +5,7 @@ retries and idempotency live in the core service (ADR 0002). Standard library on
 nothing to install or build.
 
 Function variables (set per environment in Appwrite, never in the repo):
-  CORE_SERVICE_URL  https base URL of the core service, e.g. https://hs-core-staging.fly.dev
+  CORE_SERVICE_URL  https base URL of the core service, e.g. https://homeschool-core-staging.fly.dev
   JOB_TICK_SECRET   shared HMAC secret; the same value as the core service's JOB_TICK_SECRET
 """
 

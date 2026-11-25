@@ -19,6 +19,14 @@ RULES = {
     "private-key": re.compile(r"-----BEGIN (RSA |EC |OPENSSH |DSA |PGP )?PRIVATE KEY"),
     "slack-token": re.compile(r"\bxox[abprs]-[A-Za-z0-9-]{10,}\b"),
     "appwrite-api-key": re.compile(r"\bstandard_[0-9a-f]{64,}\b"),
+    # F09: provider credentials used by the platform (docs/ops/secrets-inventory.json)
+    "google-api-key": re.compile(r"\bAIza[0-9A-Za-z_-]{35}\b"),
+    "resend-api-key": re.compile(r"\bre_[A-Za-z0-9]{20,}\b"),
+    "sentry-dsn": re.compile(
+        r"https://[0-9a-f]{32}@[\w.-]+\.ingest[\w.-]*sentry\.io/\d+"
+    ),
+    "fly-token": re.compile(r"\b(fo1_|FlyV1 )[A-Za-z0-9_+/=-]{20,}"),
+    "africastalking-key": re.compile(r"\batsk_[0-9a-f]{40,}\b"),
     "generic-assignment": re.compile(
         r"""(?ix)\b[\w.-]*(secret|api[_-]?key|token|password|passwd)[\w.-]*["']?\s*[:=]\s*["']?([A-Za-z0-9_\-+/=.]{20,})["']?"""
     ),
