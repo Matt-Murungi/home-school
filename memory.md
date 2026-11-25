@@ -52,6 +52,19 @@ Reviewer writes: commands run, results, criterion-by-criterion verdict, findings
 4. If fine: open PR (title starts with backlog ID; body: summary, evidence, caveats, `Closes #N`, the 🤖 line), review the diff, `gh pr review --comment`, `gh pr merge --squash --delete-branch`, confirm the issue closed, set Status `merged` (or `blocked-foundation-merged` for owner-blocked tickets) with PR number and commands/results, commit and push memory.md to main.
 5. Report: verdict, commands and results, findings, PR URL.
 
+### Reviewer setup: exact commands to get a green baseline
+
+Clean checkout or fresh `git worktree` (needs branch `chore-main-health` merged for `make setup`; details and troubleshooting in CONTRIBUTING.md). Run one at a time; the machine is often busy.
+```
+export npm_config_cache=/tmp/hs-npm-cache   # ABSOLUTE path; only if ~/.npm has root-owned files (EACCES)
+make setup                                   # npm ci in apps/admin
+make lint
+make test
+python3 -m unittest discover -s scripts/tests
+uvx pre-commit run --all-files               # optional
+```
+Failures such as `eslint: command not found`, `apps/admin needs npm ci first` or an npx download mean setup was skipped, not a repo bug. A failure may be called environment noise only with the command output that proves it.
+
 ## How to run tests
 
 | Package | Command |
@@ -601,6 +614,23 @@ README now states the caller contract: on `OutcomeUnknown` poll status with the 
 - Deviations: (1) runner env names follow `appwrite/environments.example.json` (`APPWRITE_API_KEY_STAGING`/`_PRODUCTION` set from the environment secret `APPWRITE_API_KEY`); `environments.json` is generated in the run with the project id from variable `APPWRITE_PROJECT_ID`. (2) Fly app names follow ADR 0003 (`homeschool-core-<env>`, variable `FLY_APP`), not F09's `hs-core-<env>`: reconcile when the apps are created. (3) Production is one job (one approval) rather than several. (4) Added `fly.staging.toml`/`fly.production.toml` to `services/core` (F03 left them owner-blocked); unverified. (5) `HS_STRICT=0` in the `scripts` job, reason above. (6) Spikes have no CI job (throwaway).
 - Unverified / never run: all workflows on GitHub; `flyctl deploy` flags; Appwrite CLI invocation (`client --endpoint/--project-id/--key`, `push functions --function-id job-tick --force`); REST adapter behind the runner; `flutter-version: 3.47.7` availability in flutter-action; Node 22 (CI) vs Node 24 (local) for admin; the `ops` job (F08 not merged).
 - Follow-ups: when F08 merges check the `ops` job against `packages.json` (`ci_lint` already expects `HS_PACKAGES: ops`); F09's tests run in the `scripts` job (triggered by `docs/ops/`); extend `ci_lint.EXEMPT_PACKAGES` deliberately for new throwaway packages; consider promoting the staging image to production instead of rebuilding.
+
+### chore · main-health (branch `chore-main-health`, no ticket)
+
+Status: **ready-for-review** (branch pushed at b9347e6 on top of main 2454a64, no PR; reviewer opens it). Machine was rebooted mid-task; everything re-verified in a fresh worktree afterwards.
+
+| Failure | Cause | Class | Fix |
+|---|---|---|---|
+| `test_round2.HooksSelectOnlyProcessableFiles.test_node_hooks_guarded_until_package_exists` and `.test_node_hook_guard_skips_when_package_missing` (the 2 real failures; `make test`: `FAIL scripts (exit 1)`; unittest `FAILED (failures=2)`; this is audit F-1) | Tests still asserted the pre-F06 `npx --no-install` skip guard; F06 changed the hooks to run `apps/admin/node_modules/.bin/<tool>` and fail with `apps/admin needs npm ci first`. Stale tests. | 1 real test bug | Rewrote to the real design (guard text, executed negative path, new executed positive path with a fake binary). Tests changed: those two, replaced by three. Hook design kept: silent skipping would let unlinted admin code through. |
+| `make lint` exit 2, `sh: eslint: command not found`, `FAIL apps/admin (exit 127)` (audit F-4) | Admin lint assumes `npm ci`; a clean checkout has no node_modules. | 2 setup state | `needs`/`setup` fields in `packages.json`, handled by `scripts/run_packages.py`: `SKIP apps/admin: not set up (missing node_modules); run npm ci in apps/admin` (HS_STRICT=1 fails it); new `make setup`; CONTRIBUTING "Setup from a clean checkout". |
+| Extra unittest/`tsc`/prettier-guard errors reviewers saw (up to 14) | `npx tsc`/prettier guard run without node_modules, or `npm ci` failing on root-owned `~/.npm` (files exist: `find ~/.npm -user root` lists `_cacache/index-v5/...`; I could not reproduce EACCES with a warm cache). A relative `npm_config_cache` resolves inside apps/admin and fails the layout guard (`apps/npmcache is not registered`), which I hit myself. | 2 and 3 | `make setup`, CONTRIBUTING troubleshooting (absolute cache path, chown). |
+| `test_layout.Tooling.test_make_test_and_lint_exit_zero` (ERROR: 600 s subprocess `TimeoutExpired` under load once Flutter packages joined `make test`) | Integration test re-ran the whole `make test` (npm ci, flutter test x3) inside a unit test. | 2 | Skips app-admin and the three Flutter packages via HS_SKIP (each runs for real in `make test`/`make lint`); `make lint` gets the same skip list. Changed test, reported here. |
+| `uvx pre-commit run --all-files`: `end-of-file-fixer` Failed on `apps/parent/ios/.../LaunchImage.imageset/README.md` and the teacher twin (new since F05) | Flutter template files lack a final newline. | 1 real | Added the newline in both files. |
+| pre-commit "git error" in worktrees | Not reproducible in a worktree (all-files, staged, staged+unstaged, subdir, `GIT_DIR` relative/absolute, `GIT_INDEX_FILE`; `core.hooksPath` unset). Probable cause: `GIT_DIR`/`GIT_INDEX_FILE`/`GIT_WORK_TREE` exported by a parent git process, or the node hooks without node_modules. | 3 / unproven | Documented `env -u GIT_DIR -u GIT_INDEX_FILE -u GIT_WORK_TREE uvx pre-commit run --all-files`; `make lint` is the pre-commit-free route. |
+
+Before (clean worktree of origin/main 1fe3939, no `npm ci`): `make lint` -> `FAIL apps/admin (exit 127)`, `lint: 4 ran ok, 5 skipped, 1 failed`, exit 2. `make test` -> `FAIL scripts (exit 1)`, `test: 6 ran ok, 3 skipped, 1 failed`, exit 2. unittest -> `Ran 39 tests ... FAILED (failures=2)`. On current main pre-commit also fails end-of-file-fixer (above).
+After (fresh worktree of the branch at b9347e6, only the documented commands): `make lint` before setup -> exit 0 with the SKIP line (`lint: 7 ran ok, 3 skipped, 0 failed`); `make setup` exit 0; `make lint` -> `lint: 8 ran ok, 2 skipped, 0 failed`; `make test` -> `test: 10 ran ok, 0 skipped, 0 failed`; `python3 -m unittest discover -s scripts/tests` -> `Ran 41 tests in 3.5s OK`; `uvx pre-commit run --all-files` -> exit 0, all hooks Passed.
+Files: Makefile, packages.json, scripts/run_packages.py, scripts/tests/test_layout.py, scripts/tests/test_round2.py, CONTRIBUTING.md, CLAUDE.md, two Flutter READMEs. Caveat: with several agents running npm ci/next build/flutter at once, a full `make test` can take over 10 minutes; that is load, not a hang.
 
 ## Blocked on owner (credentials / deployments / accounts)
 
