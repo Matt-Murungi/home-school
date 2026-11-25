@@ -10,6 +10,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from typing import ClassVar
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts"))
@@ -157,6 +158,101 @@ class SecretScanRound2(unittest.TestCase):
             )
         self.assertEqual(r.returncode, 1)
         self.assertNotIn(self.VALUE, r.stdout + r.stderr)
+
+
+class HooksSelectOnlyProcessableFiles(unittest.TestCase):
+    """R2-1: no hook may select an existing placeholder/README file it cannot process."""
+
+    NODE_HOOKS = ("prettier", "eslint")
+    ALLOWED_EXT: ClassVar[dict] = {
+        "dart-format": {".dart"},
+        "ruff-check": {".py"},
+        "ruff-format": {".py"},
+        "prettier": {".ts", ".tsx", ".js", ".jsx", ".json", ".css"},
+        "eslint": {".ts", ".tsx", ".js", ".jsx"},
+    }
+
+    def tracked(self):
+        out = subprocess.run(
+            ["git", "ls-files"],
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout.split("\n")
+        files = {f for f in out if f}
+        # also include files present but not yet committed (new READMEs)
+        for base in ("apps", "packages", "services", "scripts"):
+            for p in (ROOT / base).rglob("*"):
+                if p.is_file() and "node_modules" not in p.parts:
+                    files.add(str(p.relative_to(ROOT)))
+        return sorted(files)
+
+    def test_no_hook_selects_unprocessable_files(self):
+        files = self.tracked()
+        for hid, h in precommit_hooks().items():
+            if "files" not in h or hid not in self.ALLOWED_EXT:
+                continue
+            for f in files:
+                if re.search(h["files"], f):
+                    self.assertIn(
+                        Path(f).suffix,
+                        self.ALLOWED_EXT[hid],
+                        f"hook {hid} selects {f}, which it cannot process",
+                    )
+
+    def test_no_hook_selects_readmes(self):
+        readmes = [f for f in self.tracked() if f.endswith("README.md")]
+        self.assertTrue(readmes)
+        for hid, h in precommit_hooks().items():
+            if "files" not in h:
+                continue
+            for f in readmes:
+                self.assertFalse(re.search(h["files"], f), f"hook {hid} selects {f}")
+
+    def test_node_hooks_guarded_until_package_exists(self):
+        hooks = precommit_hooks()
+        for hid in self.NODE_HOOKS:
+            entry = hooks[hid]["entry"]
+            self.assertEqual(hooks[hid].get("language"), "system")
+            self.assertIn("apps/admin/package.json", entry, f"{hid} unguarded")
+            self.assertIn("exit 0", entry, f"{hid} guard must skip, not fail")
+            self.assertIn("npx --no-install", entry)
+
+    def test_node_hook_guard_skips_when_package_missing(self):
+        # Execute the guard for real in an empty dir: must exit 0 without running npx.
+        for hid in self.NODE_HOOKS:
+            entry = precommit_hooks()[hid]["entry"]
+            with tempfile.TemporaryDirectory() as d:
+                r = subprocess.run(
+                    ["bash", "-c", entry + " apps/admin/README.md"],
+                    cwd=d,
+                    capture_output=True,
+                    text=True,
+                    check=False,
+                )
+            self.assertEqual(r.returncode, 0, f"{hid}: {r.stdout}{r.stderr}")
+
+
+class SecretScanExitCode(unittest.TestCase):
+    def run_cli(self, d):
+        return subprocess.run(
+            [sys.executable, str(ROOT / "scripts/secret_scan.py"), "--path", d],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
+    def test_exit_1_when_secret_found_and_0_when_clean(self):
+        with tempfile.TemporaryDirectory() as d:
+            (Path(d) / "ok.txt").write_text("nothing here\n", encoding="utf-8")
+            self.assertEqual(self.run_cli(d).returncode, 0)
+            (Path(d) / "bad.txt").write_text(
+                "k = AKIA" + "ABCDEFGHIJKLMNOP\n", encoding="utf-8"
+            )
+            r = self.run_cli(d)
+            self.assertEqual(r.returncode, 1)
+            self.assertNotIn("ABCDEFGHIJKLMNOP", r.stdout + r.stderr)
 
 
 class ContributingWording(unittest.TestCase):

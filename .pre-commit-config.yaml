@@ -35,12 +35,12 @@ repos:
         files: ^(services/core|scripts)/.*\.py$
       - id: prettier
         name: prettier (apps/admin)
-        entry: npx --no-install prettier --check
+        entry: bash -c 'test -f apps/admin/package.json || exit 0; npx --no-install prettier --check "$@"' --
         language: system
-        files: ^apps/admin/.*\.(ts|tsx|js|jsx|json|css|md)$
+        files: ^apps/admin/.*\.(ts|tsx|js|jsx|json|css)$
       - id: eslint
         name: eslint (apps/admin)
-        entry: npx --no-install eslint
+        entry: bash -c 'test -f apps/admin/package.json || exit 0; npx --no-install eslint "$@"' --
         language: system
         files: ^apps/admin/.*\.(ts|tsx|js|jsx)$
       - id: make-lint
