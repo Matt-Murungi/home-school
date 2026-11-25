@@ -50,6 +50,10 @@ Which variable exists in which environment, what kind it is and where it lives. 
 | `APPWRITE_PROJECT_ID` | config | core-service | own project id | own project id | own project id | fly_env |
 | `APPWRITE_READ_TIMEOUT_S` | config | core-service | 10 | 10 | 10 | fly_env |
 | `APP_VERSION` | config | core-service | set by build | set by build | set by build | fly_env |
+| `AUDIT_LEAD_BLANKET_READ` | config | core-service | true | true | true | fly_env |
+| `AUDIT_RECOVER_GRACE_S` | config | core-service | 300 | 300 | 300 | fly_env |
+| `AUDIT_RECOVER_LOOKBACK_HOURS` | config | core-service | 6 | 6 | 6 | fly_env |
+| `CORE_API_URL` | config | app-admin | http://localhost:8080 or unset | https URL of the staging core service | https URL of the production core service | host_env |
 | `CORE_SERVICE_URL` | config | job-tick-function | own core service URL | own core service URL | own core service URL | appwrite_function_variable |
 | `GIT_SHA` | config | core-service | set by build | set by build | set by build | fly_env |
 | `HS_DEBUG` | config | core-service | false | false | false | fly_env |

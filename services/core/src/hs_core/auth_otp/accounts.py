@@ -17,7 +17,9 @@ from typing import Any, Protocol
 from appwrite.permission import Permission
 from appwrite.role import Role
 
+from ..audit import bind_actor, client_ip_var
 from ..jobs.idempotency import row_id
+from ..logging_setup import request_id_var
 from ..repository import Conflict, NotFound, Repository, RepositoryUnavailable
 from .store import iso, parse
 
@@ -257,7 +259,7 @@ class AccountService:
             grant = app not in user.labels
             if grant:
                 user = self.users.add_label(user.id, app)
-            self._ensure_profile(user, phone)
+            self._ensure_profile(user, phone, app)
             if grant:
                 self._record_grant(user.id, app)
             issued = self.users.create_token(user.id, self.token_ttl_s)
@@ -272,14 +274,21 @@ class AccountService:
             return False
         return self.clock() - user.accessed_at > timedelta(days=self.dormant_days)
 
-    def _ensure_profile(self, user: AuthUser, phone: str) -> None:
+    def _audited(self, user_id: str, role: str):
+        """M06: the writes below change audited tables; the actor is the user signing up."""
+        return bind_actor(
+            self.repo, user_id, [role], request_id=request_id_var.get(), ip=client_ip_var.get()
+        )
+
+    def _ensure_profile(self, user: AuthUser, phone: str, role: str) -> None:
         try:
             self.repo.get("user_profile", user.id)
             return
         except NotFound:
             pass
+        audited = self._audited(user.id, role)
         try:
-            self.repo.create(
+            audited.create(
                 "user_profile",
                 user.id,
                 {"phone": phone, "status": "active"},
@@ -293,6 +302,7 @@ class AccountService:
                 raise AccountConflict from None
 
     def _record_grant(self, user_id: str, role: str) -> None:
+        audited = self._audited(user_id, role)
         """M01 `role_assignment` is the grant history (`active_key`: one active grant per role)."""
         data = {
             "user_id": user_id,
@@ -302,11 +312,11 @@ class AccountService:
         }
         rid = row_id("role_assignment", user_id, role, "self")
         try:
-            self.repo.create("role_assignment", rid, data)
+            audited.create("role_assignment", rid, data)
         except Conflict:
             # Granted before. If that grant was revoked, this is a new grant: record it.
             if self.repo.get("role_assignment", rid).get("revoked_at"):
                 try:
-                    self.repo.create("role_assignment", uuid.uuid4().hex[:32], data)
+                    audited.create("role_assignment", uuid.uuid4().hex[:32], data)
                 except Conflict:
                     pass

@@ -11,9 +11,12 @@ from fastapi import Depends, FastAPI, Request
 from fastapi.responses import JSONResponse
 
 from . import errors
+from .audit import AuditedRepository, AuditService, client_ip_var
+from .audit import recover as audit_recover
 from .auth import AppwriteJwtVerifier, Principal, TokenVerifier, current_principal, require_roles
 from .auth_otp import build_otp_service
 from .auth_otp import jobs as otp_jobs
+from .auth_otp.api import client_ip
 from .auth_otp.api import router as otp_router
 from .jobs.alerts import AlertSink, LogAlertSink
 from .jobs.api import router as jobs_router
@@ -60,7 +63,18 @@ def create_app(
         openapi_url="/openapi.json" if settings.hs_env == "dev" else None,
     )
     app.state.settings = settings
-    app.state.repository = repository or build_repository(settings)
+    raw_repository = repository or build_repository(settings)
+    # M06: the app only hands out the audited wrapper; audited tables need an AuditContext.
+    app.state.audit = AuditService(
+        raw_repository, lead_blanket_read=settings.audit_lead_blanket_read
+    )
+    app.state.repository = AuditedRepository(raw_repository, app.state.audit)
+    audit_recover.bind(
+        raw_repository,
+        app.state.audit,
+        lookback_hours=settings.audit_recover_lookback_hours,
+        grace_s=settings.audit_recover_grace_s,
+    )
     app.state.verifier = verifier or AppwriteJwtVerifier(
         settings.appwrite_endpoint, settings.appwrite_project_id
     )
@@ -98,6 +112,7 @@ def create_app(
         if not is_safe_request_id(rid):
             rid = uuid.uuid4().hex
         token = request_id_var.set(rid)
+        ip_token = client_ip_var.set(client_ip(request))
         start = time.perf_counter()
         status = 500
         try:
@@ -120,6 +135,7 @@ def create_app(
                     "duration_ms": round((time.perf_counter() - start) * 1000, 1),
                 },
             )
+            client_ip_var.reset(ip_token)
             request_id_var.reset(token)
 
     def health():
