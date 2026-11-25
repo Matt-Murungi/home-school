@@ -55,12 +55,16 @@ class Settings(BaseSettings):
     job_tick_secret: SecretStr = SecretStr("")
     # Alert after this many consecutive failed job attempts (NFR-17).
     job_alert_after_failures: int = 3
+    sentry_dsn: SecretStr = SecretStr("")  # empty = error reporting disabled
 
     def problems(self) -> list[str]:
         """Variable-name-only list of what is wrong for this environment."""
-        if self.hs_env == "dev":
-            return []
         out: list[str] = []
+        dsn = self.sentry_dsn.get_secret_value().strip()
+        if dsn and urlparse(dsn).scheme != "https":
+            out.append("SENTRY_DSN must be an https DSN")
+        if self.hs_env == "dev":
+            return out
         for name in REQUIRED_DEPLOYED:
             v = getattr(self, name)
             v = v.get_secret_value() if isinstance(v, SecretStr) else v

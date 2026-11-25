@@ -17,6 +17,7 @@ from .jobs.api import router as jobs_router
 from .jobs.runner import Runner
 from .jobs.schedule import JOBS
 from .logging_setup import configure_logging, request_id_var
+from .observability import ErrorReporter, build_reporter, report_once
 from .repository import Repository, build_repository
 from .settings import Settings, load_settings
 
@@ -35,6 +36,7 @@ def create_app(
     verifier: TokenVerifier | None = None,
     runner: Runner | None = None,
     alert_sink: AlertSink | None = None,
+    reporter: ErrorReporter | None = None,
 ) -> FastAPI:
     settings = settings or load_settings()
     app = FastAPI(
@@ -55,6 +57,7 @@ def create_app(
         alert=alert_sink or LogAlertSink(),
         failure_alert_after=settings.job_alert_after_failures,
     )
+    app.state.reporter = reporter or build_reporter(settings)
     errors.install(app)
     app.include_router(jobs_router)
 
@@ -69,8 +72,9 @@ def create_app(
         try:
             try:
                 response = await call_next(request)
-            except Exception:  # noqa: BLE001 - mapped to the standard 500 body
+            except Exception as exc:  # noqa: BLE001 - mapped to the standard 500 body
                 log.error("unhandled exception", exc_info=True)
+                report_once(app.state.reporter, exc, rid)
                 response = JSONResponse(errors.body("internal_error", "Internal server error"), 500)
             status = response.status_code
             response.headers["X-Request-ID"] = rid

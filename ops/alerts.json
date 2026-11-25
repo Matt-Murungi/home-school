@@ -1,0 +1,94 @@
+{
+  "_comment": "Alert rules as code (NFR-17). Destinations (emails, phone numbers) are NOT stored here: they live in the vendor accounts (docs/ops/setup.md). Application code raises these by tagging a Sentry event / log line with alert=<id> (docs/ops/runbook.md, 'Tag convention'). Validated by ops/check_ops.py.",
+  "routes": {
+    "founder-email": "Founder inbox (email)",
+    "founder-push": "Founder phone push (Sentry/Better Stack app) or SMS/WhatsApp once chosen",
+    "ops-email": "Ops mailbox/group (email)"
+  },
+  "alerts": [
+    {
+      "id": "failed-payments",
+      "nfr": "NFR-17",
+      "title": "Payment collection failed or stuck",
+      "source": "sentry-issue-alert",
+      "condition": "event tag alert=failed-payment (MoMo/card collection error, callback mismatch, stuck pending)",
+      "threshold": "3 events in 15 minutes, or any single event with tag severity=critical",
+      "severity": "ticket",
+      "routes": ["ops-email", "founder-email"],
+      "throttle_minutes": 60,
+      "owner_role": "ops admin"
+    },
+    {
+      "id": "failed-payouts",
+      "nfr": "NFR-17",
+      "title": "Teacher payout failed",
+      "source": "sentry-issue-alert",
+      "condition": "event tag alert=failed-payout",
+      "threshold": "1 event (money owed to a teacher)",
+      "severity": "page",
+      "routes": ["founder-push", "ops-email"],
+      "throttle_minutes": 60,
+      "owner_role": "ops admin, escalate to founder"
+    },
+    {
+      "id": "job-failures",
+      "nfr": "NFR-17",
+      "title": "Scheduled job failed or did not run",
+      "source": "sentry-issue-alert",
+      "condition": "event tag alert=job-failure (job raised, exhausted retries, or tick lock stuck)",
+      "threshold": "2 failures of the same job within 30 minutes",
+      "severity": "ticket",
+      "routes": ["ops-email"],
+      "throttle_minutes": 120,
+      "owner_role": "engineer on call (founder until hired)"
+    },
+    {
+      "id": "unacknowledged-safeguarding",
+      "nfr": "NFR-17",
+      "title": "Safeguarding case not acknowledged in time",
+      "source": "job-raised",
+      "condition": "event tag alert=safeguarding-unacked (case open and unacknowledged past the SLA)",
+      "threshold": "1 event; SLA from the safeguarding policy (default 30 minutes)",
+      "severity": "page",
+      "routes": ["founder-push", "ops-email", "founder-email"],
+      "throttle_minutes": 30,
+      "owner_role": "safeguarding lead, then backup, then founder"
+    },
+    {
+      "id": "uptime-down",
+      "nfr": "NFR-17",
+      "title": "API or admin unreachable",
+      "source": "uptime-vendor",
+      "condition": "/health or admin check failing for confirm_after_failures consecutive checks (ops/uptime.json)",
+      "threshold": "2 consecutive failures (about 2 minutes for /health)",
+      "severity": "page",
+      "routes": ["founder-push", "ops-email"],
+      "throttle_minutes": 30,
+      "owner_role": "engineer on call (founder until hired)"
+    },
+    {
+      "id": "api-5xx-rate",
+      "nfr": "NFR-17",
+      "title": "Elevated API 5xx rate",
+      "source": "log-or-sentry-rate",
+      "condition": "share of requests with status >= 500 (structured request log lines)",
+      "threshold": "more than 5% of requests over 5 minutes, with at least 20 requests",
+      "severity": "page",
+      "routes": ["founder-push", "ops-email"],
+      "throttle_minutes": 30,
+      "owner_role": "engineer on call (founder until hired)"
+    },
+    {
+      "id": "monitoring-heartbeat-missing",
+      "nfr": "NFR-17",
+      "title": "Monitoring itself may be down (heartbeat missing)",
+      "source": "uptime-vendor-heartbeat",
+      "condition": "the core job tick pings a heartbeat URL every 5 minutes; no ping seen",
+      "threshold": "no heartbeat for 15 minutes",
+      "severity": "ticket",
+      "routes": ["founder-email", "ops-email"],
+      "throttle_minutes": 120,
+      "owner_role": "engineer on call (founder until hired)"
+    }
+  ]
+}

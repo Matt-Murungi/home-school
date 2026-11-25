@@ -1,0 +1,19 @@
+{
+  "_comment": "Uptime check manifest. Base URLs are read from the named variables (owner-blocked: staging/production hosts do not exist yet), never stored here. The vendor (default Better Stack free tier, or UptimeRobot) is configured from this file by hand until an API token is provisioned. Validated by ops/check_ops.py.",
+  "vendor_default": "Better Stack (free tier) or UptimeRobot (free tier); owner chooses",
+  "heartbeat": {
+    "id": "core-job-tick",
+    "interval_seconds": 300,
+    "grace_seconds": 600,
+    "url_var": "HS_HEARTBEAT_URL",
+    "pinged_by": "core service job tick (F04)"
+  },
+  "checks": [
+    {"id": "staging-api-health", "service": "api", "environment": "staging", "base_url_var": "HS_STAGING_API_URL", "path": "/health", "interval_seconds": 60, "expected_status": [200], "timeout_seconds": 10, "confirm_after_failures": 2},
+    {"id": "staging-api-ready", "service": "api", "environment": "staging", "base_url_var": "HS_STAGING_API_URL", "path": "/ready", "interval_seconds": 300, "expected_status": [200], "timeout_seconds": 15, "confirm_after_failures": 2},
+    {"id": "staging-admin", "service": "admin", "environment": "staging", "base_url_var": "HS_STAGING_ADMIN_URL", "path": "/", "interval_seconds": 300, "expected_status": [200, 307], "timeout_seconds": 15, "confirm_after_failures": 2},
+    {"id": "production-api-health", "service": "api", "environment": "production", "base_url_var": "HS_PRODUCTION_API_URL", "path": "/health", "interval_seconds": 60, "expected_status": [200], "timeout_seconds": 10, "confirm_after_failures": 2},
+    {"id": "production-api-ready", "service": "api", "environment": "production", "base_url_var": "HS_PRODUCTION_API_URL", "path": "/ready", "interval_seconds": 300, "expected_status": [200], "timeout_seconds": 15, "confirm_after_failures": 2},
+    {"id": "production-admin", "service": "admin", "environment": "production", "base_url_var": "HS_PRODUCTION_ADMIN_URL", "path": "/", "interval_seconds": 300, "expected_status": [200, 307], "timeout_seconds": 15, "confirm_after_failures": 2}
+  ]
+}
