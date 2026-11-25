@@ -8,6 +8,7 @@ GOOD = {
     "APPWRITE_PROJECT_ID": "proj123",
     "APPWRITE_API_KEY": "k" * 64,
     "APPWRITE_DATABASE_ID": "main",
+    "JOB_TICK_SECRET": "j" * 40,
 }
 
 
@@ -33,7 +34,13 @@ def test_production_valid(monkeypatch):
 @pytest.mark.parametrize("env_name", ["staging", "production"])
 @pytest.mark.parametrize(
     "missing",
-    ["APPWRITE_ENDPOINT", "APPWRITE_PROJECT_ID", "APPWRITE_API_KEY", "APPWRITE_DATABASE_ID"],
+    [
+        "APPWRITE_ENDPOINT",
+        "APPWRITE_PROJECT_ID",
+        "APPWRITE_API_KEY",
+        "APPWRITE_DATABASE_ID",
+        "JOB_TICK_SECRET",
+    ],
 )
 def test_missing_required_variable_fails_with_clear_error(monkeypatch, env_name, missing):
     values = {**GOOD, "HS_ENV": env_name}

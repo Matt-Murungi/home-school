@@ -12,18 +12,29 @@ from fastapi.responses import JSONResponse
 
 from . import errors
 from .auth import AppwriteJwtVerifier, Principal, TokenVerifier, current_principal, require_roles
+from .jobs.alerts import AlertSink, LogAlertSink
+from .jobs.api import router as jobs_router
+from .jobs.runner import Runner
+from .jobs.schedule import JOBS
 from .logging_setup import configure_logging, request_id_var
 from .repository import Repository, build_repository
 from .settings import Settings, load_settings
 
 log = logging.getLogger("hs_core")
-_SAFE_ID = re.compile(r"^[A-Za-z0-9._-]{1,64}$")
+_SAFE_ID = re.compile(r"[A-Za-z0-9._-]{1,64}")
+
+
+def is_safe_request_id(value: str) -> bool:
+    """fullmatch: `$` would admit a trailing newline."""
+    return _SAFE_ID.fullmatch(value) is not None
 
 
 def create_app(
     settings: Settings | None = None,
     repository: Repository | None = None,
     verifier: TokenVerifier | None = None,
+    runner: Runner | None = None,
+    alert_sink: AlertSink | None = None,
 ) -> FastAPI:
     settings = settings or load_settings()
     app = FastAPI(
@@ -38,12 +49,19 @@ def create_app(
     app.state.verifier = verifier or AppwriteJwtVerifier(
         settings.appwrite_endpoint, settings.appwrite_project_id
     )
+    app.state.runner = runner or Runner(
+        app.state.repository,
+        JOBS,
+        alert=alert_sink or LogAlertSink(),
+        failure_alert_after=settings.job_alert_after_failures,
+    )
     errors.install(app)
+    app.include_router(jobs_router)
 
     @app.middleware("http")
     async def request_context(request: Request, call_next):
         rid = request.headers.get("x-request-id", "")
-        if not _SAFE_ID.match(rid):
+        if not is_safe_request_id(rid):
             rid = uuid.uuid4().hex
         token = request_id_var.set(rid)
         start = time.perf_counter()
