@@ -50,6 +50,10 @@ New code goes only in these folders. A new package under `apps/`, `packages/` or
 - CI/CD: `.github/workflows/` (`ci.yml` required check `ci-ok`; staging deploy and production promotion stay off until the owner sets `DEPLOY_ENABLED`). Rules and owner checklist: `docs/ops/ci.md`, `docs/ops/deploy.md`. Workflow rules are tested: `python3 scripts/ci_lint.py`.
 - CODEOWNERS: `@Matt-Murungi` owns everything.
 
+## Tests must not read the wall clock
+
+Use the injected clock (the `clock=` parameter of the service, the `Clock`/`FakeClock` helpers in `services/core/tests/`), never `datetime.now()`/`time.time()` in a test or an unparameterised `build_*` wiring. A test that passes at noon and fails at 23:30 Kampala (N01 quiet hours 21:00-07:00) broke `main` once. `python3 scripts/clock_matrix.py` runs the suites under frozen clocks (night, Sunday, month end, year end, leap day, UTC date != Kampala date) and names every test whose result depends on the clock; a weekly workflow runs it, and the core CI job runs two clocks on the notifications, jobs, ledger and permissions tests. Run it locally after touching time-sensitive code: `python3 scripts/clock_matrix.py --targets core --clocks quick`.
+
 ## Rules that matter
 
 - Never commit secrets; `.env*` is ignored except `.env.example`. Never use credentials from outside the repo in code or tests.

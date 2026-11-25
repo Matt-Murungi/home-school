@@ -146,6 +146,11 @@ jobs:
         run: python3 scripts/run_packages.py test --only core
       - name: lint (command from packages.json)
         run: python3 scripts/run_packages.py lint --only core
+      # Regression guard for clock-dependent tests (the full matrix runs weekly: clock-matrix.yml).
+      - name: clock matrix (night and month end, time-sensitive suites)
+        run: >-
+          python3 scripts/clock_matrix.py --targets core --clocks quick
+          --select 'tests/test_notify*.py,tests/test_perm*.py,tests/test_jobs*.py,tests/test_ledger*.py'
 
   momo:
     name: py-momo package (uv, pytest, ruff)
