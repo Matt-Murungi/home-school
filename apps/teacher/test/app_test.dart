@@ -33,7 +33,21 @@ void main() {
     t.view.physicalSize = const Size(360, 640);
     t.view.devicePixelRatio = 1;
     addTearDown(t.view.reset);
-    await t.pumpWidget(const ProviderScope(child: TeacherApp()));
+    await t.pumpWidget(
+      ProviderScope(
+        child: MediaQuery(
+          data: const MediaQueryData(textScaler: TextScaler.linear(1.3)),
+          child: const TeacherApp(),
+        ),
+      ),
+    );
+    await t.pumpAndSettle();
+    expect(
+      MediaQuery.textScalerOf(t.element(find.byType(FilledButton))).scale(10),
+      13,
+    );
+    expect(t.takeException(), isNull);
+    await t.tap(find.text('Get started'));
     await t.pumpAndSettle();
     expect(t.takeException(), isNull);
   });

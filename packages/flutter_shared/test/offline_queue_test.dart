@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:home_school_shared/home_school_shared.dart';
@@ -41,5 +43,28 @@ void main() {
     await Future<void>.delayed(const Duration(milliseconds: 50));
     await sub.cancel();
     expect(events.last, 1);
+  });
+
+  test('queue, order and attempts survive a restart (file database)', () async {
+    final dir = Directory.systemTemp.createTempSync('hs_queue');
+    addTearDown(() => dir.deleteSync(recursive: true));
+    final file = File('${dir.path}/hs.sqlite');
+
+    final first = AppDatabase(NativeDatabase(file));
+    final q1 = OfflineQueue(first);
+    final a = await q1.enqueue('check_in', '{"n":1}');
+    await q1.enqueue('log_session', '{"n":2}');
+    await q1.markFailed(a);
+    await first.close();
+
+    final second = AppDatabase(NativeDatabase(file));
+    addTearDown(second.close);
+    final q2 = OfflineQueue(second);
+    expect(await q2.count(), 2);
+    final head = (await q2.next())!;
+    expect(head.kind, 'check_in');
+    expect(head.attempts, 1);
+    await q2.complete(head.id);
+    expect((await q2.next())!.kind, 'log_session');
   });
 }
