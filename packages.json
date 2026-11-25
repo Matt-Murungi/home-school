@@ -6,7 +6,7 @@
     {"id": "app-admin", "path": "apps/admin", "status": "planned", "ticket": "F06", "requires": ["node", "npm"], "test": "npm ci && npm test", "lint": "npm run lint"},
     {"id": "flutter-shared", "path": "packages/flutter_shared", "status": "planned", "ticket": "F05", "requires": ["flutter"], "test": "flutter test", "lint": "dart format --set-exit-if-changed . && flutter analyze"},
     {"id": "core", "path": "services/core", "status": "implemented", "ticket": "F03", "requires": ["uv"], "test": "uv run pytest -q", "lint": "uv run ruff check . && uv run ruff format --check ."},
-    {"id": "appwrite", "path": "appwrite", "status": "planned", "ticket": "F02", "requires": ["node"], "test": "npm test"},
+    {"id": "appwrite", "path": "appwrite", "status": "implemented", "ticket": "F02", "requires": ["python3"], "test": "python3 -m unittest discover -s tests", "lint": "python3 -m py_compile migrate.py appwrite_client.py fake_client.py check_keys.py && python3 check_keys.py"},
     {"id": "docs", "path": "docs", "status": "implemented", "requires": ["python3"], "test": "python3 adr/check-adrs.py", "lint": "python3 adr/check-adrs.py"},
     {"id": "root-tests", "path": "scripts", "status": "implemented", "requires": ["python3"], "test": "python3 -m unittest discover -s tests", "lint": "python3 -m py_compile run_packages.py check_layout.py secret_scan.py"},
     {"id": "spike-admin", "path": "spikes/admin-appwrite", "status": "implemented", "requires": ["node", "npm"], "test": "npm ci && npx tsc --noEmit && npm run lint && npm run build"},

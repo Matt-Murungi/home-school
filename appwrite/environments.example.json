@@ -1,0 +1,32 @@
+{
+  "_comment": "Copy to environments.json (git-ignored) or let CI generate it. Project ids are placeholders. API keys are NEVER in this file: each environment reads its key from the environment variable named in keyEnvVar (a CI/Fly secret).",
+  "environments": {
+    "development": {
+      "projectName": "hs-development",
+      "endpoint": "https://fra.cloud.appwrite.io/v1",
+      "projectId": "<development-project-id>",
+      "databaseId": "main",
+      "keyEnvVar": "APPWRITE_API_KEY_DEVELOPMENT",
+      "platforms": ["android", "ios", "web"],
+      "seedAllowed": true
+    },
+    "staging": {
+      "projectName": "hs-staging",
+      "endpoint": "https://fra.cloud.appwrite.io/v1",
+      "projectId": "<staging-project-id>",
+      "databaseId": "main",
+      "keyEnvVar": "APPWRITE_API_KEY_STAGING",
+      "platforms": ["android", "ios", "web"],
+      "seedAllowed": true
+    },
+    "production": {
+      "projectName": "hs-production",
+      "endpoint": "https://fra.cloud.appwrite.io/v1",
+      "projectId": "<production-project-id>",
+      "databaseId": "main",
+      "keyEnvVar": "APPWRITE_API_KEY_PRODUCTION",
+      "platforms": ["android", "ios", "web"],
+      "seedAllowed": false
+    }
+  }
+}
