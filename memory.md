@@ -58,6 +58,9 @@ Reviewer writes: commands run, results, criterion-by-criterion verdict, findings
 |---|---|
 | spikes/admin-appwrite | `cd spikes/admin-appwrite && npm ci && npx tsc --noEmit && npm run lint && npm run build` |
 | spikes/jobs-demo | `cd spikes/jobs-demo && uv run pytest -q` |
+| packages/flutter_shared | `cd packages/flutter_shared && flutter test` (lint: `dart format --set-exit-if-changed . && flutter analyze`) |
+| apps/parent | `cd apps/parent && flutter test` (same lint) |
+| apps/teacher | `cd apps/teacher && flutter test` (same lint) |
 | services/core (F03) | `cd services/core && uv run pytest -q` (lint: `uv run ruff check . && uv run ruff format --check .`); offline, no Docker needed |
 | docs/legal (policy inventory) | `python3 docs/legal/check-policy-inventory.py` (fails on missing purpose/consumer ticket/owner/status or unknown ticket #) |
 | docs/adr (ADR lint; reuse for every decision ticket) | `python3 docs/adr/check-adrs.py` (all ADRs) or `python3 docs/adr/check-adrs.py docs/adr/00NN-x.md`. Needs `# ADR NNNN — title` (number = file name), `- **Status:**` (Proposed/Accepted/Superseded/Deprecated), `- **Date:**`, `- **Ticket:**`, and `## Context`, `## Decision`, `## Consequences`. Exit 1 on failure. Stdlib only. |
@@ -272,6 +275,32 @@ Suggested order: E00 decisions (D01–D03, D05; D04, D06 later/owner) → E01 fo
 - **Deviations/notes:** role-to-nav visibility in `src/lib/nav.ts` is my assumption (SR does not tabulate per screen). Role labels checked as alphanumeric only. Sort/filter are URL-driven; the actual Appwrite queries come with each screen ticket. A cookie Appwrite rejects ends at `/api/session/clear` -> `/login?expired=1`. With no Appwrite config a request carrying a bogus cookie returns 500 (acceptable; misconfiguration). Playwright skipped: browser download needs network. `AppwriteAuthProvider` is unit-untested against a real server; the `user_more_factors_required` error type and `listMfaFactors` before MFA are from SDK knowledge, to verify on staging.
 - **Blocked on owner:** staging Appwrite project + a test admin user with label and TOTP/email MFA enrolled to verify real login/MFA end to end; staging deploy URL (hosting choice for the admin app is not decided: ADR 0004 does not name it; default Vercel-style Node host or Fly) and `ADMIN_ENV`, `APPWRITE_ENDPOINT`, `APPWRITE_PROJECT_ID` values; confirm MFA factor policy (TOTP vs email).
 
+### F05 · Scaffold Flutter parent and teacher apps with shared package (#31)
+
+- **Status:** ready-for-review · branch `f05-flutter-apps` (pushed, PR not opened). No blockers (Flutter 3.47.7 / Dart 3.13.5 installed).
+- **Built:** `packages/flutter_shared` (package `home_school_shared`): `theme/tokens.dart` + `hs_theme.dart` (Design Brief s6 tokens, min tap 48), `config/app_config.dart` (`--dart-define=HS_ENV=dev|staging|prod`, `HS_APPWRITE_ENDPOINT`, `HS_APPWRITE_PROJECT`; no secrets; staging/prod require https + project id), `api/api_client.dart` (`ApiClient` + `FakeApiClient`), `auth/` (`AuthService`, `FakeAuthService`, `AppwriteAuthService` adapter compiled, not used in tests), `models/` placeholder, `storage/` Drift `AppDatabase` + `OfflineQueue` (FIFO, attempts, watchCount; generated `.g.dart` committed), `providers/` Riverpod, `nav/app_router.dart` (go_router, `AppSpec.parent` / `AppSpec.teacher` tab sets from Design Brief s8), `widgets/` (`WelcomeScreen`, `AppShell`, `PlaceholderTab`, `HsApp`), strings in `lib/src/l10n/app_en.arb` via gen-l10n (`HsStrings`, generated code committed). `apps/parent`, `apps/teacher`: `flutter create --org ug.homeschool`, boot to welcome screen then tab shell; Android `minSdk = 26` (Android 8), core library desugaring on (needed by an Appwrite SDK transitive plugin). Also: `packages.json` three entries -> implemented, README rows/status, `.kotlin/` ignored, and `scripts/tests/test_layout.py::test_planned_packages_skip_clearly` now uses its own manifest (it hard-coded `apps/parent` as planned, which broke once F05 landed).
+- **Tests/results:** `flutter test` in shared: 29 passed; parent: 5 passed; teacher: 5 passed. `flutter analyze` clean and `dart format --set-exit-if-changed .` clean in all three. `make test` / `make lint` / `python3 -m unittest discover -s scripts/tests` OK. `flutter build apk --debug` succeeds for both apps (local, offline-capable; not run in CI). Regenerate: `flutter gen-l10n` (ARB), `dart run build_runner build --delete-conflicting-outputs` (Drift).
+- **Criterion -> test map:**
+
+| Criterion / edge case | Test |
+|---|---|
+| Both apps build for Android | `flutter build apk --debug` run locally for both (evidence above; not a CI test). iOS: **not verified**, Xcode not installed on this machine (`xcodebuild` needs full Xcode) -> owner/CI (Codemagic) |
+| Tokens defined once and match Design Brief s6 | `flutter_shared/test/tokens_test.dart` (colours, radii, spacing, type scale, theme applies tokens, contrast >= 4.5:1) |
+| Environment switch dev/staging/prod | `config_test.dart` (parse, default dev, unknown rejected, https + project id required, no secret fields, `fromEnvironment`). Via `--dart-define`, not native flavours (see Deviations) |
+| Strings externalised for Luganda (NFR-13) | `l10n_test.dart` (no literal `Text('...')` in lib; ARB template present) + `ui_test.dart` (text comes from `HsStrings`) |
+| Widget test example runs in CI | `ui_test.dart`, `apps/*/test/app_test.dart` via `packages.json` / `make test` |
+| Debug build shows themed placeholder home | `ui_test.dart::parent boots to themed welcome screen`, `apps/*/test/app_test.dart::boots to themed welcome screen`, `get started opens the first tab`. Run against real staging: owner-blocked (no staging Appwrite) |
+| Android 8 device launches (min SDK) | `apps/*/test/app_test.dart::Android minSdk is 26` (reads gradle file). Real Android 8 device launch: owner-blocked (no device) |
+| System font 130% no overflow | `ui_test.dart::no overflow at 130% font on a small phone` (parent and teacher specs, 360x640, asserts scale 1.3 applied), `apps/*/test/app_test.dart::130% font...` (note: the app-level one does not force the scale; the shared test does) |
+| Parent/teacher tabs per Design Brief s8 | `ui_test.dart::parent tabs...`, `teacher tabs...` |
+| API client interface + fake | `api_auth_test.dart` (stub, unstubbed 404, error status) |
+| Auth wrapper interface + fake + Appwrite adapter | `api_auth_test.dart` (sign in/out, wrong password, adapter implements `AuthService` without network) |
+| Drift offline queue placeholder | `offline_queue_test.dart` (empty, FIFO, failure attempts, watchCount), `ui_test.dart::offline queue count provider` |
+| No secrets in app sources | `apps/*/test/app_test.dart::no secrets in app sources` |
+
+- **Deviations:** (1) "build flavours": implemented as `--dart-define` only, per the owner brief; no Android productFlavors / iOS schemes yet (add with Codemagic/F07 if wanted). (2) App ids are placeholders (`ug.homeschool.home_school_parent|teacher`); final bundle/app ids are an owner decision. (3) Brand name "Home School" is a working title. (4) No Luganda translation (needs a translator); only the English ARB exists. (5) The apps' 130% test cannot force the scale, the shared test does.
+- **Owner-blocked / unverified:** iOS build (needs full Xcode / Codemagic), release signing keystores, final app ids, Play Console / App Store Connect listings, APK/IPA store builds, real-device Android 8 check, run against staging (needs a non-live Appwrite project, `HS_APPWRITE_ENDPOINT`/`HS_APPWRITE_PROJECT`). Appwrite SDK warns that two of its plugins use the Kotlin Gradle plugin (future Flutter versions may fail): revisit when upgrading Flutter.
+
 ## Blocked on owner (credentials / deployments / accounts)
 
 - F02: create the three Appwrite projects, keys and secrets-manager entries; run `appwrite push` and the runner against dev; staging push from CI (F07). Steps in the F02 ticket block.
@@ -282,6 +311,7 @@ Suggested order: E00 decisions (D01–D03, D05; D04, D06 later/owner) → E01 fo
 - D06: engage a Ugandan lawyer; choose positioning; approve pilot registration route; do the PDPO registration, pay fee, sign DPAs; lawyer to deliver the written note and final policy texts.
 - F03: Fly.io app `fly.toml`, staging deploy and secrets (`APPWRITE_API_KEY`, project/database IDs) per ADR 0003; non-live Appwrite project for staging; Docker image build/run proof (docker not installed on the build machine); AppwriteJwtVerifier and AppwriteRepository against a real non-live project.
 - F06: staging Appwrite project + test admin with MFA to verify real login/MFA; deploy target and env values for the admin app (see F06 block).
+- F05: iOS and release builds need Xcode/Codemagic, signing keys, and the app store accounts; app/bundle ids and brand name are undecided (placeholders `ug.homeschool.home_school_*`).
 
 ## Questions for the owner (collected; ask at the end)
 
@@ -316,3 +346,4 @@ Suggested order: E00 decisions (D01–D03, D05; D04, D06 later/owner) → E01 fo
 - 2026-11-25: F01 round 2 fixes pushed (a4ed94b), ready-for-review.
 - 2026-11-25: F01 round 3 fix (R2-1) pushed (e5d70d2), ready-for-review.
 - 2026-11-25: F01 round 3 reviewed, PR #161 merged, status merged (branch protection owner-blocked until F07).
+- 2026-11-25: F05 built, ready-for-review on `f05-flutter-apps`.
