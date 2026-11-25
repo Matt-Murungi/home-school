@@ -1,0 +1,1595 @@
+{
+  "domain": "money",
+  "description": "Tiers, bonuses, invoices, payments, earnings, payouts, double-entry ledger, feedback (M04, SR 5.4, 7.8-7.11). Money is integer UGX; instants are UTC. ledger_transaction and ledger_entry are append-only (insert-only repository in the core service, no client write permission). Soft-delete rule: as M01: soft-deleted rows keep their unique values (idempotency keys, codes, periods are never reused), the retention job is the only hard-deleter.",
+  "tables": [
+    {
+      "$id": "tier",
+      "name": "tier",
+      "enabled": true,
+      "rowSecurity": true,
+      "$permissions": [],
+      "columns": [
+        {
+          "key": "name",
+          "type": "varchar",
+          "size": 80,
+          "required": true
+        },
+        {
+          "key": "active_key",
+          "type": "varchar",
+          "size": 80,
+          "required": false
+        },
+        {
+          "key": "rank",
+          "type": "integer",
+          "required": true,
+          "min": 0
+        },
+        {
+          "key": "base_rate",
+          "type": "integer",
+          "required": true,
+          "min": 0
+        },
+        {
+          "key": "currency",
+          "type": "varchar",
+          "size": 3,
+          "required": false,
+          "default": "UGX"
+        },
+        {
+          "key": "criteria",
+          "type": "text",
+          "required": false
+        },
+        {
+          "key": "active",
+          "type": "boolean",
+          "required": false,
+          "default": true
+        },
+        {
+          "key": "created_at",
+          "type": "datetime",
+          "required": true
+        },
+        {
+          "key": "deleted_at",
+          "type": "datetime",
+          "required": false
+        }
+      ],
+      "indexes": [
+        {
+          "key": "by_rank",
+          "type": "key",
+          "columns": [
+            "rank"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        },
+        {
+          "key": "unique_active_key",
+          "type": "unique",
+          "columns": [
+            "active_key"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        }
+      ]
+    },
+    {
+      "$id": "tier_history",
+      "name": "tier_history",
+      "enabled": true,
+      "rowSecurity": true,
+      "$permissions": [],
+      "columns": [
+        {
+          "key": "teacher_id",
+          "type": "varchar",
+          "size": 36,
+          "required": true
+        },
+        {
+          "key": "from_tier_id",
+          "type": "varchar",
+          "size": 36,
+          "required": false
+        },
+        {
+          "key": "to_tier_id",
+          "type": "varchar",
+          "size": 36,
+          "required": true
+        },
+        {
+          "key": "reason",
+          "type": "varchar",
+          "size": 500,
+          "required": true
+        },
+        {
+          "key": "approved_by_id",
+          "type": "varchar",
+          "size": 36,
+          "required": true
+        },
+        {
+          "key": "effective_at",
+          "type": "datetime",
+          "required": true
+        },
+        {
+          "key": "created_at",
+          "type": "datetime",
+          "required": true
+        }
+      ],
+      "indexes": [
+        {
+          "key": "by_teacher",
+          "type": "key",
+          "columns": [
+            "teacher_id",
+            "effective_at"
+          ],
+          "orders": [
+            "ASC",
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_from_tier",
+          "type": "key",
+          "columns": [
+            "from_tier_id"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_to_tier",
+          "type": "key",
+          "columns": [
+            "to_tier_id"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_approved_by",
+          "type": "key",
+          "columns": [
+            "approved_by_id"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        }
+      ]
+    },
+    {
+      "$id": "bonus_rule",
+      "name": "bonus_rule",
+      "enabled": true,
+      "rowSecurity": true,
+      "$permissions": [],
+      "columns": [
+        {
+          "key": "type",
+          "type": "string",
+          "format": "enum",
+          "elements": [
+            "peak_slot",
+            "hard_zone",
+            "on_time_log",
+            "checkpoint_gain",
+            "referral"
+          ],
+          "required": true
+        },
+        {
+          "key": "name",
+          "type": "varchar",
+          "size": 120,
+          "required": true
+        },
+        {
+          "key": "amount",
+          "type": "integer",
+          "required": true,
+          "min": 0
+        },
+        {
+          "key": "currency",
+          "type": "varchar",
+          "size": 3,
+          "required": false,
+          "default": "UGX"
+        },
+        {
+          "key": "conditions",
+          "type": "text",
+          "required": false
+        },
+        {
+          "key": "active",
+          "type": "boolean",
+          "required": false,
+          "default": true
+        },
+        {
+          "key": "starts_at",
+          "type": "datetime",
+          "required": false
+        },
+        {
+          "key": "ends_at",
+          "type": "datetime",
+          "required": false
+        },
+        {
+          "key": "created_at",
+          "type": "datetime",
+          "required": true
+        },
+        {
+          "key": "deleted_at",
+          "type": "datetime",
+          "required": false
+        }
+      ],
+      "indexes": [
+        {
+          "key": "by_type_active",
+          "type": "key",
+          "columns": [
+            "type",
+            "active"
+          ],
+          "orders": [
+            "ASC",
+            "ASC"
+          ]
+        }
+      ]
+    },
+    {
+      "$id": "invoice",
+      "name": "invoice",
+      "enabled": true,
+      "rowSecurity": true,
+      "$permissions": [],
+      "columns": [
+        {
+          "key": "subscription_id",
+          "type": "varchar",
+          "size": 36,
+          "required": true
+        },
+        {
+          "key": "parent_id",
+          "type": "varchar",
+          "size": 36,
+          "required": true
+        },
+        {
+          "key": "period_start_date",
+          "type": "varchar",
+          "size": 10,
+          "required": true
+        },
+        {
+          "key": "period_end_date",
+          "type": "varchar",
+          "size": 10,
+          "required": true
+        },
+        {
+          "key": "amount",
+          "type": "integer",
+          "required": true,
+          "min": 0
+        },
+        {
+          "key": "currency",
+          "type": "varchar",
+          "size": 3,
+          "required": false,
+          "default": "UGX"
+        },
+        {
+          "key": "status",
+          "type": "string",
+          "format": "enum",
+          "elements": [
+            "open",
+            "paid",
+            "past_due",
+            "void",
+            "refunded"
+          ],
+          "required": true
+        },
+        {
+          "key": "due_at",
+          "type": "datetime",
+          "required": true
+        },
+        {
+          "key": "paid_at",
+          "type": "datetime",
+          "required": false
+        },
+        {
+          "key": "created_at",
+          "type": "datetime",
+          "required": true
+        }
+      ],
+      "indexes": [
+        {
+          "key": "unique_subscription_period",
+          "type": "unique",
+          "columns": [
+            "subscription_id",
+            "period_start_date"
+          ],
+          "orders": [
+            "ASC",
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_parent",
+          "type": "key",
+          "columns": [
+            "parent_id",
+            "due_at"
+          ],
+          "orders": [
+            "ASC",
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_status_due",
+          "type": "key",
+          "columns": [
+            "status",
+            "due_at"
+          ],
+          "orders": [
+            "ASC",
+            "ASC"
+          ]
+        }
+      ]
+    },
+    {
+      "$id": "payment",
+      "name": "payment",
+      "enabled": true,
+      "rowSecurity": true,
+      "$permissions": [],
+      "columns": [
+        {
+          "key": "invoice_id",
+          "type": "varchar",
+          "size": 36,
+          "required": true
+        },
+        {
+          "key": "parent_id",
+          "type": "varchar",
+          "size": 36,
+          "required": true
+        },
+        {
+          "key": "provider",
+          "type": "varchar",
+          "size": 40,
+          "required": true
+        },
+        {
+          "key": "provider_reference",
+          "type": "varchar",
+          "size": 128,
+          "required": false
+        },
+        {
+          "key": "amount",
+          "type": "integer",
+          "required": true,
+          "min": 1
+        },
+        {
+          "key": "currency",
+          "type": "varchar",
+          "size": 3,
+          "required": false,
+          "default": "UGX"
+        },
+        {
+          "key": "status",
+          "type": "string",
+          "format": "enum",
+          "elements": [
+            "initiated",
+            "pending",
+            "succeeded",
+            "failed",
+            "expired",
+            "refunded"
+          ],
+          "required": true
+        },
+        {
+          "key": "idempotency_key",
+          "type": "varchar",
+          "size": 128,
+          "required": true
+        },
+        {
+          "key": "raw_callback",
+          "type": "text",
+          "required": false
+        },
+        {
+          "key": "failure_reason",
+          "type": "varchar",
+          "size": 300,
+          "required": false
+        },
+        {
+          "key": "requested_at",
+          "type": "datetime",
+          "required": true
+        },
+        {
+          "key": "callback_at",
+          "type": "datetime",
+          "required": false
+        },
+        {
+          "key": "confirmed_at",
+          "type": "datetime",
+          "required": false
+        }
+      ],
+      "indexes": [
+        {
+          "key": "unique_idempotency_key",
+          "type": "unique",
+          "columns": [
+            "idempotency_key"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        },
+        {
+          "key": "unique_provider_reference",
+          "type": "unique",
+          "columns": [
+            "provider",
+            "provider_reference"
+          ],
+          "orders": [
+            "ASC",
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_invoice",
+          "type": "key",
+          "columns": [
+            "invoice_id"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_parent",
+          "type": "key",
+          "columns": [
+            "parent_id",
+            "requested_at"
+          ],
+          "orders": [
+            "ASC",
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_status_requested",
+          "type": "key",
+          "columns": [
+            "status",
+            "requested_at"
+          ],
+          "orders": [
+            "ASC",
+            "ASC"
+          ]
+        }
+      ]
+    },
+    {
+      "$id": "earning",
+      "name": "earning",
+      "enabled": true,
+      "rowSecurity": true,
+      "$permissions": [],
+      "columns": [
+        {
+          "key": "teacher_id",
+          "type": "varchar",
+          "size": 36,
+          "required": true
+        },
+        {
+          "key": "session_id",
+          "type": "varchar",
+          "size": 36,
+          "required": true
+        },
+        {
+          "key": "type",
+          "type": "string",
+          "format": "enum",
+          "elements": [
+            "base",
+            "bonus",
+            "late_cancel",
+            "adjustment"
+          ],
+          "required": true
+        },
+        {
+          "key": "amount",
+          "type": "integer",
+          "required": true
+        },
+        {
+          "key": "currency",
+          "type": "varchar",
+          "size": 3,
+          "required": false,
+          "default": "UGX"
+        },
+        {
+          "key": "status",
+          "type": "string",
+          "format": "enum",
+          "elements": [
+            "pending",
+            "confirmed",
+            "disputed",
+            "batched",
+            "paid",
+            "void"
+          ],
+          "required": true
+        },
+        {
+          "key": "bonus_rule_id",
+          "type": "varchar",
+          "size": 36,
+          "required": false
+        },
+        {
+          "key": "tier_id",
+          "type": "varchar",
+          "size": 36,
+          "required": false
+        },
+        {
+          "key": "batch_id",
+          "type": "varchar",
+          "size": 36,
+          "required": false
+        },
+        {
+          "key": "dedupe_key",
+          "type": "varchar",
+          "size": 160,
+          "required": true
+        },
+        {
+          "key": "note",
+          "type": "varchar",
+          "size": 300,
+          "required": false
+        },
+        {
+          "key": "confirmed_at",
+          "type": "datetime",
+          "required": false
+        },
+        {
+          "key": "created_at",
+          "type": "datetime",
+          "required": true
+        }
+      ],
+      "indexes": [
+        {
+          "key": "unique_dedupe_key",
+          "type": "unique",
+          "columns": [
+            "dedupe_key"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_teacher",
+          "type": "key",
+          "columns": [
+            "teacher_id",
+            "created_at"
+          ],
+          "orders": [
+            "ASC",
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_session",
+          "type": "key",
+          "columns": [
+            "session_id"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_status_confirmed",
+          "type": "key",
+          "columns": [
+            "status",
+            "confirmed_at"
+          ],
+          "orders": [
+            "ASC",
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_bonus_rule",
+          "type": "key",
+          "columns": [
+            "bonus_rule_id"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_tier",
+          "type": "key",
+          "columns": [
+            "tier_id"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_batch",
+          "type": "key",
+          "columns": [
+            "batch_id"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        }
+      ]
+    },
+    {
+      "$id": "payout_batch",
+      "name": "payout_batch",
+      "enabled": true,
+      "rowSecurity": true,
+      "$permissions": [],
+      "columns": [
+        {
+          "key": "period_start_date",
+          "type": "varchar",
+          "size": 10,
+          "required": true
+        },
+        {
+          "key": "period_end_date",
+          "type": "varchar",
+          "size": 10,
+          "required": true
+        },
+        {
+          "key": "status",
+          "type": "string",
+          "format": "enum",
+          "elements": [
+            "draft",
+            "pending_approval",
+            "approved",
+            "processing",
+            "completed",
+            "cancelled"
+          ],
+          "required": true
+        },
+        {
+          "key": "total_amount",
+          "type": "integer",
+          "required": true,
+          "min": 0
+        },
+        {
+          "key": "payout_count",
+          "type": "integer",
+          "required": true,
+          "min": 0
+        },
+        {
+          "key": "active_key",
+          "type": "varchar",
+          "size": 10,
+          "required": false
+        },
+        {
+          "key": "approved_by_id",
+          "type": "varchar",
+          "size": 36,
+          "required": false
+        },
+        {
+          "key": "approved_at",
+          "type": "datetime",
+          "required": false
+        },
+        {
+          "key": "confirmed_by_id",
+          "type": "varchar",
+          "size": 36,
+          "required": false
+        },
+        {
+          "key": "confirmed_at",
+          "type": "datetime",
+          "required": false
+        },
+        {
+          "key": "created_at",
+          "type": "datetime",
+          "required": true
+        },
+        {
+          "key": "deleted_at",
+          "type": "datetime",
+          "required": false
+        }
+      ],
+      "indexes": [
+        {
+          "key": "unique_active_period",
+          "type": "unique",
+          "columns": [
+            "active_key"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_status",
+          "type": "key",
+          "columns": [
+            "status",
+            "period_start_date"
+          ],
+          "orders": [
+            "ASC",
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_approved_by",
+          "type": "key",
+          "columns": [
+            "approved_by_id"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_confirmed_by",
+          "type": "key",
+          "columns": [
+            "confirmed_by_id"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        }
+      ]
+    },
+    {
+      "$id": "payout",
+      "name": "payout",
+      "enabled": true,
+      "rowSecurity": true,
+      "$permissions": [],
+      "columns": [
+        {
+          "key": "batch_id",
+          "type": "varchar",
+          "size": 36,
+          "required": true
+        },
+        {
+          "key": "teacher_id",
+          "type": "varchar",
+          "size": 36,
+          "required": true
+        },
+        {
+          "key": "amount",
+          "type": "integer",
+          "required": true,
+          "min": 1
+        },
+        {
+          "key": "currency",
+          "type": "varchar",
+          "size": 3,
+          "required": false,
+          "default": "UGX"
+        },
+        {
+          "key": "provider",
+          "type": "varchar",
+          "size": 40,
+          "required": false
+        },
+        {
+          "key": "provider_reference",
+          "type": "varchar",
+          "size": 128,
+          "required": false
+        },
+        {
+          "key": "status",
+          "type": "string",
+          "format": "enum",
+          "elements": [
+            "pending",
+            "sending",
+            "succeeded",
+            "failed",
+            "retry",
+            "needs_ops"
+          ],
+          "required": true
+        },
+        {
+          "key": "idempotency_key",
+          "type": "varchar",
+          "size": 128,
+          "required": true
+        },
+        {
+          "key": "attempts",
+          "type": "integer",
+          "required": false,
+          "min": 0,
+          "default": 0
+        },
+        {
+          "key": "last_error",
+          "type": "varchar",
+          "size": 300,
+          "required": false
+        },
+        {
+          "key": "sent_at",
+          "type": "datetime",
+          "required": false
+        },
+        {
+          "key": "confirmed_at",
+          "type": "datetime",
+          "required": false
+        },
+        {
+          "key": "created_at",
+          "type": "datetime",
+          "required": true
+        }
+      ],
+      "indexes": [
+        {
+          "key": "unique_idempotency_key",
+          "type": "unique",
+          "columns": [
+            "idempotency_key"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        },
+        {
+          "key": "unique_batch_teacher",
+          "type": "unique",
+          "columns": [
+            "batch_id",
+            "teacher_id"
+          ],
+          "orders": [
+            "ASC",
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_teacher",
+          "type": "key",
+          "columns": [
+            "teacher_id",
+            "created_at"
+          ],
+          "orders": [
+            "ASC",
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_status",
+          "type": "key",
+          "columns": [
+            "status"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        }
+      ]
+    },
+    {
+      "$id": "ledger_account",
+      "name": "ledger_account",
+      "enabled": true,
+      "rowSecurity": true,
+      "$permissions": [],
+      "columns": [
+        {
+          "key": "code",
+          "type": "varchar",
+          "size": 100,
+          "required": true
+        },
+        {
+          "key": "name",
+          "type": "varchar",
+          "size": 200,
+          "required": true
+        },
+        {
+          "key": "type",
+          "type": "string",
+          "format": "enum",
+          "elements": [
+            "asset",
+            "liability",
+            "revenue",
+            "expense"
+          ],
+          "required": true
+        },
+        {
+          "key": "normal_side",
+          "type": "string",
+          "format": "enum",
+          "elements": [
+            "debit",
+            "credit"
+          ],
+          "required": true
+        },
+        {
+          "key": "teacher_id",
+          "type": "varchar",
+          "size": 36,
+          "required": false
+        },
+        {
+          "key": "currency",
+          "type": "varchar",
+          "size": 3,
+          "required": false,
+          "default": "UGX"
+        },
+        {
+          "key": "active",
+          "type": "boolean",
+          "required": false,
+          "default": true
+        },
+        {
+          "key": "created_at",
+          "type": "datetime",
+          "required": true
+        }
+      ],
+      "indexes": [
+        {
+          "key": "unique_code",
+          "type": "unique",
+          "columns": [
+            "code"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_teacher",
+          "type": "key",
+          "columns": [
+            "teacher_id"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        }
+      ]
+    },
+    {
+      "$id": "ledger_transaction",
+      "name": "ledger_transaction",
+      "enabled": true,
+      "rowSecurity": true,
+      "$permissions": [],
+      "columns": [
+        {
+          "key": "kind",
+          "type": "string",
+          "format": "enum",
+          "elements": [
+            "payment",
+            "earning",
+            "payout",
+            "refund",
+            "fee",
+            "adjustment",
+            "reversal"
+          ],
+          "required": true
+        },
+        {
+          "key": "idempotency_key",
+          "type": "varchar",
+          "size": 200,
+          "required": true
+        },
+        {
+          "key": "reference_type",
+          "type": "varchar",
+          "size": 60,
+          "required": false
+        },
+        {
+          "key": "reference_id",
+          "type": "varchar",
+          "size": 36,
+          "required": false
+        },
+        {
+          "key": "description",
+          "type": "varchar",
+          "size": 500,
+          "required": false
+        },
+        {
+          "key": "reverses_transaction_id",
+          "type": "varchar",
+          "size": 36,
+          "required": false
+        },
+        {
+          "key": "reversal_reason",
+          "type": "varchar",
+          "size": 500,
+          "required": false
+        },
+        {
+          "key": "entry_count",
+          "type": "integer",
+          "required": true,
+          "min": 2
+        },
+        {
+          "key": "total_amount",
+          "type": "integer",
+          "required": true,
+          "min": 1
+        },
+        {
+          "key": "currency",
+          "type": "varchar",
+          "size": 3,
+          "required": false,
+          "default": "UGX"
+        },
+        {
+          "key": "created_by_id",
+          "type": "varchar",
+          "size": 36,
+          "required": false
+        },
+        {
+          "key": "posted_at",
+          "type": "datetime",
+          "required": true
+        }
+      ],
+      "indexes": [
+        {
+          "key": "unique_idempotency_key",
+          "type": "unique",
+          "columns": [
+            "idempotency_key"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        },
+        {
+          "key": "unique_reverses",
+          "type": "unique",
+          "columns": [
+            "reverses_transaction_id"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_reference",
+          "type": "key",
+          "columns": [
+            "reference_type",
+            "reference_id"
+          ],
+          "orders": [
+            "ASC",
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_created_by",
+          "type": "key",
+          "columns": [
+            "created_by_id"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_posted",
+          "type": "key",
+          "columns": [
+            "posted_at"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        }
+      ]
+    },
+    {
+      "$id": "ledger_entry",
+      "name": "ledger_entry",
+      "enabled": true,
+      "rowSecurity": true,
+      "$permissions": [],
+      "columns": [
+        {
+          "key": "transaction_id",
+          "type": "varchar",
+          "size": 36,
+          "required": true
+        },
+        {
+          "key": "line",
+          "type": "integer",
+          "required": true,
+          "min": 1
+        },
+        {
+          "key": "account_id",
+          "type": "varchar",
+          "size": 36,
+          "required": true
+        },
+        {
+          "key": "side",
+          "type": "string",
+          "format": "enum",
+          "elements": [
+            "debit",
+            "credit"
+          ],
+          "required": true
+        },
+        {
+          "key": "amount",
+          "type": "integer",
+          "required": true,
+          "min": 1
+        },
+        {
+          "key": "currency",
+          "type": "varchar",
+          "size": 3,
+          "required": false,
+          "default": "UGX"
+        },
+        {
+          "key": "reference_type",
+          "type": "varchar",
+          "size": 60,
+          "required": false
+        },
+        {
+          "key": "reference_id",
+          "type": "varchar",
+          "size": 36,
+          "required": false
+        },
+        {
+          "key": "posted_at",
+          "type": "datetime",
+          "required": true
+        }
+      ],
+      "indexes": [
+        {
+          "key": "unique_transaction_line",
+          "type": "unique",
+          "columns": [
+            "transaction_id",
+            "line"
+          ],
+          "orders": [
+            "ASC",
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_account",
+          "type": "key",
+          "columns": [
+            "account_id",
+            "posted_at"
+          ],
+          "orders": [
+            "ASC",
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_reference",
+          "type": "key",
+          "columns": [
+            "reference_type",
+            "reference_id"
+          ],
+          "orders": [
+            "ASC",
+            "ASC"
+          ]
+        }
+      ]
+    },
+    {
+      "$id": "feedback",
+      "name": "feedback",
+      "enabled": true,
+      "rowSecurity": true,
+      "$permissions": [],
+      "columns": [
+        {
+          "key": "session_id",
+          "type": "varchar",
+          "size": 36,
+          "required": true
+        },
+        {
+          "key": "active_key",
+          "type": "varchar",
+          "size": 80,
+          "required": false
+        },
+        {
+          "key": "parent_id",
+          "type": "varchar",
+          "size": 36,
+          "required": true
+        },
+        {
+          "key": "teacher_id",
+          "type": "varchar",
+          "size": 36,
+          "required": true
+        },
+        {
+          "key": "child_id",
+          "type": "varchar",
+          "size": 36,
+          "required": false
+        },
+        {
+          "key": "child_rating",
+          "type": "integer",
+          "required": false,
+          "min": 1,
+          "max": 5
+        },
+        {
+          "key": "parent_comment",
+          "type": "varchar",
+          "size": 2000,
+          "required": false
+        },
+        {
+          "key": "created_at",
+          "type": "datetime",
+          "required": true
+        },
+        {
+          "key": "deleted_at",
+          "type": "datetime",
+          "required": false
+        }
+      ],
+      "indexes": [
+        {
+          "key": "by_teacher",
+          "type": "key",
+          "columns": [
+            "teacher_id",
+            "created_at"
+          ],
+          "orders": [
+            "ASC",
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_parent",
+          "type": "key",
+          "columns": [
+            "parent_id"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_child",
+          "type": "key",
+          "columns": [
+            "child_id"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        },
+        {
+          "key": "unique_active_key",
+          "type": "unique",
+          "columns": [
+            "active_key"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_session",
+          "type": "key",
+          "columns": [
+            "session_id"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        }
+      ]
+    }
+  ],
+  "meta": {
+    "tier": {
+      "deletion": "soft",
+      "note": "Rank order and base_rate (integer UGX per confirmed session); criteria is JSON text read by the monthly tier job. Soft-deleted tiers keep their unique name until restored or retention. Soft delete (M02 rule): active_key = lower-case name while the tier is live, set to null on soft delete (soft_delete_patch), so a deleted tier name can be re-created."
+    },
+    "tier_history": {
+      "deletion": "immutable",
+      "note": "One row per tier change (TIR-4), approved by an admin; corrections are new rows. First assignment has no from_tier_id."
+    },
+    "bonus_rule": {
+      "deletion": "soft",
+      "note": "Configurable bonus per confirmed session (TIR-5); amount is integer UGX; conditions is JSON text."
+    },
+    "invoice": {
+      "deletion": "hard",
+      "note": "Created at period start. Unique (subscription, period start) makes the period job idempotent. parent_id is the payer (read grant). Voiding is a status, not a delete. Never soft-deleted (a soft delete would either hide a financial/idempotency record or free its unique value): the lifecycle is the status column; only the retention job hard-deletes it, after the retention period (DP-6, SR 5.5). Voiding is the status void."
+    },
+    "payment": {
+      "deletion": "hard",
+      "note": "idempotency_key UNIQUE (NFR-8): the core service claims the key by create (409 = already requested). provider_reference is unique per provider once known (NULLs allowed until then). raw_callback stores the verified provider callback verbatim (PAY-1..3, SR 7.8). Provider is free text on purpose: the owner has not chosen providers. Idempotency keys are never reused after a soft delete (intended). Never soft-deleted (a soft delete would either hide a financial/idempotency record or free its unique value): the lifecycle is the status column; only the retention job hard-deletes it, after the retention period (DP-6, SR 5.5). idempotency_key and provider_reference stay claimed forever (NFR-8)."
+    },
+    "earning": {
+      "deletion": "hard",
+      "note": "Created when a session is confirmed (SR 5.4). dedupe_key (e.g. <session>:<type>[:<rule>]) is unique so confirmation retries cannot double-pay. adjustment amounts may be negative. batch_id is set when the weekly payout batch takes the earning. Never soft-deleted (a soft delete would either hide a financial/idempotency record or free its unique value): the lifecycle is the status column; only the retention job hard-deletes it, after the retention period (DP-6, SR 5.5). dedupe_key stays claimed (no double pay); cancel = status void."
+    },
+    "payout_batch": {
+      "deletion": "soft",
+      "note": "Weekly batch (SR 7.9). active_key = period start date while the batch is not cancelled, NULL after, unique: one live batch per period (M01 active_key pattern). SEC-11: approved_by plus a distinct second confirmation (confirmed_by/confirmed_at); the core service rejects approver == confirmer."
+    },
+    "payout": {
+      "deletion": "hard",
+      "note": "One payout per (batch, teacher); idempotency_key UNIQUE (NFR-8). Failures retry on the same row and end in needs_ops. The teacher's payout number lives with the teacher profile (re-verification and 48 h hold, SEC-11, are a core-service rule outside this ticket). Never soft-deleted (a soft delete would either hide a financial/idempotency record or free its unique value): the lifecycle is the status column; only the retention job hard-deletes it, after the retention period (DP-6, SR 5.5). idempotency_key stays claimed (NFR-8); failure = status."
+    },
+    "ledger_account": {
+      "deletion": "hard",
+      "note": "SR 7.10 minimum accounts plus one teacher payable per teacher (teacher_id set). code is unique, e.g. cash:mtn_momo, teacher_payable:<teacher_id>. Balances are derived from ledger_entry, never stored. Never soft-deleted (a soft delete would either hide a financial/idempotency record or free its unique value): the lifecycle is the status column; only the retention job hard-deletes it, after the retention period (DP-6, SR 5.5). code is never reused; retire with active=false."
+    },
+    "ledger_transaction": {
+      "deletion": "immutable",
+      "append_only": true,
+      "note": "APPEND-ONLY header of a balanced posting (SR 7.10). Core-service rules (owner: $01 #76, not enforceable in Appwrite): sum(debit amounts) == sum(credit amounts) == total_amount, entry_count == number of lines, all in one currency, integer UGX > 0; idempotency_key unique so a retried posting cannot double post; corrections are a new transaction with kind=reversal and reverses_transaction_id (unique: reversed once). reference_type/reference_id are polymorphic (payment, earning, payout...).",
+      "non_fk": {
+        "reference_id": "polymorphic reference to payment/earning/payout/invoice rows, discriminated by reference_type"
+      }
+    },
+    "ledger_entry": {
+      "deletion": "immutable",
+      "append_only": true,
+      "note": "APPEND-ONLY line of a transaction: one side (debit or credit) and a positive integer UGX amount. Unique (transaction_id, line). Insert-only in the core service (AppendOnlyRepository); no client write permission. Write all lines first, the header last so a crash leaves no header over partial lines (reconciliation job flags orphan lines).",
+      "non_fk": {
+        "reference_id": "polymorphic reference, discriminated by reference_type"
+      }
+    },
+    "feedback": {
+      "deletion": "soft",
+      "note": "Parent/child feedback after a session (SR 5.4, SAF-3). child_rating 1..5 (face rating). teacher_id/child_id denormalised from the session so tier evaluation can query without a join. A 'something felt wrong' answer additionally creates a safeguarding_case in the core service. Soft delete (M02 rule): active_key = '<session_id>:<parent_id>' while live, null after soft delete: one live feedback per session and parent."
+    }
+  },
+  "relations": [
+    {
+      "from": "tier_history.teacher_id",
+      "to": "teacher_profile"
+    },
+    {
+      "from": "tier_history.from_tier_id",
+      "to": "tier"
+    },
+    {
+      "from": "tier_history.to_tier_id",
+      "to": "tier"
+    },
+    {
+      "from": "tier_history.approved_by_id",
+      "to": "user_profile"
+    },
+    {
+      "from": "invoice.subscription_id",
+      "to": "subscription",
+      "deferred": "subscription table arrives with the plans/subscriptions ticket (M03)"
+    },
+    {
+      "from": "invoice.parent_id",
+      "to": "parent_profile"
+    },
+    {
+      "from": "payment.invoice_id",
+      "to": "invoice"
+    },
+    {
+      "from": "payment.parent_id",
+      "to": "parent_profile"
+    },
+    {
+      "from": "earning.teacher_id",
+      "to": "teacher_profile"
+    },
+    {
+      "from": "earning.session_id",
+      "to": "session",
+      "deferred": "session table arrives with the scheduling ticket (M03)"
+    },
+    {
+      "from": "earning.bonus_rule_id",
+      "to": "bonus_rule"
+    },
+    {
+      "from": "earning.tier_id",
+      "to": "tier"
+    },
+    {
+      "from": "earning.batch_id",
+      "to": "payout_batch"
+    },
+    {
+      "from": "payout_batch.approved_by_id",
+      "to": "user_profile"
+    },
+    {
+      "from": "payout_batch.confirmed_by_id",
+      "to": "user_profile"
+    },
+    {
+      "from": "payout.batch_id",
+      "to": "payout_batch"
+    },
+    {
+      "from": "payout.teacher_id",
+      "to": "teacher_profile"
+    },
+    {
+      "from": "ledger_account.teacher_id",
+      "to": "teacher_profile"
+    },
+    {
+      "from": "ledger_transaction.reverses_transaction_id",
+      "to": "ledger_transaction"
+    },
+    {
+      "from": "ledger_transaction.created_by_id",
+      "to": "user_profile"
+    },
+    {
+      "from": "ledger_entry.transaction_id",
+      "to": "ledger_transaction"
+    },
+    {
+      "from": "ledger_entry.account_id",
+      "to": "ledger_account"
+    },
+    {
+      "from": "feedback.session_id",
+      "to": "session",
+      "deferred": "session table arrives with the scheduling ticket (M03)"
+    },
+    {
+      "from": "feedback.parent_id",
+      "to": "parent_profile"
+    },
+    {
+      "from": "feedback.teacher_id",
+      "to": "teacher_profile"
+    },
+    {
+      "from": "feedback.child_id",
+      "to": "child"
+    }
+  ]
+}

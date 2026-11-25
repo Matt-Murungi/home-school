@@ -1,0 +1,535 @@
+{
+  "domain": "platform",
+  "description": "Audit log, notifications, templates, preferences and device tokens (M04, SR 5.4, 8, SEC-6). audit_log is append-only.",
+  "tables": [
+    {
+      "$id": "audit_log",
+      "name": "audit_log",
+      "enabled": true,
+      "rowSecurity": true,
+      "$permissions": [],
+      "columns": [
+        {
+          "key": "actor_id",
+          "type": "varchar",
+          "size": 36,
+          "required": false
+        },
+        {
+          "key": "actor_roles",
+          "type": "varchar",
+          "size": 200,
+          "required": false
+        },
+        {
+          "key": "action",
+          "type": "varchar",
+          "size": 120,
+          "required": true
+        },
+        {
+          "key": "entity",
+          "type": "varchar",
+          "size": 64,
+          "required": true
+        },
+        {
+          "key": "entity_id",
+          "type": "varchar",
+          "size": 36,
+          "required": true
+        },
+        {
+          "key": "before",
+          "type": "text",
+          "required": false
+        },
+        {
+          "key": "after",
+          "type": "text",
+          "required": false
+        },
+        {
+          "key": "reason",
+          "type": "varchar",
+          "size": 500,
+          "required": false
+        },
+        {
+          "key": "ip",
+          "type": "varchar",
+          "size": 45,
+          "required": false
+        },
+        {
+          "key": "request_id",
+          "type": "varchar",
+          "size": 36,
+          "required": false
+        },
+        {
+          "key": "occurred_at",
+          "type": "datetime",
+          "required": true
+        }
+      ],
+      "indexes": [
+        {
+          "key": "by_entity",
+          "type": "key",
+          "columns": [
+            "entity",
+            "entity_id",
+            "occurred_at"
+          ],
+          "orders": [
+            "ASC",
+            "ASC",
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_actor",
+          "type": "key",
+          "columns": [
+            "actor_id",
+            "occurred_at"
+          ],
+          "orders": [
+            "ASC",
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_occurred",
+          "type": "key",
+          "columns": [
+            "occurred_at"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        }
+      ]
+    },
+    {
+      "$id": "notification_template",
+      "name": "notification_template",
+      "enabled": true,
+      "rowSecurity": true,
+      "$permissions": [],
+      "columns": [
+        {
+          "key": "key",
+          "type": "varchar",
+          "size": 80,
+          "required": true
+        },
+        {
+          "key": "channel",
+          "type": "string",
+          "format": "enum",
+          "elements": [
+            "push",
+            "email",
+            "sms",
+            "in_app"
+          ],
+          "required": true
+        },
+        {
+          "key": "locale",
+          "type": "varchar",
+          "size": 10,
+          "required": true
+        },
+        {
+          "key": "title",
+          "type": "varchar",
+          "size": 200,
+          "required": true
+        },
+        {
+          "key": "body",
+          "type": "text",
+          "required": true
+        },
+        {
+          "key": "allowed_variables",
+          "type": "varchar",
+          "size": 64,
+          "required": false,
+          "array": true
+        },
+        {
+          "key": "category",
+          "type": "string",
+          "format": "enum",
+          "elements": [
+            "operational",
+            "safeguarding",
+            "marketing"
+          ],
+          "required": true
+        },
+        {
+          "key": "version",
+          "type": "integer",
+          "required": true,
+          "min": 1
+        },
+        {
+          "key": "active",
+          "type": "boolean",
+          "required": false,
+          "default": true
+        },
+        {
+          "key": "created_by_id",
+          "type": "varchar",
+          "size": 36,
+          "required": false
+        },
+        {
+          "key": "created_at",
+          "type": "datetime",
+          "required": true
+        }
+      ],
+      "indexes": [
+        {
+          "key": "unique_key_channel_locale_version",
+          "type": "unique",
+          "columns": [
+            "key",
+            "channel",
+            "locale",
+            "version"
+          ],
+          "orders": [
+            "ASC",
+            "ASC",
+            "ASC",
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_created_by",
+          "type": "key",
+          "columns": [
+            "created_by_id"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        }
+      ]
+    },
+    {
+      "$id": "notification",
+      "name": "notification",
+      "enabled": true,
+      "rowSecurity": true,
+      "$permissions": [],
+      "columns": [
+        {
+          "key": "user_id",
+          "type": "varchar",
+          "size": 36,
+          "required": true
+        },
+        {
+          "key": "channel",
+          "type": "string",
+          "format": "enum",
+          "elements": [
+            "push",
+            "email",
+            "sms",
+            "in_app"
+          ],
+          "required": true
+        },
+        {
+          "key": "template_key",
+          "type": "varchar",
+          "size": 80,
+          "required": true
+        },
+        {
+          "key": "template_version",
+          "type": "integer",
+          "required": true,
+          "min": 1
+        },
+        {
+          "key": "category",
+          "type": "string",
+          "format": "enum",
+          "elements": [
+            "operational",
+            "safeguarding",
+            "marketing"
+          ],
+          "required": true
+        },
+        {
+          "key": "payload",
+          "type": "text",
+          "required": false
+        },
+        {
+          "key": "deep_link",
+          "type": "varchar",
+          "size": 500,
+          "required": false
+        },
+        {
+          "key": "status",
+          "type": "string",
+          "format": "enum",
+          "elements": [
+            "queued",
+            "sent",
+            "delivered",
+            "failed",
+            "fallback",
+            "blocked"
+          ],
+          "required": true
+        },
+        {
+          "key": "attempts",
+          "type": "integer",
+          "required": true,
+          "min": 0
+        },
+        {
+          "key": "last_error",
+          "type": "varchar",
+          "size": 500,
+          "required": false
+        },
+        {
+          "key": "dedupe_key",
+          "type": "varchar",
+          "size": 200,
+          "required": false
+        },
+        {
+          "key": "scheduled_at",
+          "type": "datetime",
+          "required": true
+        },
+        {
+          "key": "sent_at",
+          "type": "datetime",
+          "required": false
+        },
+        {
+          "key": "read_at",
+          "type": "datetime",
+          "required": false
+        },
+        {
+          "key": "created_at",
+          "type": "datetime",
+          "required": true
+        },
+        {
+          "key": "deleted_at",
+          "type": "datetime",
+          "required": false
+        }
+      ],
+      "indexes": [
+        {
+          "key": "unique_dedupe_key",
+          "type": "unique",
+          "columns": [
+            "dedupe_key"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_user_created",
+          "type": "key",
+          "columns": [
+            "user_id",
+            "created_at"
+          ],
+          "orders": [
+            "ASC",
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_status_scheduled",
+          "type": "key",
+          "columns": [
+            "status",
+            "scheduled_at"
+          ],
+          "orders": [
+            "ASC",
+            "ASC"
+          ]
+        }
+      ]
+    },
+    {
+      "$id": "notification_preference",
+      "name": "notification_preference",
+      "enabled": true,
+      "rowSecurity": true,
+      "$permissions": [],
+      "columns": [
+        {
+          "key": "user_id",
+          "type": "varchar",
+          "size": 36,
+          "required": true
+        },
+        {
+          "key": "marketing_muted",
+          "type": "boolean",
+          "required": false,
+          "default": false
+        },
+        {
+          "key": "updated_at",
+          "type": "datetime",
+          "required": true
+        }
+      ],
+      "indexes": [
+        {
+          "key": "unique_user",
+          "type": "unique",
+          "columns": [
+            "user_id"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        }
+      ]
+    },
+    {
+      "$id": "device_token",
+      "name": "device_token",
+      "enabled": true,
+      "rowSecurity": true,
+      "$permissions": [],
+      "columns": [
+        {
+          "key": "user_id",
+          "type": "varchar",
+          "size": 36,
+          "required": true
+        },
+        {
+          "key": "app",
+          "type": "string",
+          "format": "enum",
+          "elements": [
+            "parent",
+            "teacher",
+            "admin"
+          ],
+          "required": true
+        },
+        {
+          "key": "platform",
+          "type": "string",
+          "format": "enum",
+          "elements": [
+            "android",
+            "ios",
+            "web"
+          ],
+          "required": true
+        },
+        {
+          "key": "token",
+          "type": "varchar",
+          "size": 1024,
+          "required": true
+        },
+        {
+          "key": "last_seen_at",
+          "type": "datetime",
+          "required": true
+        },
+        {
+          "key": "revoked_at",
+          "type": "datetime",
+          "required": false
+        }
+      ],
+      "indexes": [
+        {
+          "key": "by_user",
+          "type": "key",
+          "columns": [
+            "user_id"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        }
+      ]
+    }
+  ],
+  "meta": {
+    "audit_log": {
+      "deletion": "immutable",
+      "append_only": true,
+      "note": "APPEND-ONLY (SEC-6): who (actor_id, actor_roles), what (action, entity, entity_id), before/after JSON text, reason, ip, request_id, occurred_at (UTC). Read: opsadmin and safeguardinglead via per-row read grants written by the core service (no table-level label read). Insert-only in the core service (AppendOnlyRepository). Index prefix for lookups: (entity, entity_id, occurred_at); actor_id is NULL for system actions.",
+      "non_fk": {
+        "entity_id": "polymorphic reference to any audited row, discriminated by entity",
+        "request_id": "correlation id of the HTTP request, not a row id"
+      }
+    },
+    "notification_template": {
+      "deletion": "immutable",
+      "note": "Central templates with variables per channel (SR 8, N01 #126 builds the service on this table). Editing = new version row (unique key+channel+locale+version), so sent notifications keep the exact version. allowed_variables lists the placeholders a body may use (missing variable blocks the send, N01). Super admin edits through the core service."
+    },
+    "notification": {
+      "deletion": "soft",
+      "note": "One row per send with delivery status (SR 5.1/8). category operational and safeguarding cannot be muted; marketing can (N01). dedupe_key unique so a retried job does not send twice. Push failures for critical events fall back to email (status fallback). Rows are kept until retention."
+    },
+    "notification_preference": {
+      "deletion": "hard",
+      "note": "Marketing mute only (SR 8). The one user-writable table in ADR 0012 item 2 (update(user:<id>) on the row, set by the core service when it creates the row). Never soft-deleted (a soft delete would either hide a financial/idempotency record or free its unique value): the lifecycle is the status column; only the retention job hard-deletes it, after the retention period (DP-6, SR 5.5). One row per user (unique user_id); removed with the user under retention."
+    },
+    "device_token": {
+      "deletion": "history",
+      "note": "FCM tokens per user and app; revoked_at on logout or invalid token, row kept for history until retention."
+    }
+  },
+  "relations": [
+    {
+      "from": "audit_log.actor_id",
+      "to": "user_profile"
+    },
+    {
+      "from": "notification_template.created_by_id",
+      "to": "user_profile"
+    },
+    {
+      "from": "notification.user_id",
+      "to": "user_profile"
+    },
+    {
+      "from": "notification_preference.user_id",
+      "to": "user_profile"
+    },
+    {
+      "from": "device_token.user_id",
+      "to": "user_profile"
+    }
+  ]
+}
