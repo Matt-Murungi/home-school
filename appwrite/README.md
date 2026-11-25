@@ -12,12 +12,13 @@ Appwrite project definition for the three Cloud projects (development, staging, 
 
 | File | What |
 |---|---|
-| `appwrite.config.json` | Skeleton in Appwrite CLI format: database `main`, `schema_migration` and sample table, bucket `teacher-docs`, no functions yet. ADR 0012 rules: row security on, empty table permissions, no client writes. Real tables arrive in M01-M04. |
+| `appwrite.config.json` | Skeleton in Appwrite CLI format: database `main`, `schema_migration` and sample table, bucket `teacher-docs`, function `job-tick`. ADR 0012 rules: row security on, empty table permissions, no client writes. Real tables arrive in M01-M04. |
 | `environments.example.json` | Names, endpoint, project-id placeholders, the env var that holds each key. Never a key. Copy to `environments.json` (git-ignored). |
 | `migrate.py` | Runner. `python3 migrate.py --env staging`. Reads each key from the env var named in `keyEnvVar`. Exit 0 ok, 1 failed (prints `PROMOTE=false`, also writes `promote=` to `$GITHUB_OUTPUT`), 2 invalid migrations, 3 seed refused in production. |
 | `migrations/NNNN_name.py` | Each defines `up(ctx)` (`ctx.client`, `ctx.environment`). Names `NNNN_seed_*.py` are seeds: dev and staging only. Never edit an applied script; add a new one. |
 | `appwrite_client.py` | Real adapter (urllib over Appwrite REST). Tested with a mocked opener only. |
 | `fake_client.py` | In-memory stand-in used by the tests. |
+| `functions/job-tick/` | The only function (F04, ADR 0002): cron `* * * * *`, python-3.12, standard library only, no Appwrite scopes. Signs and POSTs `/internal/jobs/tick` on the core service; all schedules live in `services/core/src/hs_core/jobs/schedule.py`. Variables (set in Appwrite per environment, never in the repo): `CORE_SERVICE_URL`, `JOB_TICK_SECRET`. Config entry in `appwrite.config.json`; its test is in `services/core/tests/test_job_tick_function.py`. |
 | `keys.md`, `check_keys.py` | Who gets which scopes; `python3 check_keys.py` validates it. |
 
 ## CI sequence (wired by F07 #33; not run from here)
