@@ -121,7 +121,7 @@ Suggested order: E00 decisions (D01–D03, D05; D04, D06 later/owner) → E01 fo
 - Follow-ups: F02 builds schema from the table split in ADR 0012 and records the diff to the 35 live tables; F03 builds Dockerfile/fly.toml and does the Fly latency run; role-played access tests need a non-live Appwrite project.
 
 ### D05 · Email provider decision (#25)
-- Status: **ready-for-review** (branch `d05-email-adr`, commit 8dc77b7, not yet a PR)
+- Status: **blocked-foundation-merged** (PR #159 squash commit a4cc6cb; issue #25 closed). Review: `check-adrs.py` 5/5 ok in clean worktree; diff only ADR 0005, no secrets; Resend pricing/events and Postmark pricing spot-checked against public pages (match); SES/Postmark event names consistent; contract coherent with SR §8 and N02 #127; unverified labels present, nothing claimed tested. Still blocked on owner: domain, Resend account, DNS, inbox test. N02 follow-ups: map/ignore `email.failed` and `email.suppressed`; verify Resend signature header names and idempotency support.
 - Built: `docs/adr/0005-email-provider.md` (Proposed): Resend (chosen in SR v0.2) vs Postmark vs Amazon SES, comparison table, `EmailSender` interface contract, webhook event mapping table (delivered, bounced hard/soft, complained) for the three providers, sending-domain DNS plan as a template (`mail.<domain>`, SPF/DKIM/DMARC, p=none then quarantine then reject), owner checklist, deliverability test procedure, Ugandan-hosts mitigation. Prices from public pages fetched 25 Nov 2026, labelled unverified. Event names/signature scheme written from public docs knowledge, marked to verify in N02. No code: adapter is N02 (#127).
 - Test: `python3 docs/adr/check-adrs.py` -> 5/5 ok.
 - Note: SR section for notifications is §8 (not §9).
@@ -166,3 +166,4 @@ Suggested order: E00 decisions (D01–D03, D05; D04, D06 later/owner) → E01 fo
 - 2026-11-25: D03 built (ADRs 0003, 0012, ADR lint), ready-for-review on `d03-hosting-adrs`.
 - 2026-11-25: D03 round 2 reviewed, PR #158 merged, status blocked-foundation-merged.
 - 2026-11-25: D05 built (ADR 0005), ready-for-review on `d05-email-adr`.
+- 2026-11-25: D05 reviewed, PR #159 merged, status blocked-foundation-merged.
