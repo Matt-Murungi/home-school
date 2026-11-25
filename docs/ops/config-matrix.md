@@ -72,6 +72,15 @@ Which variable exists in which environment, what kind it is and where it lives. 
 | `OTP_PHONE_REQUESTS_PER_HOUR` | config | core-service | 5 | 5 | 5 | fly_env |
 | `OTP_RESEND_COOLDOWN_S` | config | core-service | 30 | 30 | 30 | fly_env |
 | `OTP_TTL_S` | config | core-service | 300 | 300 | 300 | fly_env |
+| `TRAVEL_CACHE_TTL_DAYS` | config | core-service | 7 | 7 | 7 | fly_env |
+| `TRAVEL_DAILY_ELEMENT_BUDGET` | config | core-service | 1000 | 1000 | 1000 | fly_env |
+| `TRAVEL_ELEMENT_COST_MICRO_USD` | config | core-service | 10000 | 10000 | 10000 | fly_env |
+| `TRAVEL_FALLBACK_CIRCUITY` | config | core-service | 1.4 | 1.4 | 1.4 | fly_env |
+| `TRAVEL_FALLBACK_SPEED_KMH` | config | core-service | 20 | 20 | 20 | fly_env |
+| `TRAVEL_MONTHLY_ELEMENT_BUDGET` | config | core-service | 15000 | 15000 | 15000 | fly_env |
+| `TRAVEL_NEGATIVE_TTL_S` | config | core-service | 300 | 300 | 300 | fly_env |
+| `TRAVEL_WARM_BANDS` | config | core-service | evening_peak,off_peak | evening_peak,off_peak | evening_peak,off_peak | fly_env |
+| `TRAVEL_WITHIN_ZONE_MINUTES` | config | core-service | 10 | 10 | 10 | fly_env |
 <!-- END GENERATED:matrix -->
 
 ## Rules

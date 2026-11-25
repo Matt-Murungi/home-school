@@ -23,6 +23,8 @@ from .logging_setup import configure_logging, request_id_var
 from .observability import ErrorReporter, build_reporter, report_once
 from .repository import Repository, build_repository
 from .settings import Settings, load_settings
+from .travel import jobs as travel_jobs
+from .travel.factory import build_travel_service
 
 log = logging.getLogger("hs_core")
 _SAFE_ID = re.compile(r"[A-Za-z0-9._-]{1,64}")
@@ -64,6 +66,8 @@ def create_app(
         alert=alert_sink or LogAlertSink(),
         failure_alert_after=settings.job_alert_after_failures,
     )
+    app.state.travel = build_travel_service(settings, app.state.repository)
+    travel_jobs.configure(app.state.travel, app.state.repository)
     app.state.reporter = reporter or build_reporter(settings)
     app.state.otp = otp_service or build_otp_service(
         settings, app.state.repository, sms_sender, user_directory
