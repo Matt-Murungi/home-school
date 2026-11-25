@@ -1,0 +1,202 @@
+{
+  "domain": "permissions",
+  "description": "M05 (#40): bookkeeping for the permission service (ADR 0012). access_window records when a teacher's time-limited access (assignment end, substitute cover, 24 h address rule) lapses so the address-revoke job finds due rows by index; teacher_session_history is the anonymised copy of a session log a teacher keeps after the assignment ends (child first name, class, date, duration). Both are written only by the core service; no client write permission, no table-level read.",
+  "tables": [
+    {
+      "$id": "access_window",
+      "name": "access_window",
+      "enabled": true,
+      "rowSecurity": true,
+      "$permissions": [],
+      "columns": [
+        {
+          "key": "teacher_id",
+          "type": "varchar",
+          "size": 36,
+          "required": true
+        },
+        {
+          "key": "child_id",
+          "type": "varchar",
+          "size": 36,
+          "required": true
+        },
+        {
+          "key": "expires_at",
+          "type": "datetime",
+          "required": true
+        },
+        {
+          "key": "state",
+          "type": "string",
+          "format": "enum",
+          "elements": [
+            "open",
+            "closed"
+          ],
+          "required": true
+        },
+        {
+          "key": "closed_at",
+          "type": "datetime",
+          "required": false
+        }
+      ],
+      "indexes": [
+        {
+          "key": "unique_teacher_child",
+          "type": "unique",
+          "columns": [
+            "teacher_id",
+            "child_id"
+          ],
+          "orders": [
+            "ASC",
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_child",
+          "type": "key",
+          "columns": [
+            "child_id"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_due",
+          "type": "key",
+          "columns": [
+            "state",
+            "expires_at"
+          ],
+          "orders": [
+            "ASC",
+            "ASC"
+          ]
+        }
+      ]
+    },
+    {
+      "$id": "teacher_session_history",
+      "name": "teacher_session_history",
+      "enabled": true,
+      "rowSecurity": true,
+      "$permissions": [],
+      "columns": [
+        {
+          "key": "teacher_id",
+          "type": "varchar",
+          "size": 36,
+          "required": true
+        },
+        {
+          "key": "session_id",
+          "type": "varchar",
+          "size": 36,
+          "required": true
+        },
+        {
+          "key": "session_log_id",
+          "type": "varchar",
+          "size": 36,
+          "required": true
+        },
+        {
+          "key": "child_first_name",
+          "type": "varchar",
+          "size": 60,
+          "required": true
+        },
+        {
+          "key": "class_level",
+          "type": "varchar",
+          "size": 40,
+          "required": false
+        },
+        {
+          "key": "session_date",
+          "type": "varchar",
+          "size": 10,
+          "required": true
+        },
+        {
+          "key": "duration_minutes",
+          "type": "integer",
+          "required": true,
+          "min": 0,
+          "max": 1440
+        }
+      ],
+      "indexes": [
+        {
+          "key": "unique_session",
+          "type": "unique",
+          "columns": [
+            "session_id"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_teacher_date",
+          "type": "key",
+          "columns": [
+            "teacher_id",
+            "session_date"
+          ],
+          "orders": [
+            "ASC",
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_session_log",
+          "type": "key",
+          "columns": [
+            "session_log_id"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        }
+      ]
+    }
+  ],
+  "meta": {
+    "access_window": {
+      "deletion": "hard",
+      "note": "One row per (teacher, child): the earliest future instant at which any of the teacher's time-limited access to the child (child record and logs: assignment end or substitute window; home address: 24 h after the last session) lapses. state open while a lapse is pending, closed once the permissions were recomputed after it. Written by the core permission service on every recompute of the child's scope; the address-revoke job reads state=open and expires_at <= now through index by_due. It is an optimisation for discovery only: the permissions themselves are always computed from business state, so a missing or stale row is repaired by permission-reconcile and caught by permission-audit. No client read.",
+      "non_fk": {}
+    },
+    "teacher_session_history": {
+      "deletion": "hard",
+      "note": "ADR 0012 history rule: when a teacher's assignment ends the teacher loses the child's session_log, but keeps this redacted row (child first name only, class, Kampala calendar date, duration in minutes) for their own earnings history. Written by the core service in the same step as a log submit (permissions.history.build_history_row). read(user:<teacher>) only, plus read(label:opsadmin). Unique per session so a resubmitted log updates one row. Removed by the retention job with the teacher or on a DP-5 request for the child (the first name is personal data of the child)."
+    }
+  },
+  "relations": [
+    {
+      "from": "access_window.teacher_id",
+      "to": "teacher_profile"
+    },
+    {
+      "from": "access_window.child_id",
+      "to": "child"
+    },
+    {
+      "from": "teacher_session_history.teacher_id",
+      "to": "teacher_profile"
+    },
+    {
+      "from": "teacher_session_history.session_id",
+      "to": "session"
+    },
+    {
+      "from": "teacher_session_history.session_log_id",
+      "to": "session_log"
+    }
+  ]
+}

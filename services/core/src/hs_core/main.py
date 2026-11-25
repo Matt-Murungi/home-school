@@ -23,6 +23,7 @@ from .logging_setup import configure_logging, request_id_var
 from .notifications import build_notification_service
 from .notifications import dispatch as notification_dispatch_job
 from .observability import ErrorReporter, build_reporter, report_once
+from .permissions.wiring import wire_permissions
 from .repository import Repository, build_repository
 from .settings import Settings, load_settings
 from .travel import jobs as travel_jobs
@@ -71,6 +72,9 @@ def create_app(
     )
     app.state.travel = build_travel_service(settings, app.state.repository)
     travel_jobs.configure(app.state.travel, app.state.repository)
+    app.state.permissions = wire_permissions(  # M05: binds the permission jobs
+        app.state.repository, app.state.runner, alert_sink, settings
+    )
     app.state.reporter = reporter or build_reporter(settings)
     app.state.otp = otp_service or build_otp_service(
         settings, app.state.repository, sms_sender, user_directory

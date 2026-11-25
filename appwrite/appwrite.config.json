@@ -4126,6 +4126,171 @@
       ]
     },
     {
+      "$id": "access_window",
+      "databaseId": "main",
+      "name": "access_window",
+      "enabled": true,
+      "rowSecurity": true,
+      "$permissions": [],
+      "columns": [
+        {
+          "key": "teacher_id",
+          "type": "varchar",
+          "size": 36,
+          "required": true
+        },
+        {
+          "key": "child_id",
+          "type": "varchar",
+          "size": 36,
+          "required": true
+        },
+        {
+          "key": "expires_at",
+          "type": "datetime",
+          "required": true
+        },
+        {
+          "key": "state",
+          "type": "string",
+          "format": "enum",
+          "elements": [
+            "open",
+            "closed"
+          ],
+          "required": true
+        },
+        {
+          "key": "closed_at",
+          "type": "datetime",
+          "required": false
+        }
+      ],
+      "indexes": [
+        {
+          "key": "unique_teacher_child",
+          "type": "unique",
+          "columns": [
+            "teacher_id",
+            "child_id"
+          ],
+          "orders": [
+            "ASC",
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_child",
+          "type": "key",
+          "columns": [
+            "child_id"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_due",
+          "type": "key",
+          "columns": [
+            "state",
+            "expires_at"
+          ],
+          "orders": [
+            "ASC",
+            "ASC"
+          ]
+        }
+      ]
+    },
+    {
+      "$id": "teacher_session_history",
+      "databaseId": "main",
+      "name": "teacher_session_history",
+      "enabled": true,
+      "rowSecurity": true,
+      "$permissions": [],
+      "columns": [
+        {
+          "key": "teacher_id",
+          "type": "varchar",
+          "size": 36,
+          "required": true
+        },
+        {
+          "key": "session_id",
+          "type": "varchar",
+          "size": 36,
+          "required": true
+        },
+        {
+          "key": "session_log_id",
+          "type": "varchar",
+          "size": 36,
+          "required": true
+        },
+        {
+          "key": "child_first_name",
+          "type": "varchar",
+          "size": 60,
+          "required": true
+        },
+        {
+          "key": "class_level",
+          "type": "varchar",
+          "size": 40,
+          "required": false
+        },
+        {
+          "key": "session_date",
+          "type": "varchar",
+          "size": 10,
+          "required": true
+        },
+        {
+          "key": "duration_minutes",
+          "type": "integer",
+          "required": true,
+          "min": 0,
+          "max": 1440
+        }
+      ],
+      "indexes": [
+        {
+          "key": "unique_session",
+          "type": "unique",
+          "columns": [
+            "session_id"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_teacher_date",
+          "type": "key",
+          "columns": [
+            "teacher_id",
+            "session_date"
+          ],
+          "orders": [
+            "ASC",
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_session_log",
+          "type": "key",
+          "columns": [
+            "session_log_id"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        }
+      ]
+    },
+    {
       "$id": "audit_log",
       "databaseId": "main",
       "name": "audit_log",
