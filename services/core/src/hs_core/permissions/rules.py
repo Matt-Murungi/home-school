@@ -369,6 +369,12 @@ _SPECS: list[Spec] = [
     Spec("tier_history", A(teacher="own", ops="read"), OPS, own_teacher()),
     Spec("bonus_rule", A(ops="read"), OPS),
     Spec(
+        "scheduling_issue",
+        A(ops="read (admin queue: teacher clashes, availability, holidays; H01 builds the UI)"),
+        OPS,
+        note="S01: written by the core service only; no teacher or parent read.",
+    ),
+    Spec(
         "invoice",
         A(parent="own; guardian with grant `billing`", ops="read"),
         OPS,
@@ -575,6 +581,7 @@ SERVICE_ONLY_TABLES: dict[str, str] = {
     "schema_migration": "migration runner bookkeeping",
     "sample_item": "CI sample table",
     "access_window": "permission service bookkeeping (when time-limited access lapses)",
+    "teacher_schedule_lease": "S01 per-teacher scheduling lease rows, server only (no client reads)",
 }
 # Tables owned by tickets that are not on main yet. Decided now so their merge does not leave a
 # table without a decision; `test_decisions_cover_every_table` allows these to be absent.
@@ -588,8 +595,6 @@ PENDING_SERVICE_ONLY: dict[str, str] = {
     "billing_credit": "B03 billing credits, server only",
     "billing_payment": "B03 payment flags, server only",
     "billing_claim": "B03 idempotency claims, server only",
-    "teacher_schedule_lease": "S01 per-teacher scheduling lease, server only",
-    "scheduling_issue": "S01 scheduling problems, server only (admin queue through an endpoint)",
 }
 
 SPECS: dict[str, Spec] = {s.table: s for s in _SPECS}

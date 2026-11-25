@@ -183,6 +183,7 @@ Owner steps to verify: see memory.md, ticket M05, "Owner-blocked".
 | `role_assignment` | no | no | no | no | no | read (label) |
 | `safeguarding_action` | no | no | no | no | the assigned lead of the case only | no |
 | `safeguarding_case` | no | no | no | no | the assigned lead only (also after close, policy flag lead_keeps_closed_case_record) | no |
+| `scheduling_issue` | no | no | read (label) | no | no | no |
 | `school_upload` | own children; guardian with grant `children` | no | read (label) | no | no | no |
 | `session` | own children; guardian with grant `sessions` | own sessions while the teacher may read the child (substitute: covered session window) | read (label) | no | sessions of a child with an open assigned case (assigned lead) | no |
 | `session_checkin` | own children; guardian with grant `sessions` | no | read (label) | no | no | no |
@@ -216,10 +217,9 @@ Owner steps to verify: see memory.md, ticket M05, "Owner-blocked".
 - `job_run`: F04 job runner state, server only (planned schema) (table arrives with its own ticket)
 - `otp_challenge`: A01 one-time code hashes, server only (table arrives with its own ticket)
 - `sample_item`: CI sample table
-- `scheduling_issue`: S01 scheduling problems, server only (admin queue through an endpoint) (table arrives with its own ticket)
 - `schema_migration`: migration runner bookkeeping
 - `subscription_transition`: B03 subscription state log, server only (ops reads through an endpoint) (table arrives with its own ticket)
-- `teacher_schedule_lease`: S01 per-teacher scheduling lease, server only (table arrives with its own ticket)
+- `teacher_schedule_lease`: S01 per-teacher scheduling lease rows, server only (no client reads)
 - `travel_time_cache`: X01 zone-pair travel time cache, server only (table arrives with its own ticket)
 - `travel_usage`: X01 Google Routes usage counters, server only (table arrives with its own ticket)
 

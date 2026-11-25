@@ -262,6 +262,8 @@ class SampleWorld:
         c("tier_history", "th_t1", teacher_id="T1")
         c("tier_history", "th_t4", teacher_id="T4")
         c("bonus_rule", "br1", name="x")
+        # S01: admin queue rows (ops read only)
+        c("scheduling_issue", "si1", assignment_id="aA1", kind="teacher_conflict", status="open")
         c("invoice", "invA", parent_id="PA", subscription_id="subA")
         c("invoice", "invB", parent_id="PB", subscription_id="subB")
         c("payment", "payA", parent_id="PA", invoice_id="invA")

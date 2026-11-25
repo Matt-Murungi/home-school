@@ -39,6 +39,10 @@ class AuditedRepository:
     def service(self) -> AuditService:
         return self._svc
 
+    def effective_context(self) -> AuditContext | None:
+        """The context an audited write made now would use (bound, else the ambient scope)."""
+        return self._ctx or current_audit_context.get()
+
     def bind(self, ctx: AuditContext) -> AuditedRepository:
         """A view of the same repository whose audited writes use `ctx`."""
         return AuditedRepository(self._inner, self._svc, ctx=ctx)

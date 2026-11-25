@@ -9,6 +9,6 @@
 - `generator.py`  SessionGenerator: generate / regenerate / cancel_future / generate_now / run_chunk
 - `job.py`        the nightly `session-generate` job handler (registered in jobs/schedule.py)
 - `api.py`        POST /admin/scheduling/generate-now (opsadmin, reason required)
-- `issues.py`, `audit.py`  admin-visible scheduling issues; audit interface (M06 supplies the real
-  sink)
+- `issues.py`  admin-visible scheduling issues. Audit: every write of an audited table goes through
+  M06's AuditedRepository (see docs/ops/audit.md "Session generation")
 """

@@ -11,6 +11,8 @@ import threading
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
+from hs_core.audit import AuditedRepository, AuditService
+from hs_core.audit.context import AuditContext
 from hs_core.repository import Conflict, InMemoryRepository
 from hs_core.scheduling.rules import SLOT_RELEASED, overlaps
 from jobs_helpers import FakeClock, HookRepository
@@ -81,7 +83,11 @@ class World:
     """One teacher, one child, one plan; `assignment()` adds pairings. All data lives in `repo`."""
 
     def __init__(self, repo=None, now: datetime = NOW) -> None:
-        self.repo = repo or UniqueRepo()
+        self.repo = repo or UniqueRepo()  # raw: tests seed and read through it
+        # the production wiring: the audited wrapper bound to a system context (the job's actor)
+        self.audit = AuditService(self.repo)
+        self.ctx = AuditContext.system("session-generate", run_key="test-run")
+        self.audited = AuditedRepository(self.repo, self.audit, ctx=self.ctx)
         self.clock = FakeClock(now)
         self._n = itertools.count(1)
         self.plans: dict[int, str] = {}
@@ -183,6 +189,10 @@ class World:
             },
         )
         return aid
+
+    def audit_rows(self, **where):
+        rows = self.repo.list("audit_log")
+        return [r for r in rows if all(r.get(k) == v for k, v in where.items())]
 
     def sessions(self, **where):
         rows = self.repo.list("session")

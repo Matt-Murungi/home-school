@@ -10,10 +10,12 @@ from datetime import UTC, date, datetime, timedelta
 
 import pytest
 
+from hs_core.audit import AuditedRepository
+from hs_core.audit.context import AuditContext
+from hs_core.audit.errors import ReasonRequired
 from hs_core.jobs.alerts import FakeAlertSink
 from hs_core.scheduling import rules
-from hs_core.scheduling.audit import FakeAuditSink
-from hs_core.scheduling.generator import ReasonRequired, SessionGenerator
+from hs_core.scheduling.generator import SessionGenerator
 from hs_core.scheduling.pattern import Slot
 from sched_helpers import NOW, World, iso, overlapping_pairs, snapshot
 
@@ -24,8 +26,7 @@ MON_4PM = (1, 960, 1020)
 
 def gen_for(w: World, **kw) -> SessionGenerator:
     kw.setdefault("alert", FakeAlertSink())
-    kw.setdefault("audit", FakeAuditSink())
-    return SessionGenerator(w.repo, clock=w.clock, **kw)
+    return SessionGenerator(w.audited, clock=w.clock, **kw)
 
 
 def starts(w, aid, **where):
@@ -450,7 +451,7 @@ def test_cancel_future_removes_only_future_scheduled_generated_sessions_and_rele
     rows = sorted(w.sessions(assignment_id=aid), key=lambda r: r["scheduled_start_at"])
     done = rows[0]  # already delivered
     w.repo.update("session", done["$id"], {"status": "confirmed", "teacher_slot_key": None})
-    res = g.cancel_future(aid, date(2026, 12, 8), "paused", actor_id="sys")
+    res = g.cancel_future(aid, date(2026, 12, 8), "paused")
     assert res.removed == 3  # 8, 15, 22 Dec; 1 Dec is before from_date
     live = [s for s in w.sessions(assignment_id=aid) if not s.get("deleted_at")]
     assert sorted(s["scheduled_start_at"][:10] for s in live) == ["2026-12-01"]
@@ -458,10 +459,9 @@ def test_cancel_future_removes_only_future_scheduled_generated_sessions_and_rele
         assert gone["teacher_slot_key"] is None and gone["generation_key"] is None
     # idempotent
     assert g.cancel_future(aid, date(2026, 12, 8), "paused").removed == 0
-    assert (
-        g.audit.entries[-2].action == "scheduling.cancel_future"
-        or g.audit.entries[-1].action == "scheduling.cancel_future"
-    )
+    actions = [r["action"] for r in w.audit_rows()]
+    assert actions.count("scheduling.cancel_future") == 2  # one row per call, reason recorded
+    assert actions.count("session.cancel_future") == 3  # one audited change per removed session
 
 
 def test_cancel_future_keeps_started_sessions():
@@ -940,36 +940,52 @@ def test_issues_auto_resolve_when_the_condition_clears():
 
 # ---------------------------------------------------------------- manual generate-now, audit,
 # errors
+def admin_ctx(actor="admin1", request_id="req-1"):
+    return AuditContext.for_principal(actor, ["opsadmin"], request_id=request_id)
+
+
+def unbound(w, **kw):
+    """The production wiring: the audited repository carries no context, the caller's scope does."""
+    return SessionGenerator(AuditedRepository(w.repo, w.audit), clock=w.clock, **kw)
+
+
 def test_generate_now_requires_a_reason_and_records_an_audit_entry():
     w = World()
     aid = w.assignment(w.teacher(), [TUE_4PM])
-    g = gen_for(w)
+    g = unbound(w)
     for bad in ("", "  ", "x"):
         with pytest.raises(ReasonRequired):
-            g.generate_now(aid, actor_id="admin1", reason=bad)
-    assert not w.sessions() and not g.audit.entries
-    res = g.generate_now(aid, actor_id="admin1", reason="parent asked for earlier start")
+            g.generate_now(aid, ctx=admin_ctx(), reason=bad)
+    assert not w.sessions() and not w.audit_rows()
+    res = g.generate_now(aid, ctx=admin_ctx(), reason="parent asked for earlier start")
     assert res.created == 4
-    e = g.audit.entries[0]
-    assert (e.actor_id, e.action, e.entity, e.entity_id) == (
+    head = w.audit_rows(action="scheduling.generate_now")
+    assert len(head) == 1
+    assert (head[0]["actor_id"], head[0]["entity"], head[0]["entity_id"]) == (
         "admin1",
-        "scheduling.generate_now",
         "assignment",
         aid,
     )
-    assert e.reason == "parent asked for earlier start"
+    assert head[0]["reason"] == "parent asked for earlier start"
+    rows = w.audit_rows(action="session.generate")
+    assert len(rows) == 4  # one audited create per session, same actor and reason
+    assert {r["actor_id"] for r in rows} == {"admin1"}
+    assert {r["reason"] for r in rows} == {"parent asked for earlier start"}
 
 
 def test_generate_now_can_reconcile_from_a_date():
     w = World()
     aid = w.assignment(w.teacher(), [MON_4PM, THU_4PM], per_week=2)
-    g = gen_for(w)
-    g.generate_now(aid, actor_id="a", reason="initial")
+    g = unbound(w)
+    g.generate_now(aid, ctx=admin_ctx(request_id="r1"), reason="initial")
     w.repo.update(
         "subscription", w.repo.get("assignment", aid)["subscription_id"], {"plan_id": w.plan(1)}
     )
-    res = g.generate_now(aid, actor_id="a", reason="plan changed", reconcile_from=date(2026, 12, 7))
+    res = g.generate_now(
+        aid, ctx=admin_ctx(request_id="r2"), reason="plan changed", reconcile_from=date(2026, 12, 7)
+    )
     assert res.pruned == 3
+    assert len(w.audit_rows(action="session.prune")) == 3
 
 
 def test_unknown_assignment_raises_a_clear_error():
@@ -1018,3 +1034,27 @@ def test_preferred_slots_json_is_read_from_the_subscription_text_column():
         {"weekday": 2, "start_minute": 960, "end_minute": 1020}
     ]
     assert Slot(2, 960, 1020)
+
+
+# ------------------------------------------------------------- M05: permissions for new sessions
+def test_new_sessions_get_permissions_and_a_failure_does_not_fail_generation():
+    w = World()
+    aid = w.assignment(w.teacher(), [TUE_4PM])
+
+    class Perms:
+        def __init__(self, fail=False):
+            self.events, self.fail = [], fail
+
+        def apply(self, event):
+            self.events.append(event)
+            if self.fail:
+                raise RuntimeError("appwrite down")
+
+    perms = Perms()
+    g = gen_for(w, permissions=perms)
+    assert g.generate(aid).created == 4
+    assert len(perms.events) == 4 and all(e.kind == "row_created" for e in perms.events)
+    assert gen_for(w, permissions=perms).generate(aid).created == 0 and len(perms.events) == 4
+    w2 = World()
+    aid2 = w2.assignment(w2.teacher(), [TUE_4PM])
+    assert gen_for(w2, permissions=Perms(fail=True)).generate(aid2).created == 4

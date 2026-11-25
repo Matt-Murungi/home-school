@@ -9,9 +9,11 @@ from fastapi import APIRouter, Depends, Request
 from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel, Field, field_validator
 
-from ..auth import Principal, require_roles
+from ..audit.api import audit_context
+from ..audit.context import AuditContext
+from ..auth import require_roles
 from ..errors import AppError
-from .generator import AssignmentNotFound, ReasonRequired
+from .generator import AssignmentNotFound
 
 router = APIRouter()
 
@@ -35,22 +37,21 @@ class GenerateNow(BaseModel):
 async def generate_now(
     body: GenerateNow,
     request: Request,
-    who: Principal = Depends(require_roles("opsadmin")),  # noqa: B008
+    _admin=Depends(require_roles("opsadmin")),  # noqa: B008
+    ctx: AuditContext = Depends(audit_context),  # noqa: B008
 ) -> dict:
     gen = request.app.state.scheduler
     try:
         res = await run_in_threadpool(
             lambda: gen.generate_now(
                 body.assignment_id,
-                actor_id=who.user_id,
+                ctx=ctx,
                 reason=body.reason,
                 reconcile_from=body.reconcile_from,
             )
         )
     except AssignmentNotFound:
         raise AppError(404, "not_found", "Assignment not found") from None
-    except ReasonRequired:
-        raise AppError(422, "validation_error", "A reason is required") from None
     return {
         "assignment_id": res.assignment_id,
         "status": res.status,

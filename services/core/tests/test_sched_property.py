@@ -22,7 +22,6 @@ import pytest
 
 from hs_core.jobs.alerts import FakeAlertSink
 from hs_core.scheduling import rules
-from hs_core.scheduling.audit import FakeAuditSink
 from hs_core.scheduling.generator import SessionGenerator
 from hs_core.scheduling.leases import LeaseBusy, TeacherLeases
 from hs_core.scheduling.writer import SessionWriter
@@ -33,8 +32,7 @@ TUE_4PM = (2, 960, 1020)
 
 def gen_for(w, **kw):
     kw.setdefault("alert", FakeAlertSink())
-    kw.setdefault("audit", FakeAuditSink())
-    return SessionGenerator(w.repo, clock=w.clock, **kw)
+    return SessionGenerator(w.audited, clock=w.clock, **kw)
 
 
 def state(repo):

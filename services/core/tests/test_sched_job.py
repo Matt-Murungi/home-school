@@ -7,6 +7,7 @@ from datetime import UTC, datetime, timedelta
 import pytest
 from fastapi.testclient import TestClient
 
+from hs_core.audit import AuditedRepository
 from hs_core.auth import FakeTokenVerifier
 from hs_core.jobs.alerts import FakeAlertSink
 from hs_core.jobs.model import Continue, Done, JobContext
@@ -14,7 +15,6 @@ from hs_core.jobs.runner import Runner
 from hs_core.jobs.schedule import JOBS
 from hs_core.main import create_app
 from hs_core.scheduling import job as sjob
-from hs_core.scheduling.audit import FakeAuditSink
 from hs_core.scheduling.generator import SessionGenerator
 from hs_core.settings import Settings
 from jobs_helpers import Crash
@@ -26,8 +26,7 @@ THU_4PM = (4, 960, 1020)
 
 def gen_for(w, **kw):
     kw.setdefault("alert", FakeAlertSink())
-    kw.setdefault("audit", FakeAuditSink())
-    return SessionGenerator(w.repo, clock=w.clock, **kw)
+    return SessionGenerator(w.audited, clock=w.clock, **kw)
 
 
 def ctx(cursor=None, chunk=0, cancelled=None):
@@ -244,6 +243,10 @@ def test_end_to_end_through_the_runner_two_nights_no_duplicates_and_each_night_e
 
 
 # ---------------------------------------------------------------- admin endpoint
+def unbound(w, **kw):
+    return SessionGenerator(AuditedRepository(w.repo, w.audit), clock=w.clock, **kw)
+
+
 def app_for(w, g):
     v = FakeTokenVerifier()
     v.add("admin", "u_admin", ["opsadmin"])
@@ -255,7 +258,7 @@ def app_for(w, g):
 def test_admin_generate_now_requires_ops_admin_a_reason_and_audits():
     w = World()
     aid = w.assignment(w.teacher(), [TUE_4PM])
-    g = gen_for(w)
+    g = unbound(w)
     c = app_for(w, g)
     url = "/admin/scheduling/generate-now"
     assert c.post(url, json={"assignment_id": aid, "reason": "check"}).status_code == 401
@@ -275,15 +278,14 @@ def test_admin_generate_now_requires_ops_admin_a_reason_and_audits():
         {"reason": "no assignment"},
     ):
         assert c.post(url, json=body, headers=h).status_code == 422, body
-    assert not w.sessions() and not g.audit.entries
+    assert not w.sessions() and not w.audit_rows()
     r = c.post(url, json={"assignment_id": aid, "reason": "parent called, start early"}, headers=h)
     assert r.status_code == 200
     out = r.json()
     assert out["created"] == 4 and out["status"] == "generated" and out["assignment_id"] == aid
-    assert (
-        g.audit.entries[0].actor_id == "u_admin"
-        and g.audit.entries[0].reason == "parent called, start early"
-    )
+    head = w.audit_rows(action="scheduling.generate_now")
+    assert head[0]["actor_id"] == "u_admin" and head[0]["reason"] == "parent called, start early"
+    assert {r["actor_id"] for r in w.audit_rows(action="session.generate")} == {"u_admin"}
     assert (
         c.post(
             url, json={"assignment_id": "missing", "reason": "typo in id"}, headers=h
@@ -295,8 +297,8 @@ def test_admin_generate_now_requires_ops_admin_a_reason_and_audits():
 def test_admin_generate_now_can_reconcile_from_a_date():
     w = World()
     aid = w.assignment(w.teacher(), [(1, 960, 1020), THU_4PM], per_week=2)
-    g = gen_for(w)
-    g.generate(aid)
+    g = unbound(w)
+    g.generate(aid, ctx=w.ctx)
     w.repo.update(
         "subscription", w.repo.get("assignment", aid)["subscription_id"], {"plan_id": w.plan(1)}
     )

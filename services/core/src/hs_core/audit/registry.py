@@ -54,6 +54,9 @@ REASON_REQUIRED = frozenset(
         "app_setting.create",
         "app_setting.update",
         "app_setting.delete",
+        # S01: admin (re)generation and B03/B04 cancel_future say why
+        "scheduling.generate_now",
+        "scheduling.cancel_future",
     }
 )
 

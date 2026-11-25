@@ -29,15 +29,42 @@ from __future__ import annotations
 import logging
 import uuid
 from collections.abc import Callable
+from contextlib import nullcontext
+from contextvars import ContextVar
 from datetime import UTC, datetime, timedelta
 
 from appwrite.query import Query
 
-from ..repository import Conflict, Repository
+from ..audit.context import AuditContext, audit_scope, current_audit_context
+from ..jobs.idempotency import row_id
+from ..repository import Conflict, NotFound, Repository
 from . import rules
 from .leases import Lease, TeacherLeases
 
 log = logging.getLogger("hs_core.scheduling.writer")
+# Free-text reason of the admin action in progress (generate-now, cancel_future): copied onto every
+# audited write the action makes, so each audit row carries it.
+write_reason: ContextVar[str | None] = ContextVar("scheduling_write_reason", default=None)
+
+
+def audit_kw(repo: Repository, action: str) -> dict:
+    """Keyword arguments for a write through the M06 AuditedRepository (action name + reason).
+    A plain repository (no audit layer) takes none."""
+    if not hasattr(repo, "service"):
+        return {}
+    kw: dict = {"action": action}
+    reason = write_reason.get()
+    if reason:
+        kw["reason"] = reason
+    return kw
+
+
+def scope_of(ctx: AuditContext | None):
+    """Make `ctx` the audit context of the audited writes made inside the block (or leave the
+    ambient one: a job's `job_scope`, a request's scope)."""
+    return audit_scope(ctx) if ctx is not None else nullcontext()
+
+
 PAGE = 100
 # Sessions are shorter than a day; looking back one day finds every session that could still overlap
 # a new one.
@@ -82,7 +109,7 @@ class SessionWriter:
     def __init__(
         self, repo: Repository, leases: TeacherLeases, clock: Callable[[], datetime] | None = None
     ) -> None:
-        self.repo = repo
+        self.audited_repo = repo
         self.leases = leases
         self.clock = clock or (lambda: datetime.now(UTC))
 
@@ -91,7 +118,7 @@ class SessionWriter:
         """The teacher's sessions that may overlap [start, end) (index by_teacher_day: teacher_id +
         scheduled_start_at)."""
         return list_all(
-            self.repo,
+            self.audited_repo,
             "session",
             [
                 Query.equal("teacher_id", teacher_id),
@@ -121,19 +148,27 @@ class SessionWriter:
         return self._find_conflict(teacher_id, start, end)
 
     # ------------------------------------------------------------------ create
-    def create(self, row: dict, *, lease: Lease | None = None) -> dict:
+    def create(
+        self,
+        row: dict,
+        *,
+        lease: Lease | None = None,
+        action: str = "session.create",
+        ctx: AuditContext | None = None,
+    ) -> dict:
         """Insert a `scheduled` session. Raises InvalidSession, SessionConflict, AlreadyGenerated,
         LeaseBusy, LeaseLost."""
         rules.check_session_times(row["scheduled_start_at"], row["scheduled_end_at"])
         row = rules.with_session_keys(row)
         if row["status"] in rules.SLOT_RELEASED:
             raise rules.InvalidTransition("a session is created as scheduled")
-        if lease is not None:
-            return self._create_locked(row, lease)
-        with self.leases.hold(row["teacher_id"]) as held:
-            return self._create_locked(row, held)
+        with scope_of(ctx):
+            if lease is not None:
+                return self._create_locked(row, lease, action)
+            with self.leases.hold(row["teacher_id"]) as held:
+                return self._create_locked(row, held, action)
 
-    def _create_locked(self, row: dict, lease: Lease | None) -> dict:
+    def _create_locked(self, row: dict, lease: Lease | None, action: str) -> dict:
         teacher = row["teacher_id"]
         other = self._find_conflict(teacher, row["scheduled_start_at"], row["scheduled_end_at"])
         if other:
@@ -146,17 +181,47 @@ class SessionWriter:
             )
         if lease is not None:
             lease.check(remote=True)  # fenced out? expired between the check and now?
-        new_id = uuid.uuid4().hex[:32]
-        try:
-            created = self.repo.create("session", new_id, row)
-        except Conflict:
-            raise self._classify_conflict(row) from None
+        created = self.insert(row, action)
         return self._recheck_or_rollback(created, self.clock())
+
+    def new_id(self, row: dict) -> str:
+        """Deterministic row id for a generated session within one audit context (a job chunk's
+        effect key or a request's server key): a retried chunk replays the SAME audit intent and
+        the same row (exactly-once audit), instead of minting a second row."""
+        eff = getattr(self.audited_repo, "effective_context", None)
+        ctx = eff() if eff else current_audit_context.get()
+        key = row.get("generation_key")
+        if key and ctx is not None:
+            return row_id("session", key, ctx.key_base)
+        return uuid.uuid4().hex[:32]
+
+    def insert(self, row: dict, action: str) -> dict:
+        """Create the row (audited when the repository is the audited wrapper). A unique-index
+        409 is classified: same generation_key -> AlreadyGenerated, otherwise a slot clash."""
+        rid = self.new_id(row)
+        try:
+            return self.audited_repo.create(
+                "session", rid, row, **audit_kw(self.audited_repo, action)
+            )
+        except Conflict:
+            try:
+                old = self.audited_repo.get("session", rid)
+            except NotFound:
+                old = None
+            if old is not None and old.get("deleted_at"):
+                # the deterministic id belongs to a soft-deleted earlier incarnation of this slot
+                try:
+                    return self.audited_repo.create(
+                        "session", uuid.uuid4().hex[:32], row, **audit_kw(self.audited_repo, action)
+                    )
+                except Conflict:
+                    pass
+            raise self._classify_conflict(row) from None
 
     def _classify_conflict(self, row: dict) -> Exception:
         key = row.get("generation_key")
         if key:
-            existing = self.repo.list(
+            existing = self.audited_repo.list(
                 "session", [Query.equal("generation_key", key), Query.limit(1)]
             )
             if existing:
@@ -196,8 +261,11 @@ class SessionWriter:
         winner = self._lost_to(created)
         if winner is None:
             return created
-        self.repo.update(
-            "session", created["$id"], rules.soft_delete_session_patch(rules.iso_utc(now))
+        self.audited_repo.update(
+            "session",
+            created["$id"],
+            rules.soft_delete_session_patch(rules.iso_utc(now)),
+            **audit_kw(self.audited_repo, "session.race_rollback"),
         )
         log.warning(
             "session rolled back after losing an overlap race",
@@ -214,20 +282,28 @@ class SessionWriter:
     # ------------------------------------------------------------------ reschedule / delete /
     # restore
     def reschedule(
-        self, session_id: str, new_start: datetime, new_end: datetime, *, lease: Lease | None = None
+        self,
+        session_id: str,
+        new_start: datetime,
+        new_end: datetime,
+        *,
+        lease: Lease | None = None,
+        ctx: AuditContext | None = None,
     ) -> dict:
         """Move a session (parent/teacher reschedule): same overlap rules, `overridden` = true so
-        the
-        generator never
-        touches it again. The generation identity (slot_ref, generation_key) is kept: the old slot
-        is NOT regenerated."""
+        the generator never touches it again. The generation identity (slot_ref, generation_key)
+        is kept: the old slot is NOT regenerated. Audited as `session.reschedule` with the actor
+        of `ctx` (the verified principal of the request)."""
         start, end = rules.iso_utc(new_start), rules.iso_utc(new_end)
         rules.check_session_times(start, end)
-        current = self.repo.get("session", session_id)
-        if lease is not None:
-            return self._move_locked(current, start, end, lease)
-        with self.leases.hold(current["teacher_id"]) as held:
-            return self._move_locked(self.repo.get("session", session_id), start, end, held)
+        with scope_of(ctx):
+            current = self.audited_repo.get("session", session_id)
+            if lease is not None:
+                return self._move_locked(current, start, end, lease)
+            with self.leases.hold(current["teacher_id"]) as held:
+                return self._move_locked(
+                    self.audited_repo.get("session", session_id), start, end, held
+                )
 
     def _move_locked(self, current: dict, start: str, end: str, lease: Lease | None) -> dict:
         other = self._find_conflict(current["teacher_id"], start, end, ignore_id=current["$id"])
@@ -249,12 +325,17 @@ class SessionWriter:
             "generation_key": moved["generation_key"],
         }
         try:
-            updated = self.repo.update("session", current["$id"], patch)
+            updated = self.audited_repo.update(
+                "session",
+                current["$id"],
+                patch,
+                **audit_kw(self.audited_repo, "session.reschedule"),
+            )
         except Conflict:
             raise rules.SessionConflict("teacher slot was taken concurrently") from None
         winner = self._lost_to(updated)
         if winner is not None:  # the move lost a race: put the session back where it was
-            self.repo.update(
+            self.audited_repo.update(
                 "session",
                 current["$id"],
                 {
@@ -264,24 +345,35 @@ class SessionWriter:
                     "teacher_slot_key": current.get("teacher_slot_key"),
                     "generation_key": current.get("generation_key"),
                 },
+                **audit_kw(self.audited_repo, "session.reschedule_revert"),
             )
             raise rules.SessionConflict(
                 "lost an overlap race with a concurrent session", winner["$id"], raced=True
             )
         return updated
 
-    def soft_delete(self, session_id: str, now: datetime) -> dict:
-        return self.repo.update(
-            "session", session_id, rules.soft_delete_session_patch(rules.iso_utc(now))
-        )
+    def soft_delete(
+        self,
+        session_id: str,
+        now: datetime,
+        *,
+        action: str = "session.soft_delete",
+        ctx: AuditContext | None = None,
+    ) -> dict:
+        with scope_of(ctx):
+            return self.audited_repo.update(
+                "session",
+                session_id,
+                rules.soft_delete_session_patch(rules.iso_utc(now)),
+                **audit_kw(self.audited_repo, action),
+            )
 
-    def restore(self, session_id: str) -> dict:
+    def restore(self, session_id: str, *, ctx: AuditContext | None = None) -> dict:
         """Undo a soft delete with recomputed keys; a taken slot or identity -> SessionConflict,
-        never
-        two active rows."""
-        row = self.repo.get("session", session_id)
+        never two active rows."""
+        row = self.audited_repo.get("session", session_id)
         patch = rules.restore_session_patch(row)
-        with self.leases.hold(row["teacher_id"]):
+        with scope_of(ctx), self.leases.hold(row["teacher_id"]):
             if patch["teacher_slot_key"]:
                 other = self._find_conflict(
                     row["teacher_id"],
@@ -292,7 +384,9 @@ class SessionWriter:
                 if other:
                     raise rules.SessionConflict("the slot was taken meanwhile", other["$id"])
             try:
-                restored = self.repo.update("session", session_id, patch)
+                restored = self.audited_repo.update(
+                    "session", session_id, patch, **audit_kw(self.audited_repo, "session.restore")
+                )
             except Conflict:
                 raise rules.SessionConflict(
                     "the slot or generated identity was taken meanwhile"

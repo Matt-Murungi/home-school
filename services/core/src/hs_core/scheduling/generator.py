@@ -35,7 +35,6 @@ from __future__ import annotations
 import contextlib
 import logging
 import time
-import uuid
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
@@ -43,15 +42,23 @@ from threading import Event
 
 from appwrite.query import Query
 
+from ..audit.context import AuditContext
+from ..audit.errors import AuditContextMissing, ReasonRequired
 from ..jobs.alerts import Alert, AlertSink, LogAlertSink
 from ..jobs.idempotency import row_id
 from ..repository import Conflict, NotFound, Repository
 from . import rules
-from .audit import AuditEntry, AuditSink, LogAuditSink
 from .issues import AUTO_KINDS, IssueStore
 from .leases import LeaseBusy, LeaseLost, TeacherLeases
 from .pattern import Occurrence, occurrences, parse_slots, select_slots
-from .writer import AlreadyGenerated, SessionWriter, list_all
+from .writer import (
+    AlreadyGenerated,
+    SessionWriter,
+    audit_kw,
+    list_all,
+    scope_of,
+    write_reason,
+)
 
 log = logging.getLogger("hs_core.scheduling")
 JOB_NAME = "session-generate"
@@ -63,14 +70,11 @@ class AssignmentNotFound(LookupError):
     pass
 
 
-class ReasonRequired(ValueError):
-    """Admin and B03/B04 actions must say why (at least 3 characters)."""
-
-
-def _need_reason(reason: str | None) -> str:
+def _need_reason(reason: str | None, action: str) -> str:
+    """Admin and B03/B04 actions must say why (M06 reason rules: at least 3 visible characters)."""
     text = (reason or "").strip()
     if len(text) < MIN_REASON:
-        raise ReasonRequired("a reason of at least 3 characters is required")
+        raise ReasonRequired(action)
     return text
 
 
@@ -155,20 +159,26 @@ class SessionGenerator:
         lock_wait: timedelta = timedelta(0),
         holidays: Callable[[date], bool] | None = None,
         alert: AlertSink | None = None,
-        audit: AuditSink | None = None,
         leases: TeacherLeases | None = None,
         writer: SessionWriter | None = None,
         issues: IssueStore | None = None,
+        permissions=None,
     ) -> None:
-        self.repo = repo
+        self.audited_repo = repo
         self.clock = clock or (lambda: datetime.now(UTC))
         self.horizon_days = horizon_days
         self.holidays = holidays
         self.alert = alert or LogAlertSink()
-        self.audit = audit or LogAuditSink()
+        if not hasattr(repo, "service"):
+            # Fail closed: sessions and cancellations are audited tables (M06). Wiring the raw
+            # repository here would write them with no audit row.
+            raise TypeError("SessionGenerator needs the AuditedRepository (hs_core.audit)")
         self.leases = leases or TeacherLeases(repo, self.clock, ttl=lease_ttl, wait=lock_wait)
         self.writer = writer or SessionWriter(repo, self.leases, self.clock)
         self.issues = issues or IssueStore(repo, self.clock)
+        # M05 PermissionService: a new session row gets its read permissions right away instead
+        # of waiting for the nightly permission-reconcile (a failure never fails generation).
+        self.permissions = permissions
 
     # ================================================================== public entry points
     def generate(
@@ -178,17 +188,20 @@ class SessionGenerator:
         now: datetime | None = None,
         horizon_days: int | None = None,
         cancelled: Event | None = None,
+        ctx: AuditContext | None = None,
     ) -> GenerationResult:
         """Nightly extension: create missing sessions up to the horizon, reconcile leave, flag
-        availability."""
-        return self._run(
-            assignment_id,
-            now=now,
-            horizon_days=horizon_days,
-            from_date=None,
-            reconcile=False,
-            cancelled=cancelled,
-        )
+        availability. Audited writes use `ctx`, else the ambient context (the job's `job_scope`:
+        actor `system` + job name)."""
+        with scope_of(ctx):
+            return self._run(
+                assignment_id,
+                now=now,
+                horizon_days=horizon_days,
+                from_date=None,
+                reconcile=False,
+                cancelled=cancelled,
+            )
 
     def regenerate(
         self,
@@ -198,46 +211,59 @@ class SessionGenerator:
         now: datetime | None = None,
         horizon_days: int | None = None,
         cancelled: Event | None = None,
+        ctx: AuditContext | None = None,
     ) -> GenerationResult:
         """After a plan/slot change from `from_date`: generate what is missing AND prune future
-        generated sessions that are
-        no longer wanted (never cancelled, rescheduled, started or substitute sessions)."""
-        return self._run(
-            assignment_id,
-            now=now,
-            horizon_days=horizon_days,
-            from_date=from_date,
-            reconcile=True,
-            cancelled=cancelled,
-        )
+        generated sessions that are no longer wanted (never cancelled, rescheduled, started or
+        substitute sessions)."""
+        with scope_of(ctx):
+            return self._run(
+                assignment_id,
+                now=now,
+                horizon_days=horizon_days,
+                from_date=from_date,
+                reconcile=True,
+                cancelled=cancelled,
+            )
+
+    def _ctx(self, ctx: AuditContext | None) -> AuditContext:
+        found = ctx or self.audited_repo.effective_context()
+        if found is None:
+            raise AuditContextMissing("this scheduling action needs an audit context")
+        return found
 
     def generate_now(
         self,
         assignment_id: str,
         *,
-        actor_id: str,
+        ctx: AuditContext,
         reason: str,
         reconcile_from: date | None = None,
         now: datetime | None = None,
     ) -> GenerationResult:
-        text = _need_reason(reason)
-        if not actor_id:
-            raise ReasonRequired("an actor is required")
+        """Admin (re)generation of one assignment. Reason required. Audit-first: the
+        `scheduling.generate_now` row (actor = verified principal, reason) is written BEFORE any
+        session write, so an unavailable audit store means nothing is generated; every session the
+        run writes is then an audited change under the same actor and reason."""
+        action = "scheduling.generate_now"
+        text = _need_reason(reason, action)
         if self._get("assignment", assignment_id) is None:
             raise AssignmentNotFound(assignment_id)
-        self.audit.record(
-            AuditEntry(
-                actor_id,
-                "scheduling.generate_now",
-                "assignment",
-                assignment_id,
-                text,
-                {"reconcile_from": reconcile_from.isoformat() if reconcile_from else None},
-            )
+        self.audited_repo.service.record(
+            ctx,
+            action=action,
+            entity="assignment",
+            entity_id=assignment_id,
+            reason=text,
+            after={"reconcile_from": reconcile_from.isoformat() if reconcile_from else None},
         )
-        if reconcile_from:
-            return self.regenerate(assignment_id, reconcile_from, now=now)
-        return self.generate(assignment_id, now=now)
+        token = write_reason.set(text)
+        try:
+            if reconcile_from:
+                return self.regenerate(assignment_id, reconcile_from, now=now, ctx=ctx)
+            return self.generate(assignment_id, now=now, ctx=ctx)
+        finally:
+            write_reason.reset(token)
 
     def cancel_future(
         self,
@@ -245,41 +271,34 @@ class SessionGenerator:
         from_date: date,
         reason: str,
         *,
-        actor_id: str | None = None,
+        ctx: AuditContext | None = None,
         now: datetime | None = None,
     ) -> CancelResult:
         """Remove (soft delete) the assignment's future SCHEDULED generated sessions from
-        `from_date`
-        (pause, cancel,
-        past_due, assignment ended). Started/confirmed/cancelled sessions and substitute rows are
-        untouched. Open
-        substitute requests for removed leave sessions are cancelled. Idempotent."""
-        text = _need_reason(reason)
+        `from_date` (pause, cancel, past_due, assignment ended). Started, confirmed and cancelled
+        sessions and substitute rows are untouched; open substitute requests of removed leave
+        sessions are cancelled. Idempotent. Audit-first like `generate_now`: one
+        `scheduling.cancel_future` row, then one audited `session.cancel_future` change per
+        removed session (B03/B04 pass their verified actor or job context)."""
+        action = "scheduling.cancel_future"
+        text = _need_reason(reason, action)
+        use = self._ctx(ctx)
         now = now or self.clock()
         res = CancelResult(assignment_id)
-        from_start = rules.local_to_utc(from_date, 0)
-        for s in self._live_sessions(assignment_id):
-            if s.get("is_substitute") or rules.parse_utc(s["scheduled_start_at"]) <= now:
-                continue
-            if rules.parse_utc(s["scheduled_start_at"]) < from_start:
-                continue
-            if s["status"] == "scheduled":
-                self.writer.soft_delete(s["$id"], now)
-                res.removed += 1
-            elif s["status"] == "cancelled_by_teacher" and self._close_substitute_request(
-                s["$id"], now
-            ):
-                res.substitute_requests_cancelled += 1
-        self.audit.record(
-            AuditEntry(
-                actor_id,
-                "scheduling.cancel_future",
-                "assignment",
-                assignment_id,
-                text,
-                {"from_date": from_date.isoformat(), "removed": res.removed},
-            )
+        self.audited_repo.service.record(
+            use,
+            action=action,
+            entity="assignment",
+            entity_id=assignment_id,
+            reason=text,
+            after={"from_date": from_date.isoformat()},
         )
+        token = write_reason.set(text)
+        try:
+            with scope_of(use):
+                self._cancel_future(assignment_id, from_date, now, res)
+        finally:
+            write_reason.reset(token)
         log.info(
             "session generation cancel_future",
             extra={
@@ -287,11 +306,25 @@ class SessionGenerator:
                 "from_date": from_date.isoformat(),
                 "removed": res.removed,
                 "substitute_requests_cancelled": res.substitute_requests_cancelled,
-                "actor_id": actor_id,
+                "actor_id": use.actor_id,
                 "cause": text[:60],
             },
         )
         return res
+
+    def _cancel_future(self, assignment_id: str, from_date: date, now: datetime, res) -> None:
+        from_start = rules.local_to_utc(from_date, 0)
+        for s in self._live_sessions(assignment_id):
+            start = rules.parse_utc(s["scheduled_start_at"])
+            if s.get("is_substitute") or start <= now or start < from_start:
+                continue
+            if s["status"] == "scheduled":
+                self.writer.soft_delete(s["$id"], now, action="session.cancel_future")
+                res.removed += 1
+            elif s["status"] == "cancelled_by_teacher" and self._close_substitute_request(
+                s["$id"], now
+            ):
+                res.substitute_requests_cancelled += 1
 
     # ================================================================== the nightly sweep
     def run_chunk(
@@ -303,19 +336,25 @@ class SessionGenerator:
         page: int = 20,
         cancelled: Event | None = None,
         run_id: str | None = None,
+        ctx: AuditContext | None = None,
     ) -> ChunkResult:
         """One page of active subscriptions. Stops at a subscription boundary when the budget is
         spent
         (always finishes at
         least one subscription, so a zero budget still progresses) or the cancel flag is set. A
         failing assignment never
-        blocks the others (isolated, alerted, flagged)."""
+        blocks the others (isolated, alerted, flagged). Audited writes: the job's ambient
+        `job_scope` (actor `system`, job name, chunk key) unless `ctx` is given."""
+        with scope_of(ctx):
+            return self._run_chunk(cursor, now, budget_s, page, cancelled, run_id)
+
+    def _run_chunk(self, cursor, now, budget_s, page, cancelled, run_id) -> ChunkResult:
         now = now or self.clock()
         deadline = time.monotonic() + budget_s
         q = [Query.equal("status", "active"), Query.limit(page)]
         if cursor:
             q.append(Query.cursor_after(cursor))
-        subs = self.repo.list("subscription", q)
+        subs = self.audited_repo.list("subscription", q)
         out = ChunkResult()
         last_done, stopped = cursor, False
         for n, sub in enumerate(subs):
@@ -328,7 +367,7 @@ class SessionGenerator:
                 last_done = sub["$id"]
                 continue
             for a in list_all(
-                self.repo, "assignment", [Query.equal("subscription_id", sub["$id"])]
+                self.audited_repo, "assignment", [Query.equal("subscription_id", sub["$id"])]
             ):
                 if a.get("deleted_at") or (a.get("end_at") and rules.parse_utc(a["end_at"]) <= now):
                     continue
@@ -398,14 +437,16 @@ class SessionGenerator:
     # ================================================================== one assignment
     def _get(self, table: str, row_id_: str) -> dict | None:
         try:
-            return self.repo.get(table, row_id_)
+            return self.audited_repo.get(table, row_id_)
         except NotFound:
             return None
 
     def _live_sessions(self, assignment_id: str) -> list[dict]:
         return [
             s
-            for s in list_all(self.repo, "session", [Query.equal("assignment_id", assignment_id)])
+            for s in list_all(
+                self.audited_repo, "session", [Query.equal("assignment_id", assignment_id)]
+            )
             if not s.get("deleted_at")
         ]
 
@@ -669,7 +710,8 @@ class SessionGenerator:
         """'created' | 'exists' | 'busy' | ('conflict', conflicting_session_id)."""
         for attempt in (1, 2):
             try:
-                self.writer.create(row, lease=held.get())
+                created = self.writer.create(row, lease=held.get(), action="session.generate")
+                self._grant(created)
                 return "created"
             except AlreadyGenerated:
                 return "exists"
@@ -691,25 +733,42 @@ class SessionGenerator:
         by the next run (`_repair_leave_artifacts`)."""
         row = rules.with_session_keys({**row, "status": "cancelled_by_teacher"})
         try:
-            created = self.repo.create("session", uuid.uuid4().hex[:32], row)
-        except Conflict:
+            created = self.writer.insert(row, "session.generate_leave")
+        except (AlreadyGenerated, rules.SessionConflict):
             return False  # a concurrent worker created it (generation_key is unique)
         self._leave_artifacts(created, now)
+        self._grant(created)
         return True
+
+    def _grant(self, session: dict) -> None:
+        if self.permissions is None:
+            return
+        try:
+            from ..permissions.service import row_created
+
+            self.permissions.apply(
+                row_created(f"session-gen:{session['$id']}", "session", session["$id"])
+            )
+        except Exception as exc:  # noqa: BLE001 - the reconcile job repairs it
+            log.warning(
+                "permission sync for a new session failed",
+                extra={"session_id": session["$id"], "error": type(exc).__name__},
+            )
 
     def _cancel_for_leave(self, s: dict, now: datetime) -> None:
         """Existing scheduled session now on leave. Commit point = the status update (last),
         artifacts
         first."""
         self._leave_artifacts(s, now)
-        self.repo.update(
+        self.audited_repo.update(
             "session",
             s["$id"],
             rules.transition_patch(s, "cancelled_by_teacher", rules.iso_utc(now)),
+            **audit_kw(self.audited_repo, "session.cancel_for_leave"),
         )
 
     def _repair_leave_artifacts(self, s: dict, now: datetime) -> None:
-        existing = self.repo.list(
+        existing = self.audited_repo.list(
             "cancellation", [Query.equal("session_id", s["$id"]), Query.limit(1)]
         )
         if existing and existing[0].get("reason") != "teacher_leave":
@@ -746,13 +805,15 @@ class SessionGenerator:
         if self._get(table, id_) is not None:
             return
         with contextlib.suppress(Conflict):  # a concurrent run (or the unique index) already has it
-            self.repo.create(table, id_, data)
+            self.audited_repo.create(
+                table, id_, data, **audit_kw(self.audited_repo, f"{table}.teacher_leave")
+            )
 
     def _close_substitute_request(self, session_id: str, now: datetime) -> bool:
         req = self._get("match_request", row_id("match_request", "substitute", session_id))
         if req is None or req["status"] not in ("open", "offering", "admin_queue"):
             return False
-        self.repo.update(
+        self.audited_repo.update(
             "match_request", req["$id"], {"status": "cancelled", "closed_at": rules.iso_utc(now)}
         )
         return True
@@ -786,7 +847,7 @@ class SessionGenerator:
                 and not s.get("overridden")
             )
             if beyond_end or unwanted:
-                self.writer.soft_delete(s["$id"], now)
+                self.writer.soft_delete(s["$id"], now, action="session.prune")
                 n += 1
         return n
 
@@ -794,7 +855,9 @@ class SessionGenerator:
     def _home_location(self, parent_id: str) -> str | None:
         homes = [
             h
-            for h in list_all(self.repo, "home_location", [Query.equal("parent_id", parent_id)])
+            for h in list_all(
+                self.audited_repo, "home_location", [Query.equal("parent_id", parent_id)]
+            )
             if not h.get("deleted_at")
         ]
         defaults = [h for h in homes if h.get("is_default")]
@@ -805,7 +868,7 @@ class SessionGenerator:
         self, teacher_id: str, start: datetime, end: datetime
     ) -> list[tuple[datetime, datetime]]:
         rows = list_all(
-            self.repo,
+            self.audited_repo,
             "availability_exception",
             [
                 Query.equal("teacher_id", teacher_id),
@@ -826,7 +889,9 @@ class SessionGenerator:
 
     def _availability(self, teacher_id: str) -> dict[int, list[tuple[int, int]]]:
         by_day: dict[int, list[tuple[int, int]]] = {}
-        for r in list_all(self.repo, "availability_slot", [Query.equal("teacher_id", teacher_id)]):
+        for r in list_all(
+            self.audited_repo, "availability_slot", [Query.equal("teacher_id", teacher_id)]
+        ):
             if not r.get("deleted_at"):
                 by_day.setdefault(r["weekday"], []).append((r["start_minute"], r["end_minute"]))
         merged: dict[int, list[tuple[int, int]]] = {}
@@ -873,7 +938,7 @@ class SessionGenerator:
 
 
 def build_generator(
-    settings, repo: Repository, alert: AlertSink | None = None, audit: AuditSink | None = None
+    settings, repo: Repository, alert: AlertSink | None = None, permissions=None
 ) -> SessionGenerator:
     return SessionGenerator(
         repo,
@@ -881,7 +946,7 @@ def build_generator(
         lease_ttl=timedelta(seconds=settings.session_gen_lease_ttl_s),
         lock_wait=timedelta(seconds=settings.session_gen_lock_wait_s),
         alert=alert,
-        audit=audit,
+        permissions=permissions,
     )
 
 

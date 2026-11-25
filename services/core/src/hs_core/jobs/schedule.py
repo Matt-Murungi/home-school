@@ -14,8 +14,8 @@ from ..audit.recover import audit_recover
 from ..auth_otp.jobs import otp_cleanup
 from ..notifications.dispatch import notification_dispatch
 from ..permissions.jobs import address_revoke, permission_audit, permission_reconcile
-from ..travel.jobs import travel_cache_refresh
 from ..scheduling.job import session_generate
+from ..travel.jobs import travel_cache_refresh
 from .handlers import heartbeat
 from .model import KAMPALA, JobSpec, Schedule
 

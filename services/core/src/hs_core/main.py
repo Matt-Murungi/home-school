@@ -132,7 +132,7 @@ def create_app(
     otp_jobs.bind(app.state.repository)
     notification_dispatch_job.bind(app.state.notifications)
     app.state.scheduler = scheduler or build_generator(
-        settings, app.state.repository, alert=alert_sink
+        settings, app.state.repository, alert=alert_sink, permissions=app.state.permissions
     )
     scheduling_job.bind(app.state.scheduler, budget_s=settings.session_gen_chunk_budget_s)
     errors.install(app)
