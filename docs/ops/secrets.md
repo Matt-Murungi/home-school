@@ -14,7 +14,7 @@ Policy for every credential the platform needs (SR §4, SEC-3; ADR 0003 Fly.io; 
 
 | Store | Holds | Notes |
 |---|---|---|
-| Fly secrets, one app per environment (`hs-core-development`, `-staging`, `-production`) | Everything the core service reads: Appwrite runtime key, `JOB_TICK_SECRET`, MoMo, Airtel, card gateway, FCM service account, Resend, Africa's Talking, Google Maps server key, Sentry DSN | `fly secrets set NAME=- -a <app>` (value on stdin, never in shell history or arguments) |
+| Fly secrets, one app per environment (`hs-core-development`, `-staging`, `-production`) | Everything the core service reads: Appwrite runtime key, `JOB_TICK_SECRET`, MoMo, Airtel, card gateway, FCM service account, Resend, Africa's Talking, Google Maps server key, Sentry DSN | `fly secrets import -a <app>` (reads `NAME=VALUE` pairs from stdin, so values stay out of shell history and arguments; per the flyctl reference. The `fly secrets set NAME=-` stdin form is **unverified**, do not use it) |
 | Appwrite function variables (per environment project) | `JOB_TICK_SECRET` for the job-tick function | Same value as the core copy |
 | GitHub Actions environment secrets (`development`, `staging`, `production`) | CI deploy Appwrite key, `FLY_API_TOKEN`, `SENTRY_AUTH_TOKEN` | Production environment requires reviewers |
 | Provider console | APNs auth key (inside the Firebase project) | Not in any of our stores |
@@ -54,15 +54,18 @@ Decision: **use Fly secrets (per app) for runtime secrets and GitHub environment
 
 1. **Create the Fly apps** `hs-core-development`, `hs-core-staging`, `hs-core-production` (region `fra`, ADR 0003). Needs the owner's Fly account.
 2. **Create the three Appwrite projects** (`hs-development`, `-staging`, `-production`) if not already done, and the API keys per `appwrite/keys.md` (names `hs-core-<env>`, `hs-ci-<env>`, 90 day expiry). The live project stays read-only for builders.
-3. **Set runtime secrets**: `fly secrets set APPWRITE_API_KEY=- -a hs-core-<env>` (and the other names in the matrix, as each provider account is created). Use sandbox provider credentials in development and staging.
+3. **Set runtime secrets**: `fly secrets import -a hs-core-<env>` with `APPWRITE_API_KEY=<value>` on stdin (and the other names in the matrix, as each provider account is created). Use sandbox provider credentials in development and staging.
 4. **GitHub environments** `development`, `staging`, `production`: Settings > Environments > New environment; on `production` add **required reviewers** (the owner) and restrict deployment branches to `main`. Add secrets `APPWRITE_API_KEY`, `FLY_API_TOKEN` (`fly tokens create deploy -a hs-core-<env>`, app-scoped, never an org token) and `SENTRY_AUTH_TOKEN` per environment.
 5. **Provider accounts** (MoMo sandbox and live, Airtel, card gateway choice, Resend domain, Africa's Talking, Google Cloud project with restricted keys and budget alerts, Firebase projects per environment with the APNs key, Sentry projects): owner creates; then set values per steps 3-4. Never paste values into chat or the repo.
 6. **Optional GitHub toggles**: secret-scanning non-provider patterns and validity checks; `.github/CODEOWNERS` already covers review.
 7. **Run the rotation drill on staging** from `docs/runbooks/secrets.md` once steps 1-4 are done; record it in the rotation log.
+8. **Codemagic and app-store signing credentials** (owner-blocked; in the inventory with `owner_blocked: true` and store `TBD`): Play upload keystore and password, iOS distribution certificate and provisioning profiles, App Store Connect API key, Codemagic secure variables. They already have an owner, interval, blast radius and a draft `signing-credential` procedure; the owner creates the Codemagic account, chooses the store for each (Codemagic secure variable groups recommended) and replaces `TBD`. M01 and the release tickets own the build setup.
 
 ## Follow-ups for other tickets
 
-- F04 (job runner): accept `JOB_TICK_SECRET_PREVIOUS` during rotation for fully overlapping rotation, and read the secret through `Settings` so the validator sees it (the inventory already lists it).
+- F04 (job runner): accept `JOB_TICK_SECRET_PREVIOUS` during rotation for fully overlapping rotation, and read the secret through `Settings` so the validator sees it (the inventory does **not** list it: F04 merged without a previous-secret mechanism, so rotating `JOB_TICK_SECRET` can miss one tick, as the `job-tick-secret` procedure says).
+- Payout ticket: add a core-service switch to pause disbursements; until then the `payment-credential` procedure pauses payouts by hand (do not approve payout batches in admin, revoke the disbursement credential).
+- F06: choose the admin host (deferred by ADR 0004) and set `ADMIN_COOKIE_SECRET` per environment (32+ random characters, identical on every admin instance; see the `admin-cookie-secret` procedure).
 - F05/F06/M01: when apps read `--dart-define` or `process.env` values, run `python3 scripts/secrets_check.py`; it fails until each variable is in the inventory.
 - F07 (CI): run `python3 scripts/secrets_check.py` and `make secrets` on every PR; keep push protection on.
 - F08 (CI/CD or deploy): use the GitHub environment secrets named here; do not add repository-level secrets for production.

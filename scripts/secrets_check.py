@@ -24,12 +24,15 @@ KINDS = {"server_secret", "public_client_key", "non_secret"}
 LOCATIONS = {
     "fly_secret", "appwrite_function_variable", "github_actions_secret", "provider_console",
     "build_define", "fly_env", "github_actions_env", "host_env",
+    "codemagic_variable", "app_store_console",
 }  # fmt: skip
 SECRET_LIKE = re.compile(r"(?i)(SECRET|PASSWORD|PASSWD|PRIVATE|TOKEN|API_?KEY)")
 VALUE_LIKE = re.compile(
     r"standard_[0-9a-f]{20,}|-----BEGIN [A-Z ]*PRIVATE KEY|\b(AIza|fo1_|atsk_)[A-Za-z0-9_-]{20,}"
 )
 APP_BUILTINS = {"NODE_ENV", "CI", "PORT", "NEXT_RUNTIME", "VERCEL", "HOSTNAME"}
+# a secret shared by several consumers must list every one (removing a row is a missing consumer)
+REQUIRED_CONSUMERS = {"JOB_TICK_SECRET": {"core-service", "job-tick-function"}}
 GEN = "<!-- BEGIN GENERATED:{n} -->", "<!-- END GENERATED:{n} -->"
 RUNBOOK_SECTIONS = (
     "Routine rotation",
@@ -142,14 +145,17 @@ def check_env_example(root: Path) -> list[str]:
 
 
 def cell(e, env):
-    if env not in e["environments"]:
+    if env not in e.get("environments", []):
         return "-"
-    if e["kind"] == "non_secret":
+    if e.get("kind") == "non_secret":
         return e.get("values", {}).get(env, "-")
-    if e["kind"] == "public_client_key":
+    if e.get("kind") == "public_client_key":
         return "build define"
     vc = e.get("value_class", {}).get(env)
-    return e["stores"][env] + (f" ({vc})" if vc else "")
+    store = e.get("stores", {}).get(env, "?")
+    if e.get("owner_blocked"):
+        store += " (owner-blocked)"
+    return store + (f" ({vc})" if vc else "")
 
 
 def gen_matrix(inv) -> str:
@@ -159,17 +165,22 @@ def gen_matrix(inv) -> str:
     ]
     order = {"server_secret": 0, "public_client_key": 1, "non_secret": 2}
     for e in sorted(
-        inv["entries"], key=lambda e: (order[e["kind"]], e["name"], e["consumer"])
+        inv["entries"],
+        key=lambda e: (
+            order.get(e.get("kind"), 9),
+            e.get("name", ""),
+            e.get("consumer", ""),
+        ),
     ):
         label = {
             "server_secret": "server secret",
             "public_client_key": "public client key",
             "non_secret": "config",
-        }[e["kind"]]
+        }.get(e.get("kind"), "?")
         rows.append(
-            f"| `{e['name']}` | {label} | {e['consumer']} | "
+            f"| `{e.get('name')}` | {label} | {e.get('consumer')} | "
             + " | ".join(cell(e, env).replace("|", "/") for env in ENVS)
-            + f" | {e['location']} |"
+            + f" | {e.get('location')} |"
         )
     return "\n".join(rows)
 
@@ -180,12 +191,13 @@ def gen_schedule(inv) -> str:
         "|---|---|---|---|---|---|---|",
     ]
     for e in sorted(
-        (e for e in inv["entries"] if e["kind"] == "server_secret"),
-        key=lambda e: (e["name"], e["consumer"]),
+        (e for e in inv["entries"] if e.get("kind") == "server_secret"),
+        key=lambda e: (e.get("name", ""), e.get("consumer", "")),
     ):
         rows.append(
-            f"| `{e['name']}` | {e['consumer']} | {e['rotation_owner']} | {e['rotation_interval_days']} d | "
-            f"{e['procedure']} | {'yes' if e['rotation_overlap'] else 'no'} | {e['blast_radius']} |"
+            f"| `{e.get('name')}` | {e.get('consumer')}{' (owner-blocked)' if e.get('owner_blocked') else ''} | "
+            f"{e.get('rotation_owner', '?')} | {e.get('rotation_interval_days', '?')} d | "
+            f"{e.get('procedure', '?')} | {'yes' if e.get('rotation_overlap') else 'no'} | {e.get('blast_radius', '?')} |"
         )
     return "\n".join(rows)
 
@@ -195,7 +207,7 @@ def gen_procedures(inv) -> str:
     for name, steps in sorted(inv["procedures"].items()):
         users = sorted(
             {
-                f"`{e['name']}` ({e['consumer']})"
+                f"`{e.get('name')}` ({e.get('consumer')})"
                 for e in inv["entries"]
                 if e.get("procedure") == name
             }
@@ -329,15 +341,18 @@ def validate(inv, root: Path, extra_app_keys=None) -> list[str]:
                     errs.append(f"{who}: missing value description for {env}")
             continue
         stores = e.get("stores", {})
+        blocked = e.get("owner_blocked") is True
         for env in envs:
             s = stores.get(env)
             if not s:
                 errs.append(f"{who}: no store for {env}")
+            elif blocked and s == "TBD":
+                continue  # owner-blocked: store not chosen yet; owner, interval, blast radius, procedure still required
             elif not s.endswith(env):
                 errs.append(
                     f"{who}: store {s!r} is not an {env} store (production secrets never in dev/staging)"
                 )
-        if len({stores.get(env) for env in envs}) < len(envs):
+        if not blocked and len({stores.get(env) for env in envs}) < len(envs):
             errs.append(
                 f"{who}: shared store between environments (one key per environment)"
             )
@@ -386,8 +401,18 @@ def validate(inv, root: Path, extra_app_keys=None) -> list[str]:
                 f"{who}: payment credentials need value_class (sandbox outside production, live in production)"
             )
 
+    held: dict[str, set] = {}
+    for e in entries:
+        if e.get("name") and e.get("kind") == "server_secret":
+            held.setdefault(e["name"], set()).add(e.get("consumer"))
+    for n, need in REQUIRED_CONSUMERS.items():
+        for c in sorted(need - held.get(n, set())):
+            errs.append(
+                f"{n}: missing consumer {c} (a secret shared by several consumers must list each one)"
+            )
+
     # config keys read by code must be in the inventory
-    names = {e["name"]: e for e in entries}
+    names = {e["name"]: e for e in entries if e.get("name")}
     fields = core_settings_fields(root)
     for n, is_secret in fields.items():
         if n not in names:
@@ -411,7 +436,13 @@ def validate(inv, root: Path, extra_app_keys=None) -> list[str]:
                     f"{n}: public variable looks secret; it would ship to browsers"
                 )
             errs.append(f"{n}: read by an app but missing from the inventory")
-        elif names[n]["kind"] == "server_secret":
+        elif names[n]["kind"] == "server_secret" and not (
+            # Next.js server-side env (never NEXT_PUBLIC_) of the admin app is not bundled for browsers
+            not n.startswith(("NEXT_PUBLIC_", "PUBLIC_"))
+            and any(
+                e.get("name") == n and e.get("consumer") == "app-admin" for e in entries
+            )
+        ):
             errs.append(
                 f"{n}: server secret referenced by app code (would reach the bundle)"
             )

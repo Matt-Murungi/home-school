@@ -136,6 +136,117 @@ class Validator(unittest.TestCase):
         e["name"] = "SOMETHING_SECRET"
         self.assertFails(i, "looks secret")
 
+    # Round 2: robustness, owner-blocked entries, admin secret, doc accuracy
+    def test_deleted_procedure_or_rotation_owner_gives_named_error(self):
+        for field in ("procedure", "rotation_owner"):
+            i = inv()
+            entry(i, "RESEND_API_KEY").pop(field)
+            self.assertFails(
+                i, field if field == "rotation_owner" else "rotation procedure"
+            )
+            sc.gen_schedule(i)  # generated-doc code must not crash either
+            sc.gen_matrix(i)
+            sc.gen_procedures(i)
+
+    def test_cli_deleted_field_prints_error_not_traceback(self):
+        import shutil
+
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            for rel in ("scripts", "docs", "services/core", "appwrite", "apps"):
+                shutil.copytree(
+                    ROOT / rel,
+                    root / rel,
+                    ignore=shutil.ignore_patterns(
+                        "node_modules",
+                        ".venv",
+                        ".next",
+                        "__pycache__",
+                        ".dart_tool",
+                        "build",
+                        "tests",
+                    ),
+                )
+            p = root / "docs/ops/secrets-inventory.json"
+            data = json.loads(p.read_text())
+            for e in data["entries"]:
+                if e["name"] == "RESEND_API_KEY":
+                    e.pop("rotation_owner")
+                    e.pop("procedure")
+            p.write_text(json.dumps(data))
+            r = subprocess.run(
+                [sys.executable, str(root / "scripts/secrets_check.py")],
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+            self.assertEqual(r.returncode, 1)
+            self.assertNotIn("Traceback", r.stderr)
+            self.assertIn("rotation_owner", r.stdout)
+            self.assertIn("procedure", r.stdout)
+
+    def test_removed_job_tick_function_consumer_row_is_missing_consumer(self):
+        i = inv()
+        i["entries"] = [
+            e
+            for e in i["entries"]
+            if not (
+                e["name"] == "JOB_TICK_SECRET" and e["consumer"] == "job-tick-function"
+            )
+        ]
+        self.assertFails(i, "missing consumer job-tick-function")
+
+    def test_owner_blocked_entry_may_have_tbd_store_but_needs_the_rest(self):
+        i = inv()
+        self.assertTrue(entry(i, "PLAY_UPLOAD_KEYSTORE")["owner_blocked"])
+        self.assertEqual(errs(i), [])
+        for f, needle in (
+            ("rotation_owner", "rotation_owner"),
+            ("blast_radius", "blast_radius"),
+            ("rotation_interval_days", "rotation_interval_days"),
+            ("procedure", "rotation procedure"),
+        ):
+            j = inv()
+            entry(j, "PLAY_UPLOAD_KEYSTORE").pop(f)
+            self.assertFails(j, needle)
+
+    def test_tbd_store_without_owner_blocked_rejected(self):
+        i = inv()
+        entry(i, "PLAY_UPLOAD_KEYSTORE").pop("owner_blocked")
+        self.assertFails(i, "store 'TBD'")
+
+    def test_signing_credentials_are_modelled(self):
+        names = {e["name"] for e in inv()["entries"]}
+        for need in (
+            "PLAY_UPLOAD_KEYSTORE",
+            "IOS_DISTRIBUTION_CERTIFICATE",
+            "IOS_PROVISIONING_PROFILES",
+            "APP_STORE_CONNECT_API_KEY",
+            "CODEMAGIC_SECURE_VARIABLES",
+        ):
+            self.assertIn(need, names)
+
+    def test_admin_cookie_secret_is_admin_held_server_secret(self):
+        i = inv()
+        e = entry(i, "ADMIN_COOKIE_SECRET")
+        self.assertEqual(e["kind"], "server_secret")
+        self.assertEqual(errs(i), [])
+        e["consumer"] = "core-service"  # not admin-held: app code reading it is a leak
+        self.assertFails(i, "referenced by app code")
+
+    def test_docs_do_not_claim_missing_mechanisms(self):
+        text = "".join(
+            (ROOT / f).read_text()
+            for f in (
+                "docs/ops/secrets.md",
+                "docs/runbooks/secrets.md",
+                "docs/ops/secrets-inventory.json",
+            )
+        )
+        self.assertNotIn("payout job flag", text)
+        self.assertNotIn("inventory already lists", text)
+        self.assertNotIn("=- -a", text)
+
     # Rotation
     def test_missing_rotation_procedure_rejected(self):
         i = inv()

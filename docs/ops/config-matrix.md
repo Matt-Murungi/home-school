@@ -5,22 +5,29 @@ Which variable exists in which environment, what kind it is and where it lives. 
 <!-- BEGIN GENERATED:matrix -->
 | Variable | Kind | Consumer | development | staging | production | Where it lives |
 |---|---|---|---|---|---|---|
+| `ADMIN_COOKIE_SECRET` | server secret | app-admin | host-env:admin-development | host-env:admin-staging | host-env:admin-production | host_env |
 | `AFRICASTALKING_API_KEY` | server secret | core-service | fly:hs-core-development | fly:hs-core-staging | fly:hs-core-production | fly_secret |
 | `AIRTEL_CLIENT_SECRET` | server secret | core-service | fly:hs-core-development (sandbox) | fly:hs-core-staging (sandbox) | fly:hs-core-production (live) | fly_secret |
 | `APNS_AUTH_KEY` | server secret | firebase-console | provider-console:firebase-development | provider-console:firebase-staging | provider-console:firebase-production | provider_console |
 | `APPWRITE_API_KEY` | server secret | ci-deploy | github-env:development | github-env:staging | github-env:production | github_actions_secret |
 | `APPWRITE_API_KEY` | server secret | core-service | fly:hs-core-development | fly:hs-core-staging | fly:hs-core-production | fly_secret |
+| `APP_STORE_CONNECT_API_KEY` | server secret | codemagic | - | - | TBD (owner-blocked) | codemagic_variable |
 | `CARD_GATEWAY_SECRET_KEY` | server secret | core-service | fly:hs-core-development (sandbox) | fly:hs-core-staging (sandbox) | fly:hs-core-production (live) | fly_secret |
 | `CARD_GATEWAY_WEBHOOK_SECRET` | server secret | core-service | fly:hs-core-development (sandbox) | fly:hs-core-staging (sandbox) | fly:hs-core-production (live) | fly_secret |
+| `CODEMAGIC_SECURE_VARIABLES` | server secret | codemagic | - | TBD (owner-blocked) | TBD (owner-blocked) | codemagic_variable |
 | `FCM_SERVICE_ACCOUNT_JSON` | server secret | core-service | fly:hs-core-development | fly:hs-core-staging | fly:hs-core-production | fly_secret |
 | `FLY_API_TOKEN` | server secret | ci-deploy | github-env:development | github-env:staging | github-env:production | github_actions_secret |
 | `GOOGLE_MAPS_SERVER_KEY` | server secret | core-service | fly:hs-core-development | fly:hs-core-staging | fly:hs-core-production | fly_secret |
+| `IOS_DISTRIBUTION_CERTIFICATE` | server secret | app-stores | - | - | TBD (owner-blocked) | app_store_console |
+| `IOS_PROVISIONING_PROFILES` | server secret | app-stores | - | - | TBD (owner-blocked) | app_store_console |
 | `JOB_TICK_SECRET` | server secret | core-service | fly:hs-core-development | fly:hs-core-staging | fly:hs-core-production | fly_secret |
 | `JOB_TICK_SECRET` | server secret | job-tick-function | appwrite-fn:job-tick-development | appwrite-fn:job-tick-staging | appwrite-fn:job-tick-production | appwrite_function_variable |
 | `MOMO_COLLECTION_API_KEY` | server secret | core-service | fly:hs-core-development (sandbox) | fly:hs-core-staging (sandbox) | fly:hs-core-production (live) | fly_secret |
 | `MOMO_COLLECTION_SUBSCRIPTION_KEY` | server secret | core-service | fly:hs-core-development (sandbox) | fly:hs-core-staging (sandbox) | fly:hs-core-production (live) | fly_secret |
 | `MOMO_DISBURSEMENT_API_KEY` | server secret | core-service | fly:hs-core-development (sandbox) | fly:hs-core-staging (sandbox) | fly:hs-core-production (live) | fly_secret |
 | `MOMO_DISBURSEMENT_SUBSCRIPTION_KEY` | server secret | core-service | fly:hs-core-development (sandbox) | fly:hs-core-staging (sandbox) | fly:hs-core-production (live) | fly_secret |
+| `PLAY_UPLOAD_KEYSTORE` | server secret | app-stores | - | - | TBD (owner-blocked) | app_store_console |
+| `PLAY_UPLOAD_KEYSTORE_PASSWORD` | server secret | codemagic | - | - | TBD (owner-blocked) | codemagic_variable |
 | `RESEND_API_KEY` | server secret | core-service | fly:hs-core-development | fly:hs-core-staging | fly:hs-core-production | fly_secret |
 | `RESEND_WEBHOOK_SECRET` | server secret | core-service | fly:hs-core-development | fly:hs-core-staging | fly:hs-core-production | fly_secret |
 | `SENTRY_AUTH_TOKEN` | server secret | ci-deploy | github-env:development | github-env:staging | github-env:production | github_actions_secret |
@@ -31,11 +38,13 @@ Which variable exists in which environment, what kind it is and where it lives. 
 | `SENTRY_DSN_APP` | public client key | app-teacher | build define | build define | build define | build_define |
 | `ADMIN_ENV` | config | app-admin | local | staging | production | host_env |
 | `AFRICASTALKING_USERNAME` | config | core-service | sandbox in dev/staging | sandbox in dev/staging | sandbox in dev/staging | fly_env |
+| `APPWRITE_CONNECT_TIMEOUT_S` | config | core-service | 3.05 | 3.05 | 3.05 | fly_env |
 | `APPWRITE_DATABASE_ID` | config | core-service | main | main | main | fly_env |
 | `APPWRITE_ENDPOINT` | config | app-admin | https://fra.cloud.appwrite.io/v1 | https://fra.cloud.appwrite.io/v1 | https://fra.cloud.appwrite.io/v1 | host_env |
 | `APPWRITE_ENDPOINT` | config | core-service | https://fra.cloud.appwrite.io/v1 | https://fra.cloud.appwrite.io/v1 | https://fra.cloud.appwrite.io/v1 | fly_env |
 | `APPWRITE_PROJECT_ID` | config | app-admin | own project id | own project id | own project id | host_env |
 | `APPWRITE_PROJECT_ID` | config | core-service | own project id | own project id | own project id | fly_env |
+| `APPWRITE_READ_TIMEOUT_S` | config | core-service | 10 | 10 | 10 | fly_env |
 | `APP_VERSION` | config | core-service | set by build | set by build | set by build | fly_env |
 | `CORE_SERVICE_URL` | config | job-tick-function | own core service URL | own core service URL | own core service URL | appwrite_function_variable |
 | `GIT_SHA` | config | core-service | set by build | set by build | set by build | fly_env |

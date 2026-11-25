@@ -11,22 +11,29 @@ Rotate each server secret on its interval (table below). Put a calendar reminder
 <!-- BEGIN GENERATED:schedule -->
 | Secret | Consumer | Owner | Rotate every | Procedure | Overlap | Blast radius if leaked |
 |---|---|---|---|---|---|---|
+| `ADMIN_COOKIE_SECRET` | app-admin | platform-owner | 180 d | admin-cookie-secret | no | Forge the signed pending-MFA cookie of the admin sign-in, skipping the cookie-binding step (the Appwrite password and MFA challenge are still required for a real session). Must be 32+ random characters and identical on every admin instance of the environment. |
 | `AFRICASTALKING_API_KEY` | core-service | platform-owner | 180 d | provider-key | yes | Send OTP and other SMS on our account (cost and phishing risk). |
 | `AIRTEL_CLIENT_SECRET` | core-service | platform-owner | 180 d | payment-credential | yes | Airtel Money OAuth client secret. Phase 2. Production: collections and payouts through Airtel. |
 | `APNS_AUTH_KEY` | firebase-console | platform-owner | 365 d | apns-key | yes | Send iOS pushes for our bundle id via Apple. Held in the Firebase console, not in our repo, Fly or GitHub. |
 | `APPWRITE_API_KEY` | ci-deploy | platform-owner | 90 d | appwrite-api-key | yes | Change schema, buckets and functions of one environment's project; no user access. Production key lacks databases.write. |
 | `APPWRITE_API_KEY` | core-service | platform-owner | 90 d | appwrite-api-key | yes | Read/write every row, set user labels, write files in one environment's Appwrite project. Cannot change schema. Production leak = full read/write of live family and child data. |
+| `APP_STORE_CONNECT_API_KEY` | codemagic (owner-blocked) | platform-owner | 180 d | signing-credential | yes | Upload builds and manage TestFlight and metadata in App Store Connect with the role given to the key. Use the minimum role (App Manager or Developer). |
 | `CARD_GATEWAY_SECRET_KEY` | core-service | platform-owner | 180 d | payment-credential | yes | Card gateway secret key (provider TBD, see memory.md questions). Production: charge and refund cards. |
 | `CARD_GATEWAY_WEBHOOK_SECRET` | core-service | platform-owner | 180 d | webhook-secret | yes | Forge payment-confirmed webhooks if leaked (provider TBD). Production: mark unpaid plans as paid. |
+| `CODEMAGIC_SECURE_VARIABLES` | codemagic (owner-blocked) | platform-owner | 180 d | signing-credential | yes | Group of per-environment Codemagic variables holding signing material and store API keys (public client keys are not secret). Leak lets an attacker build and publish as us. |
 | `FCM_SERVICE_ACCOUNT_JSON` | core-service | platform-owner | 180 d | service-account | yes | Send push notifications to any device registered in one environment's Firebase project (phishing risk), no data read. |
 | `FLY_API_TOKEN` | ci-deploy | platform-owner | 90 d | fly-token | yes | Deploy and read secrets of one Fly app. Must be an app-scoped deploy token, never an org token. Production token sits in the protected production environment. |
 | `GOOGLE_MAPS_SERVER_KEY` | core-service | platform-owner | 180 d | provider-key | yes | Run Routes/Distance Matrix on our bill. Restrict by API and, where possible, by IP; budget alert on. |
+| `IOS_DISTRIBUTION_CERTIFICATE` | app-stores (owner-blocked) | platform-owner | 365 d | signing-credential | yes | Sign iOS builds as the company; Apple certificates expire after 1 year. Revoke in the Apple Developer account on a leak. |
+| `IOS_PROVISIONING_PROFILES` | app-stores (owner-blocked) | platform-owner | 365 d | signing-credential | yes | Profiles tie the certificate to the app ids; regenerated whenever the certificate is replaced. Low impact alone. |
 | `JOB_TICK_SECRET` | core-service | platform-owner | 90 d | job-tick-secret | yes | Forge a job tick: trigger payout, reminder and expiry jobs on demand in one environment (jobs are idempotent, so impact is load and timing, not duplicate payments). |
 | `JOB_TICK_SECRET` | job-tick-function | platform-owner | 90 d | job-tick-secret | yes | Same value as the core service copy; leak lets an attacker sign ticks. |
 | `MOMO_COLLECTION_API_KEY` | core-service | platform-owner | 180 d | payment-credential | yes | Authenticate to MoMo Collections with our API user. Production: request payments from parents' wallets in our name. |
 | `MOMO_COLLECTION_SUBSCRIPTION_KEY` | core-service | platform-owner | 180 d | payment-credential | yes | Call MoMo Collections as us (request payments). Production: live money movement into our account. |
 | `MOMO_DISBURSEMENT_API_KEY` | core-service | platform-owner | 180 d | payment-credential | yes | Authenticate to MoMo Disbursements. Production: send payouts to arbitrary numbers; highest financial blast radius. |
 | `MOMO_DISBURSEMENT_SUBSCRIPTION_KEY` | core-service | platform-owner | 180 d | payment-credential | yes | Call MoMo Disbursements as us. Production: pay out money from our wallet. |
+| `PLAY_UPLOAD_KEYSTORE` | app-stores (owner-blocked) | platform-owner | 365 d | signing-credential | yes | Sign app bundles as us for upload to Play. Play App Signing holds the real app signing key, so a leaked upload key can be reset through Play support; still a release-integrity risk. |
+| `PLAY_UPLOAD_KEYSTORE_PASSWORD` | codemagic (owner-blocked) | platform-owner | 365 d | signing-credential | yes | With the keystore file, signs uploads to Play. Stored as a Codemagic secure variable; never committed. |
 | `RESEND_API_KEY` | core-service | platform-owner | 180 d | provider-key | yes | Send email as our domain (receipts, safeguarding notices); phishing and reputation risk. Restrict to sending only (ADR 0005). |
 | `RESEND_WEBHOOK_SECRET` | core-service | platform-owner | 180 d | webhook-secret | yes | Forge delivery and bounce events. |
 | `SENTRY_AUTH_TOKEN` | ci-deploy | platform-owner | 90 d | github-env-secret | yes | Upload source maps and manage releases in Sentry; scoped to project:releases only. |
@@ -37,7 +44,7 @@ Rotate each server secret on its interval (table below). Put a calendar reminder
 
 Goal: rotate a leaked secret **within one hour** and **without downtime**. Clock starts when someone first suspects the leak. Incident lead: the secret's rotation owner (the platform owner until a team exists).
 
-1. **Contain (0-10 min).** Identify the secret and its environment from the inventory (name, consumer, store, blast radius). If it is production money (MoMo, Airtel, card), pause payouts first. Do not wait to understand how it leaked.
+1. **Contain (0-10 min).** Identify the secret and its environment from the inventory (name, consumer, store, blast radius). If it is production money (MoMo, Airtel, card), stop approving payout batches in the admin app first (there is no automatic payout switch yet). Do not wait to understand how it leaked.
 2. **Rotate (10-40 min).** Follow the matching procedure below for that environment only: create the new credential, set it in the store, verify, then **revoke** the old one. Revoking is what ends the exposure, so do not delay it once the new credential is verified. If verification fails and the old credential is actively abused, revoke it anyway and accept a short outage, then fix forward.
 3. **Audit (40-60 min and after).** Find out what the secret did while exposed: Appwrite console audit logs and function executions (project of that environment), Fly logs (`fly logs -a <app>`), the provider's API request log (MoMo/Airtel portal, Resend, Africa's Talking, Google Cloud billing and quota), GitHub audit log and Actions runs, Sentry for unusual errors. Record the exposure window, the actions seen and whether personal data was read.
 4. **Notify.** Platform owner immediately. If personal data of parents, children or teachers may have been accessed, escalate to the DPO/lawyer the same day (PDPO breach duty, see `docs/legal/pdpo-registration-checklist.md`); the owner decides on notifying the regulator and affected people. If a provider can freeze or refund fraudulent activity, contact them from the provider's own support channel.
@@ -60,6 +67,16 @@ If the validator or a review finds one key used in two environments (or a produc
 ## Rotation procedures
 
 <!-- BEGIN GENERATED:procedures -->
+### Procedure `admin-cookie-secret`
+
+Used by: `ADMIN_COOKIE_SECRET` (app-admin)
+
+1. Generate a new value locally (`openssl rand -hex 32`, 32+ characters); never paste it into chat or an issue.
+2. Set the same value on every admin instance of THIS environment in the admin host's environment settings (the host is chosen with F06 deployment, owner-blocked) and redeploy all instances together; a mix of old and new values breaks pending-MFA verification across instances.
+3. Verify: sign in to the staging admin with MFA end to end (production: with the owner's account in a quiet window).
+4. Discard the old value everywhere; only in-flight pending-MFA cookies (10 minutes) were invalidated.
+5. Add a line to the rotation log (date, who, secret name, environment; no values).
+
 ### Procedure `apns-key`
 
 Used by: `APNS_AUTH_KEY` (firebase-console)
@@ -75,7 +92,7 @@ Used by: `APNS_AUTH_KEY` (firebase-console)
 Used by: `APPWRITE_API_KEY` (ci-deploy), `APPWRITE_API_KEY` (core-service)
 
 1. In the Appwrite console of THIS environment's project (never another), create a new API key with the same scopes as appwrite/keys.md, name it hs-<consumer>-<env>-<yyyymmdd>, expiry 90d.
-2. Set the new value in the store listed for that environment (Fly: `fly secrets set APPWRITE_API_KEY=- -a <app>` reading from stdin; GitHub: environment secret). Fly restarts machines one at a time, so the old key keeps serving until each machine has the new one.
+2. Set the new value in the store listed for that environment (Fly: `fly secrets import -a <app>` with `APPWRITE_API_KEY=<value>` on stdin (from a mode-600 file you delete afterwards); GitHub: environment secret). Fly restarts machines one at a time, so the old key keeps serving until each machine has the new one.
 3. Verify: GET /health/ready on the app is 200 and one authenticated request succeeds; for CI, re-run the staging deploy workflow.
 4. Delete the OLD key in the Appwrite console (this is the revoke step; on a leak do it as soon as step 3 passes, target within one hour).
 5. Run `python3 appwrite/check_keys.py`, update appwrite/keys.md if scopes or names changed, and add a line to the rotation log (date, who, secret name, environment; no values).
@@ -105,7 +122,7 @@ Used by: `SENTRY_AUTH_TOKEN` (ci-deploy)
 Used by: `JOB_TICK_SECRET` (core-service), `JOB_TICK_SECRET` (job-tick-function)
 
 1. Generate a new random value (`openssl rand -hex 32`) locally; never paste it into chat or an issue.
-2. Set it on the core service first (`fly secrets set JOB_TICK_SECRET=- -a hs-core-<env>`), then on the job-tick function variable in the same environment's Appwrite project, then redeploy the function. Until the function has the new value, ticks signed with the old value are rejected and retried on the next tick (ADR 0002 jobs are idempotent), so there is no data loss; a brief gap of one tick is the worst case. Follow-up for F04: accept a JOB_TICK_SECRET_PREVIOUS during rotation to make this fully overlapping.
+2. Set it on the core service first (`fly secrets import -a hs-core-<env>` with `JOB_TICK_SECRET=<value>` on stdin), then on the job-tick function variable in the same environment's Appwrite project, then redeploy the function. Until the function has the new value, ticks signed with the old value are rejected and retried on the next tick (ADR 0002 jobs are idempotent), so there is no data loss; a brief gap of one tick is the worst case. F04 has no previous-secret mechanism today, so rotation is NOT fully overlapping; accepting a previous value during rotation is an F04 follow-up (see docs/ops/secrets.md).
 3. Verify: the next tick appears in the job-run log with status ok.
 4. Unset any previous-secret value and record the rotation in the log.
 
@@ -113,11 +130,11 @@ Used by: `JOB_TICK_SECRET` (core-service), `JOB_TICK_SECRET` (job-tick-function)
 
 Used by: `AIRTEL_CLIENT_SECRET` (core-service), `CARD_GATEWAY_SECRET_KEY` (core-service), `MOMO_COLLECTION_API_KEY` (core-service), `MOMO_COLLECTION_SUBSCRIPTION_KEY` (core-service), `MOMO_DISBURSEMENT_API_KEY` (core-service), `MOMO_DISBURSEMENT_SUBSCRIPTION_KEY` (core-service)
 
-1. Pause payouts for the environment (core-service payout job flag) so no disbursement is in flight; collections keep working because they are retried by provider callbacks.
+1. Stop payouts for the environment by hand so no disbursement is in flight: in the admin app do not approve any payout batch until step 5 (collections keep working because they are retried by provider callbacks). If the DISBURSEMENT credential is the leaked one, revoke it at the provider first. The core service has no automatic payout switch today (payout ticket follow-up).
 2. In the provider portal create a new API user key / secret for THIS environment (sandbox for development and staging; live only for production). MoMo: new API key for the existing API user, or a new API user if the user id is suspect.
-3. Set the new values in the store (`fly secrets set NAME=- -a hs-core-<env>`); machines restart one at a time.
+3. Set the new values in the store (`fly secrets import -a hs-core-<env>` with `NAME=<value>` on stdin); machines restart one at a time.
 4. Verify with one sandbox (or, in production, the smallest live) collection and, for disbursement credentials, one payout; confirm callbacks reach the service.
-5. Revoke the OLD credential in the provider portal, resume payouts, and reconcile the ledger for the window between steps 1 and 5 (ADR on idempotent payouts).
+5. Revoke the OLD credential in the provider portal, resume approving payout batches, and reconcile the ledger for the window between steps 1 and 5 (ADR on idempotent payouts).
 6. Add a line to the rotation log. In production, rotate in a low-traffic window (not weekdays 15:00-20:00 or weekends 08:00-18:00, SR NFR-5).
 
 ### Procedure `provider-key`
@@ -125,7 +142,7 @@ Used by: `AIRTEL_CLIENT_SECRET` (core-service), `CARD_GATEWAY_SECRET_KEY` (core-
 Used by: `AFRICASTALKING_API_KEY` (core-service), `GOOGLE_MAPS_SERVER_KEY` (core-service), `RESEND_API_KEY` (core-service), `SENTRY_DSN` (core-service)
 
 1. In the provider's dashboard for THIS environment (sandbox account for development and staging, live account only for production) create a second key; do not delete the first yet.
-2. Set the new value in the store listed for that environment (`fly secrets set NAME=- -a <app>`; rolling restart, no downtime).
+2. Set the new value in the store listed for that environment (`fly secrets import -a <app>` with `NAME=<value>` on stdin; rolling restart, no downtime).
 3. Verify with the provider's smoke call in the staging runbook (send a test message / sandbox request) and that error rates in Sentry stay flat for 15 minutes.
 4. Revoke the OLD key in the provider dashboard (this is the revoke step; on a leak do it immediately after step 3).
 5. Add a line to the rotation log (date, who, secret name, environment; no values).
@@ -135,17 +152,27 @@ Used by: `AFRICASTALKING_API_KEY` (core-service), `GOOGLE_MAPS_SERVER_KEY` (core
 Used by: `FCM_SERVICE_ACCOUNT_JSON` (core-service)
 
 1. In the Firebase/Google Cloud console create a new service-account key (JSON) for THIS environment's Firebase project; keep the old key active.
-2. Set it on the core service (`fly secrets set FCM_SERVICE_ACCOUNT_JSON=- -a hs-core-<env>` from a file via stdin, then delete the local file).
+2. Set it on the core service (`fly secrets import -a hs-core-<env>` with `FCM_SERVICE_ACCOUNT_JSON=<single-line JSON>` on stdin from a mode-600 file, then delete the local file).
 3. Verify by sending a test push to a staging device.
 4. Delete the OLD key in the service-account page (this is the revoke step).
 5. Add a line to the rotation log.
+
+### Procedure `signing-credential`
+
+Used by: `APP_STORE_CONNECT_API_KEY` (codemagic), `CODEMAGIC_SECURE_VARIABLES` (codemagic), `IOS_DISTRIBUTION_CERTIFICATE` (app-stores), `IOS_PROVISIONING_PROFILES` (app-stores), `PLAY_UPLOAD_KEYSTORE_PASSWORD` (codemagic), `PLAY_UPLOAD_KEYSTORE` (app-stores)
+
+1. Generate or request the replacement in the store console (Play Console > Setup > App signing > request upload key reset; Apple Developer > Certificates; App Store Connect > Users and Access > Integrations > Keys), keeping the old one valid until the new build is verified.
+2. Store the new material only in the Codemagic secure variable group (or the store console) for the production release; never in the repo, chat or a laptop file that outlives the step.
+3. Verify: run a Codemagic build and upload one internal-track (Play) or TestFlight (App Store) build signed with the new credential.
+4. Revoke the OLD credential in the same console (this is the revoke step; on a leak do it as soon as step 3 passes).
+5. Add a line to the rotation log (date, who, credential name; no values). Draft procedure until M01 sets up Codemagic.
 
 ### Procedure `webhook-secret`
 
 Used by: `CARD_GATEWAY_WEBHOOK_SECRET` (core-service), `RESEND_WEBHOOK_SECRET` (core-service)
 
 1. In the provider dashboard create a new webhook signing secret for THIS environment; most providers allow two active secrets during a window, so keep the old one.
-2. Set the new value on the core service (`fly secrets set NAME=- -a hs-core-<env>`); the service must verify against the new value.
+2. Set the new value on the core service (`fly secrets import -a hs-core-<env>` with `NAME=<value>` on stdin); the service must verify against the new value.
 3. Trigger a test webhook from the provider and confirm it verifies (HTTP 200, no signature errors in logs).
 4. Remove the old signing secret at the provider.
 5. Add a line to the rotation log.
