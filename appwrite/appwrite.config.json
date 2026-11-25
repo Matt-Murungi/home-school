@@ -2417,6 +2417,1941 @@
       ]
     },
     {
+      "$id": "tier",
+      "databaseId": "main",
+      "name": "tier",
+      "enabled": true,
+      "rowSecurity": true,
+      "$permissions": [],
+      "columns": [
+        {
+          "key": "name",
+          "type": "varchar",
+          "size": 80,
+          "required": true
+        },
+        {
+          "key": "active_key",
+          "type": "varchar",
+          "size": 80,
+          "required": false
+        },
+        {
+          "key": "rank",
+          "type": "integer",
+          "required": true,
+          "min": 0
+        },
+        {
+          "key": "base_rate",
+          "type": "integer",
+          "required": true,
+          "min": 0
+        },
+        {
+          "key": "currency",
+          "type": "varchar",
+          "size": 3,
+          "required": false,
+          "default": "UGX"
+        },
+        {
+          "key": "criteria",
+          "type": "text",
+          "required": false
+        },
+        {
+          "key": "active",
+          "type": "boolean",
+          "required": false,
+          "default": true
+        },
+        {
+          "key": "created_at",
+          "type": "datetime",
+          "required": true
+        },
+        {
+          "key": "deleted_at",
+          "type": "datetime",
+          "required": false
+        }
+      ],
+      "indexes": [
+        {
+          "key": "by_rank",
+          "type": "key",
+          "columns": [
+            "rank"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        },
+        {
+          "key": "unique_active_key",
+          "type": "unique",
+          "columns": [
+            "active_key"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        }
+      ]
+    },
+    {
+      "$id": "tier_history",
+      "databaseId": "main",
+      "name": "tier_history",
+      "enabled": true,
+      "rowSecurity": true,
+      "$permissions": [],
+      "columns": [
+        {
+          "key": "teacher_id",
+          "type": "varchar",
+          "size": 36,
+          "required": true
+        },
+        {
+          "key": "from_tier_id",
+          "type": "varchar",
+          "size": 36,
+          "required": false
+        },
+        {
+          "key": "to_tier_id",
+          "type": "varchar",
+          "size": 36,
+          "required": true
+        },
+        {
+          "key": "reason",
+          "type": "varchar",
+          "size": 500,
+          "required": true
+        },
+        {
+          "key": "approved_by_id",
+          "type": "varchar",
+          "size": 36,
+          "required": true
+        },
+        {
+          "key": "effective_at",
+          "type": "datetime",
+          "required": true
+        },
+        {
+          "key": "created_at",
+          "type": "datetime",
+          "required": true
+        }
+      ],
+      "indexes": [
+        {
+          "key": "by_teacher",
+          "type": "key",
+          "columns": [
+            "teacher_id",
+            "effective_at"
+          ],
+          "orders": [
+            "ASC",
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_from_tier",
+          "type": "key",
+          "columns": [
+            "from_tier_id"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_to_tier",
+          "type": "key",
+          "columns": [
+            "to_tier_id"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_approved_by",
+          "type": "key",
+          "columns": [
+            "approved_by_id"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        }
+      ]
+    },
+    {
+      "$id": "bonus_rule",
+      "databaseId": "main",
+      "name": "bonus_rule",
+      "enabled": true,
+      "rowSecurity": true,
+      "$permissions": [],
+      "columns": [
+        {
+          "key": "type",
+          "type": "string",
+          "format": "enum",
+          "elements": [
+            "peak_slot",
+            "hard_zone",
+            "on_time_log",
+            "checkpoint_gain",
+            "referral"
+          ],
+          "required": true
+        },
+        {
+          "key": "name",
+          "type": "varchar",
+          "size": 120,
+          "required": true
+        },
+        {
+          "key": "amount",
+          "type": "integer",
+          "required": true,
+          "min": 0
+        },
+        {
+          "key": "currency",
+          "type": "varchar",
+          "size": 3,
+          "required": false,
+          "default": "UGX"
+        },
+        {
+          "key": "conditions",
+          "type": "text",
+          "required": false
+        },
+        {
+          "key": "active",
+          "type": "boolean",
+          "required": false,
+          "default": true
+        },
+        {
+          "key": "starts_at",
+          "type": "datetime",
+          "required": false
+        },
+        {
+          "key": "ends_at",
+          "type": "datetime",
+          "required": false
+        },
+        {
+          "key": "created_at",
+          "type": "datetime",
+          "required": true
+        },
+        {
+          "key": "deleted_at",
+          "type": "datetime",
+          "required": false
+        }
+      ],
+      "indexes": [
+        {
+          "key": "by_type_active",
+          "type": "key",
+          "columns": [
+            "type",
+            "active"
+          ],
+          "orders": [
+            "ASC",
+            "ASC"
+          ]
+        }
+      ]
+    },
+    {
+      "$id": "invoice",
+      "databaseId": "main",
+      "name": "invoice",
+      "enabled": true,
+      "rowSecurity": true,
+      "$permissions": [],
+      "columns": [
+        {
+          "key": "subscription_id",
+          "type": "varchar",
+          "size": 36,
+          "required": true
+        },
+        {
+          "key": "parent_id",
+          "type": "varchar",
+          "size": 36,
+          "required": true
+        },
+        {
+          "key": "period_start_date",
+          "type": "varchar",
+          "size": 10,
+          "required": true
+        },
+        {
+          "key": "period_end_date",
+          "type": "varchar",
+          "size": 10,
+          "required": true
+        },
+        {
+          "key": "amount",
+          "type": "integer",
+          "required": true,
+          "min": 0
+        },
+        {
+          "key": "currency",
+          "type": "varchar",
+          "size": 3,
+          "required": false,
+          "default": "UGX"
+        },
+        {
+          "key": "status",
+          "type": "string",
+          "format": "enum",
+          "elements": [
+            "open",
+            "paid",
+            "past_due",
+            "void",
+            "refunded"
+          ],
+          "required": true
+        },
+        {
+          "key": "due_at",
+          "type": "datetime",
+          "required": true
+        },
+        {
+          "key": "paid_at",
+          "type": "datetime",
+          "required": false
+        },
+        {
+          "key": "created_at",
+          "type": "datetime",
+          "required": true
+        }
+      ],
+      "indexes": [
+        {
+          "key": "unique_subscription_period",
+          "type": "unique",
+          "columns": [
+            "subscription_id",
+            "period_start_date"
+          ],
+          "orders": [
+            "ASC",
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_parent",
+          "type": "key",
+          "columns": [
+            "parent_id",
+            "due_at"
+          ],
+          "orders": [
+            "ASC",
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_status_due",
+          "type": "key",
+          "columns": [
+            "status",
+            "due_at"
+          ],
+          "orders": [
+            "ASC",
+            "ASC"
+          ]
+        }
+      ]
+    },
+    {
+      "$id": "payment",
+      "databaseId": "main",
+      "name": "payment",
+      "enabled": true,
+      "rowSecurity": true,
+      "$permissions": [],
+      "columns": [
+        {
+          "key": "invoice_id",
+          "type": "varchar",
+          "size": 36,
+          "required": true
+        },
+        {
+          "key": "parent_id",
+          "type": "varchar",
+          "size": 36,
+          "required": true
+        },
+        {
+          "key": "provider",
+          "type": "varchar",
+          "size": 40,
+          "required": true
+        },
+        {
+          "key": "provider_reference",
+          "type": "varchar",
+          "size": 128,
+          "required": false
+        },
+        {
+          "key": "amount",
+          "type": "integer",
+          "required": true,
+          "min": 1
+        },
+        {
+          "key": "currency",
+          "type": "varchar",
+          "size": 3,
+          "required": false,
+          "default": "UGX"
+        },
+        {
+          "key": "status",
+          "type": "string",
+          "format": "enum",
+          "elements": [
+            "initiated",
+            "pending",
+            "succeeded",
+            "failed",
+            "expired",
+            "refunded"
+          ],
+          "required": true
+        },
+        {
+          "key": "idempotency_key",
+          "type": "varchar",
+          "size": 128,
+          "required": true
+        },
+        {
+          "key": "raw_callback",
+          "type": "text",
+          "required": false
+        },
+        {
+          "key": "failure_reason",
+          "type": "varchar",
+          "size": 300,
+          "required": false
+        },
+        {
+          "key": "requested_at",
+          "type": "datetime",
+          "required": true
+        },
+        {
+          "key": "callback_at",
+          "type": "datetime",
+          "required": false
+        },
+        {
+          "key": "confirmed_at",
+          "type": "datetime",
+          "required": false
+        }
+      ],
+      "indexes": [
+        {
+          "key": "unique_idempotency_key",
+          "type": "unique",
+          "columns": [
+            "idempotency_key"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        },
+        {
+          "key": "unique_provider_reference",
+          "type": "unique",
+          "columns": [
+            "provider",
+            "provider_reference"
+          ],
+          "orders": [
+            "ASC",
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_invoice",
+          "type": "key",
+          "columns": [
+            "invoice_id"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_parent",
+          "type": "key",
+          "columns": [
+            "parent_id",
+            "requested_at"
+          ],
+          "orders": [
+            "ASC",
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_status_requested",
+          "type": "key",
+          "columns": [
+            "status",
+            "requested_at"
+          ],
+          "orders": [
+            "ASC",
+            "ASC"
+          ]
+        }
+      ]
+    },
+    {
+      "$id": "earning",
+      "databaseId": "main",
+      "name": "earning",
+      "enabled": true,
+      "rowSecurity": true,
+      "$permissions": [],
+      "columns": [
+        {
+          "key": "teacher_id",
+          "type": "varchar",
+          "size": 36,
+          "required": true
+        },
+        {
+          "key": "session_id",
+          "type": "varchar",
+          "size": 36,
+          "required": true
+        },
+        {
+          "key": "type",
+          "type": "string",
+          "format": "enum",
+          "elements": [
+            "base",
+            "bonus",
+            "late_cancel",
+            "adjustment"
+          ],
+          "required": true
+        },
+        {
+          "key": "amount",
+          "type": "integer",
+          "required": true
+        },
+        {
+          "key": "currency",
+          "type": "varchar",
+          "size": 3,
+          "required": false,
+          "default": "UGX"
+        },
+        {
+          "key": "status",
+          "type": "string",
+          "format": "enum",
+          "elements": [
+            "pending",
+            "confirmed",
+            "disputed",
+            "batched",
+            "paid",
+            "void"
+          ],
+          "required": true
+        },
+        {
+          "key": "bonus_rule_id",
+          "type": "varchar",
+          "size": 36,
+          "required": false
+        },
+        {
+          "key": "tier_id",
+          "type": "varchar",
+          "size": 36,
+          "required": false
+        },
+        {
+          "key": "batch_id",
+          "type": "varchar",
+          "size": 36,
+          "required": false
+        },
+        {
+          "key": "dedupe_key",
+          "type": "varchar",
+          "size": 160,
+          "required": true
+        },
+        {
+          "key": "note",
+          "type": "varchar",
+          "size": 300,
+          "required": false
+        },
+        {
+          "key": "confirmed_at",
+          "type": "datetime",
+          "required": false
+        },
+        {
+          "key": "created_at",
+          "type": "datetime",
+          "required": true
+        }
+      ],
+      "indexes": [
+        {
+          "key": "unique_dedupe_key",
+          "type": "unique",
+          "columns": [
+            "dedupe_key"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_teacher",
+          "type": "key",
+          "columns": [
+            "teacher_id",
+            "created_at"
+          ],
+          "orders": [
+            "ASC",
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_session",
+          "type": "key",
+          "columns": [
+            "session_id"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_status_confirmed",
+          "type": "key",
+          "columns": [
+            "status",
+            "confirmed_at"
+          ],
+          "orders": [
+            "ASC",
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_bonus_rule",
+          "type": "key",
+          "columns": [
+            "bonus_rule_id"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_tier",
+          "type": "key",
+          "columns": [
+            "tier_id"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_batch",
+          "type": "key",
+          "columns": [
+            "batch_id"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        }
+      ]
+    },
+    {
+      "$id": "payout_batch",
+      "databaseId": "main",
+      "name": "payout_batch",
+      "enabled": true,
+      "rowSecurity": true,
+      "$permissions": [],
+      "columns": [
+        {
+          "key": "period_start_date",
+          "type": "varchar",
+          "size": 10,
+          "required": true
+        },
+        {
+          "key": "period_end_date",
+          "type": "varchar",
+          "size": 10,
+          "required": true
+        },
+        {
+          "key": "status",
+          "type": "string",
+          "format": "enum",
+          "elements": [
+            "draft",
+            "pending_approval",
+            "approved",
+            "processing",
+            "completed",
+            "cancelled"
+          ],
+          "required": true
+        },
+        {
+          "key": "total_amount",
+          "type": "integer",
+          "required": true,
+          "min": 0
+        },
+        {
+          "key": "payout_count",
+          "type": "integer",
+          "required": true,
+          "min": 0
+        },
+        {
+          "key": "active_key",
+          "type": "varchar",
+          "size": 10,
+          "required": false
+        },
+        {
+          "key": "approved_by_id",
+          "type": "varchar",
+          "size": 36,
+          "required": false
+        },
+        {
+          "key": "approved_at",
+          "type": "datetime",
+          "required": false
+        },
+        {
+          "key": "confirmed_by_id",
+          "type": "varchar",
+          "size": 36,
+          "required": false
+        },
+        {
+          "key": "confirmed_at",
+          "type": "datetime",
+          "required": false
+        },
+        {
+          "key": "created_at",
+          "type": "datetime",
+          "required": true
+        },
+        {
+          "key": "deleted_at",
+          "type": "datetime",
+          "required": false
+        }
+      ],
+      "indexes": [
+        {
+          "key": "unique_active_period",
+          "type": "unique",
+          "columns": [
+            "active_key"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_status",
+          "type": "key",
+          "columns": [
+            "status",
+            "period_start_date"
+          ],
+          "orders": [
+            "ASC",
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_approved_by",
+          "type": "key",
+          "columns": [
+            "approved_by_id"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_confirmed_by",
+          "type": "key",
+          "columns": [
+            "confirmed_by_id"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        }
+      ]
+    },
+    {
+      "$id": "payout",
+      "databaseId": "main",
+      "name": "payout",
+      "enabled": true,
+      "rowSecurity": true,
+      "$permissions": [],
+      "columns": [
+        {
+          "key": "batch_id",
+          "type": "varchar",
+          "size": 36,
+          "required": true
+        },
+        {
+          "key": "teacher_id",
+          "type": "varchar",
+          "size": 36,
+          "required": true
+        },
+        {
+          "key": "amount",
+          "type": "integer",
+          "required": true,
+          "min": 1
+        },
+        {
+          "key": "currency",
+          "type": "varchar",
+          "size": 3,
+          "required": false,
+          "default": "UGX"
+        },
+        {
+          "key": "provider",
+          "type": "varchar",
+          "size": 40,
+          "required": false
+        },
+        {
+          "key": "provider_reference",
+          "type": "varchar",
+          "size": 128,
+          "required": false
+        },
+        {
+          "key": "status",
+          "type": "string",
+          "format": "enum",
+          "elements": [
+            "pending",
+            "sending",
+            "succeeded",
+            "failed",
+            "retry",
+            "needs_ops"
+          ],
+          "required": true
+        },
+        {
+          "key": "idempotency_key",
+          "type": "varchar",
+          "size": 128,
+          "required": true
+        },
+        {
+          "key": "attempts",
+          "type": "integer",
+          "required": false,
+          "min": 0,
+          "default": 0
+        },
+        {
+          "key": "last_error",
+          "type": "varchar",
+          "size": 300,
+          "required": false
+        },
+        {
+          "key": "sent_at",
+          "type": "datetime",
+          "required": false
+        },
+        {
+          "key": "confirmed_at",
+          "type": "datetime",
+          "required": false
+        },
+        {
+          "key": "created_at",
+          "type": "datetime",
+          "required": true
+        }
+      ],
+      "indexes": [
+        {
+          "key": "unique_idempotency_key",
+          "type": "unique",
+          "columns": [
+            "idempotency_key"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        },
+        {
+          "key": "unique_batch_teacher",
+          "type": "unique",
+          "columns": [
+            "batch_id",
+            "teacher_id"
+          ],
+          "orders": [
+            "ASC",
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_teacher",
+          "type": "key",
+          "columns": [
+            "teacher_id",
+            "created_at"
+          ],
+          "orders": [
+            "ASC",
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_status",
+          "type": "key",
+          "columns": [
+            "status"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        }
+      ]
+    },
+    {
+      "$id": "ledger_account",
+      "databaseId": "main",
+      "name": "ledger_account",
+      "enabled": true,
+      "rowSecurity": true,
+      "$permissions": [],
+      "columns": [
+        {
+          "key": "code",
+          "type": "varchar",
+          "size": 100,
+          "required": true
+        },
+        {
+          "key": "name",
+          "type": "varchar",
+          "size": 200,
+          "required": true
+        },
+        {
+          "key": "type",
+          "type": "string",
+          "format": "enum",
+          "elements": [
+            "asset",
+            "liability",
+            "revenue",
+            "expense"
+          ],
+          "required": true
+        },
+        {
+          "key": "normal_side",
+          "type": "string",
+          "format": "enum",
+          "elements": [
+            "debit",
+            "credit"
+          ],
+          "required": true
+        },
+        {
+          "key": "teacher_id",
+          "type": "varchar",
+          "size": 36,
+          "required": false
+        },
+        {
+          "key": "currency",
+          "type": "varchar",
+          "size": 3,
+          "required": false,
+          "default": "UGX"
+        },
+        {
+          "key": "active",
+          "type": "boolean",
+          "required": false,
+          "default": true
+        },
+        {
+          "key": "created_at",
+          "type": "datetime",
+          "required": true
+        }
+      ],
+      "indexes": [
+        {
+          "key": "unique_code",
+          "type": "unique",
+          "columns": [
+            "code"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_teacher",
+          "type": "key",
+          "columns": [
+            "teacher_id"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        }
+      ]
+    },
+    {
+      "$id": "ledger_transaction",
+      "databaseId": "main",
+      "name": "ledger_transaction",
+      "enabled": true,
+      "rowSecurity": true,
+      "$permissions": [],
+      "columns": [
+        {
+          "key": "kind",
+          "type": "string",
+          "format": "enum",
+          "elements": [
+            "payment",
+            "earning",
+            "payout",
+            "refund",
+            "fee",
+            "adjustment",
+            "reversal"
+          ],
+          "required": true
+        },
+        {
+          "key": "idempotency_key",
+          "type": "varchar",
+          "size": 200,
+          "required": true
+        },
+        {
+          "key": "reference_type",
+          "type": "varchar",
+          "size": 60,
+          "required": false
+        },
+        {
+          "key": "reference_id",
+          "type": "varchar",
+          "size": 36,
+          "required": false
+        },
+        {
+          "key": "description",
+          "type": "varchar",
+          "size": 500,
+          "required": false
+        },
+        {
+          "key": "reverses_transaction_id",
+          "type": "varchar",
+          "size": 36,
+          "required": false
+        },
+        {
+          "key": "reversal_reason",
+          "type": "varchar",
+          "size": 500,
+          "required": false
+        },
+        {
+          "key": "entry_count",
+          "type": "integer",
+          "required": true,
+          "min": 2
+        },
+        {
+          "key": "total_amount",
+          "type": "integer",
+          "required": true,
+          "min": 1
+        },
+        {
+          "key": "currency",
+          "type": "varchar",
+          "size": 3,
+          "required": false,
+          "default": "UGX"
+        },
+        {
+          "key": "created_by_id",
+          "type": "varchar",
+          "size": 36,
+          "required": false
+        },
+        {
+          "key": "posted_at",
+          "type": "datetime",
+          "required": true
+        }
+      ],
+      "indexes": [
+        {
+          "key": "unique_idempotency_key",
+          "type": "unique",
+          "columns": [
+            "idempotency_key"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        },
+        {
+          "key": "unique_reverses",
+          "type": "unique",
+          "columns": [
+            "reverses_transaction_id"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_reference",
+          "type": "key",
+          "columns": [
+            "reference_type",
+            "reference_id"
+          ],
+          "orders": [
+            "ASC",
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_created_by",
+          "type": "key",
+          "columns": [
+            "created_by_id"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_posted",
+          "type": "key",
+          "columns": [
+            "posted_at"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        }
+      ]
+    },
+    {
+      "$id": "ledger_entry",
+      "databaseId": "main",
+      "name": "ledger_entry",
+      "enabled": true,
+      "rowSecurity": true,
+      "$permissions": [],
+      "columns": [
+        {
+          "key": "transaction_id",
+          "type": "varchar",
+          "size": 36,
+          "required": true
+        },
+        {
+          "key": "line",
+          "type": "integer",
+          "required": true,
+          "min": 1
+        },
+        {
+          "key": "account_id",
+          "type": "varchar",
+          "size": 36,
+          "required": true
+        },
+        {
+          "key": "side",
+          "type": "string",
+          "format": "enum",
+          "elements": [
+            "debit",
+            "credit"
+          ],
+          "required": true
+        },
+        {
+          "key": "amount",
+          "type": "integer",
+          "required": true,
+          "min": 1
+        },
+        {
+          "key": "currency",
+          "type": "varchar",
+          "size": 3,
+          "required": false,
+          "default": "UGX"
+        },
+        {
+          "key": "reference_type",
+          "type": "varchar",
+          "size": 60,
+          "required": false
+        },
+        {
+          "key": "reference_id",
+          "type": "varchar",
+          "size": 36,
+          "required": false
+        },
+        {
+          "key": "posted_at",
+          "type": "datetime",
+          "required": true
+        }
+      ],
+      "indexes": [
+        {
+          "key": "unique_transaction_line",
+          "type": "unique",
+          "columns": [
+            "transaction_id",
+            "line"
+          ],
+          "orders": [
+            "ASC",
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_account",
+          "type": "key",
+          "columns": [
+            "account_id",
+            "posted_at"
+          ],
+          "orders": [
+            "ASC",
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_reference",
+          "type": "key",
+          "columns": [
+            "reference_type",
+            "reference_id"
+          ],
+          "orders": [
+            "ASC",
+            "ASC"
+          ]
+        }
+      ]
+    },
+    {
+      "$id": "feedback",
+      "databaseId": "main",
+      "name": "feedback",
+      "enabled": true,
+      "rowSecurity": true,
+      "$permissions": [],
+      "columns": [
+        {
+          "key": "session_id",
+          "type": "varchar",
+          "size": 36,
+          "required": true
+        },
+        {
+          "key": "active_key",
+          "type": "varchar",
+          "size": 80,
+          "required": false
+        },
+        {
+          "key": "parent_id",
+          "type": "varchar",
+          "size": 36,
+          "required": true
+        },
+        {
+          "key": "teacher_id",
+          "type": "varchar",
+          "size": 36,
+          "required": true
+        },
+        {
+          "key": "child_id",
+          "type": "varchar",
+          "size": 36,
+          "required": false
+        },
+        {
+          "key": "child_rating",
+          "type": "integer",
+          "required": false,
+          "min": 1,
+          "max": 5
+        },
+        {
+          "key": "parent_comment",
+          "type": "varchar",
+          "size": 2000,
+          "required": false
+        },
+        {
+          "key": "created_at",
+          "type": "datetime",
+          "required": true
+        },
+        {
+          "key": "deleted_at",
+          "type": "datetime",
+          "required": false
+        }
+      ],
+      "indexes": [
+        {
+          "key": "by_teacher",
+          "type": "key",
+          "columns": [
+            "teacher_id",
+            "created_at"
+          ],
+          "orders": [
+            "ASC",
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_parent",
+          "type": "key",
+          "columns": [
+            "parent_id"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_child",
+          "type": "key",
+          "columns": [
+            "child_id"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        },
+        {
+          "key": "unique_active_key",
+          "type": "unique",
+          "columns": [
+            "active_key"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_session",
+          "type": "key",
+          "columns": [
+            "session_id"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        }
+      ]
+    },
+    {
+      "$id": "audit_log",
+      "databaseId": "main",
+      "name": "audit_log",
+      "enabled": true,
+      "rowSecurity": true,
+      "$permissions": [],
+      "columns": [
+        {
+          "key": "actor_id",
+          "type": "varchar",
+          "size": 36,
+          "required": false
+        },
+        {
+          "key": "actor_roles",
+          "type": "varchar",
+          "size": 200,
+          "required": false
+        },
+        {
+          "key": "action",
+          "type": "varchar",
+          "size": 120,
+          "required": true
+        },
+        {
+          "key": "entity",
+          "type": "varchar",
+          "size": 64,
+          "required": true
+        },
+        {
+          "key": "entity_id",
+          "type": "varchar",
+          "size": 36,
+          "required": true
+        },
+        {
+          "key": "before",
+          "type": "text",
+          "required": false
+        },
+        {
+          "key": "after",
+          "type": "text",
+          "required": false
+        },
+        {
+          "key": "reason",
+          "type": "varchar",
+          "size": 500,
+          "required": false
+        },
+        {
+          "key": "ip",
+          "type": "varchar",
+          "size": 45,
+          "required": false
+        },
+        {
+          "key": "request_id",
+          "type": "varchar",
+          "size": 36,
+          "required": false
+        },
+        {
+          "key": "occurred_at",
+          "type": "datetime",
+          "required": true
+        }
+      ],
+      "indexes": [
+        {
+          "key": "by_entity",
+          "type": "key",
+          "columns": [
+            "entity",
+            "entity_id",
+            "occurred_at"
+          ],
+          "orders": [
+            "ASC",
+            "ASC",
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_actor",
+          "type": "key",
+          "columns": [
+            "actor_id",
+            "occurred_at"
+          ],
+          "orders": [
+            "ASC",
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_occurred",
+          "type": "key",
+          "columns": [
+            "occurred_at"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        }
+      ]
+    },
+    {
+      "$id": "notification_template",
+      "databaseId": "main",
+      "name": "notification_template",
+      "enabled": true,
+      "rowSecurity": true,
+      "$permissions": [],
+      "columns": [
+        {
+          "key": "key",
+          "type": "varchar",
+          "size": 80,
+          "required": true
+        },
+        {
+          "key": "channel",
+          "type": "string",
+          "format": "enum",
+          "elements": [
+            "push",
+            "email",
+            "sms",
+            "in_app"
+          ],
+          "required": true
+        },
+        {
+          "key": "locale",
+          "type": "varchar",
+          "size": 10,
+          "required": true
+        },
+        {
+          "key": "title",
+          "type": "varchar",
+          "size": 200,
+          "required": true
+        },
+        {
+          "key": "body",
+          "type": "text",
+          "required": true
+        },
+        {
+          "key": "allowed_variables",
+          "type": "varchar",
+          "size": 64,
+          "required": false,
+          "array": true
+        },
+        {
+          "key": "category",
+          "type": "string",
+          "format": "enum",
+          "elements": [
+            "operational",
+            "safeguarding",
+            "marketing"
+          ],
+          "required": true
+        },
+        {
+          "key": "version",
+          "type": "integer",
+          "required": true,
+          "min": 1
+        },
+        {
+          "key": "active",
+          "type": "boolean",
+          "required": false,
+          "default": true
+        },
+        {
+          "key": "created_by_id",
+          "type": "varchar",
+          "size": 36,
+          "required": false
+        },
+        {
+          "key": "created_at",
+          "type": "datetime",
+          "required": true
+        }
+      ],
+      "indexes": [
+        {
+          "key": "unique_key_channel_locale_version",
+          "type": "unique",
+          "columns": [
+            "key",
+            "channel",
+            "locale",
+            "version"
+          ],
+          "orders": [
+            "ASC",
+            "ASC",
+            "ASC",
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_created_by",
+          "type": "key",
+          "columns": [
+            "created_by_id"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        }
+      ]
+    },
+    {
+      "$id": "notification",
+      "databaseId": "main",
+      "name": "notification",
+      "enabled": true,
+      "rowSecurity": true,
+      "$permissions": [],
+      "columns": [
+        {
+          "key": "user_id",
+          "type": "varchar",
+          "size": 36,
+          "required": true
+        },
+        {
+          "key": "channel",
+          "type": "string",
+          "format": "enum",
+          "elements": [
+            "push",
+            "email",
+            "sms",
+            "in_app"
+          ],
+          "required": true
+        },
+        {
+          "key": "template_key",
+          "type": "varchar",
+          "size": 80,
+          "required": true
+        },
+        {
+          "key": "template_version",
+          "type": "integer",
+          "required": true,
+          "min": 1
+        },
+        {
+          "key": "category",
+          "type": "string",
+          "format": "enum",
+          "elements": [
+            "operational",
+            "safeguarding",
+            "marketing"
+          ],
+          "required": true
+        },
+        {
+          "key": "payload",
+          "type": "text",
+          "required": false
+        },
+        {
+          "key": "deep_link",
+          "type": "varchar",
+          "size": 500,
+          "required": false
+        },
+        {
+          "key": "status",
+          "type": "string",
+          "format": "enum",
+          "elements": [
+            "queued",
+            "sent",
+            "delivered",
+            "failed",
+            "fallback",
+            "blocked"
+          ],
+          "required": true
+        },
+        {
+          "key": "attempts",
+          "type": "integer",
+          "required": true,
+          "min": 0
+        },
+        {
+          "key": "last_error",
+          "type": "varchar",
+          "size": 500,
+          "required": false
+        },
+        {
+          "key": "dedupe_key",
+          "type": "varchar",
+          "size": 200,
+          "required": false
+        },
+        {
+          "key": "scheduled_at",
+          "type": "datetime",
+          "required": true
+        },
+        {
+          "key": "sent_at",
+          "type": "datetime",
+          "required": false
+        },
+        {
+          "key": "read_at",
+          "type": "datetime",
+          "required": false
+        },
+        {
+          "key": "created_at",
+          "type": "datetime",
+          "required": true
+        },
+        {
+          "key": "deleted_at",
+          "type": "datetime",
+          "required": false
+        }
+      ],
+      "indexes": [
+        {
+          "key": "unique_dedupe_key",
+          "type": "unique",
+          "columns": [
+            "dedupe_key"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_user_created",
+          "type": "key",
+          "columns": [
+            "user_id",
+            "created_at"
+          ],
+          "orders": [
+            "ASC",
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_status_scheduled",
+          "type": "key",
+          "columns": [
+            "status",
+            "scheduled_at"
+          ],
+          "orders": [
+            "ASC",
+            "ASC"
+          ]
+        }
+      ]
+    },
+    {
+      "$id": "notification_preference",
+      "databaseId": "main",
+      "name": "notification_preference",
+      "enabled": true,
+      "rowSecurity": true,
+      "$permissions": [],
+      "columns": [
+        {
+          "key": "user_id",
+          "type": "varchar",
+          "size": 36,
+          "required": true
+        },
+        {
+          "key": "marketing_muted",
+          "type": "boolean",
+          "required": false,
+          "default": false
+        },
+        {
+          "key": "updated_at",
+          "type": "datetime",
+          "required": true
+        }
+      ],
+      "indexes": [
+        {
+          "key": "unique_user",
+          "type": "unique",
+          "columns": [
+            "user_id"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        }
+      ]
+    },
+    {
+      "$id": "device_token",
+      "databaseId": "main",
+      "name": "device_token",
+      "enabled": true,
+      "rowSecurity": true,
+      "$permissions": [],
+      "columns": [
+        {
+          "key": "user_id",
+          "type": "varchar",
+          "size": 36,
+          "required": true
+        },
+        {
+          "key": "app",
+          "type": "string",
+          "format": "enum",
+          "elements": [
+            "parent",
+            "teacher",
+            "admin"
+          ],
+          "required": true
+        },
+        {
+          "key": "platform",
+          "type": "string",
+          "format": "enum",
+          "elements": [
+            "android",
+            "ios",
+            "web"
+          ],
+          "required": true
+        },
+        {
+          "key": "token_hash",
+          "type": "varchar",
+          "size": 64,
+          "required": true
+        },
+        {
+          "key": "token",
+          "type": "varchar",
+          "size": 1024,
+          "required": true
+        },
+        {
+          "key": "last_seen_at",
+          "type": "datetime",
+          "required": true
+        },
+        {
+          "key": "revoked_at",
+          "type": "datetime",
+          "required": false
+        }
+      ],
+      "indexes": [
+        {
+          "key": "by_user",
+          "type": "key",
+          "columns": [
+            "user_id"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        },
+        {
+          "key": "unique_token_hash",
+          "type": "unique",
+          "columns": [
+            "token_hash"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        }
+      ]
+    },
+    {
       "$id": "session_log",
       "databaseId": "main",
       "name": "session_log",
@@ -2998,6 +4933,301 @@
           ],
           "orders": [
             "ASC",
+            "ASC"
+          ]
+        }
+      ]
+    },
+    {
+      "$id": "safeguarding_case",
+      "databaseId": "main",
+      "name": "safeguarding_case",
+      "enabled": true,
+      "rowSecurity": true,
+      "$permissions": [],
+      "columns": [
+        {
+          "key": "raised_by_id",
+          "type": "varchar",
+          "size": 36,
+          "required": true
+        },
+        {
+          "key": "child_id",
+          "type": "varchar",
+          "size": 36,
+          "required": false
+        },
+        {
+          "key": "teacher_id",
+          "type": "varchar",
+          "size": 36,
+          "required": false
+        },
+        {
+          "key": "session_id",
+          "type": "varchar",
+          "size": 36,
+          "required": false
+        },
+        {
+          "key": "category",
+          "type": "string",
+          "format": "enum",
+          "elements": [
+            "something_felt_wrong",
+            "conduct",
+            "welfare",
+            "safety",
+            "other"
+          ],
+          "required": true
+        },
+        {
+          "key": "description",
+          "type": "varchar",
+          "size": 4000,
+          "required": true
+        },
+        {
+          "key": "status",
+          "type": "string",
+          "format": "enum",
+          "elements": [
+            "open",
+            "acknowledged",
+            "investigating",
+            "escalated",
+            "closed"
+          ],
+          "required": true
+        },
+        {
+          "key": "assigned_to_id",
+          "type": "varchar",
+          "size": 36,
+          "required": false
+        },
+        {
+          "key": "outcome",
+          "type": "varchar",
+          "size": 2000,
+          "required": false
+        },
+        {
+          "key": "raised_at",
+          "type": "datetime",
+          "required": true
+        },
+        {
+          "key": "acknowledged_at",
+          "type": "datetime",
+          "required": false
+        },
+        {
+          "key": "closed_at",
+          "type": "datetime",
+          "required": false
+        },
+        {
+          "key": "deleted_at",
+          "type": "datetime",
+          "required": false
+        }
+      ],
+      "indexes": [
+        {
+          "key": "by_raised_by",
+          "type": "key",
+          "columns": [
+            "raised_by_id"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_child",
+          "type": "key",
+          "columns": [
+            "child_id"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_teacher",
+          "type": "key",
+          "columns": [
+            "teacher_id"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_session",
+          "type": "key",
+          "columns": [
+            "session_id"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_assigned_to",
+          "type": "key",
+          "columns": [
+            "assigned_to_id"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_status_raised",
+          "type": "key",
+          "columns": [
+            "status",
+            "raised_at"
+          ],
+          "orders": [
+            "ASC",
+            "ASC"
+          ]
+        }
+      ]
+    },
+    {
+      "$id": "safeguarding_action",
+      "databaseId": "main",
+      "name": "safeguarding_action",
+      "enabled": true,
+      "rowSecurity": true,
+      "$permissions": [],
+      "columns": [
+        {
+          "key": "case_id",
+          "type": "varchar",
+          "size": 36,
+          "required": true
+        },
+        {
+          "key": "action",
+          "type": "varchar",
+          "size": 100,
+          "required": true
+        },
+        {
+          "key": "detail",
+          "type": "varchar",
+          "size": 2000,
+          "required": false
+        },
+        {
+          "key": "by_id",
+          "type": "varchar",
+          "size": 36,
+          "required": true
+        },
+        {
+          "key": "acted_at",
+          "type": "datetime",
+          "required": true
+        }
+      ],
+      "indexes": [
+        {
+          "key": "by_case",
+          "type": "key",
+          "columns": [
+            "case_id",
+            "acted_at"
+          ],
+          "orders": [
+            "ASC",
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_actor",
+          "type": "key",
+          "columns": [
+            "by_id"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        }
+      ]
+    },
+    {
+      "$id": "case_status",
+      "databaseId": "main",
+      "name": "case_status",
+      "enabled": true,
+      "rowSecurity": true,
+      "$permissions": [],
+      "columns": [
+        {
+          "key": "case_id",
+          "type": "varchar",
+          "size": 36,
+          "required": true
+        },
+        {
+          "key": "reporter_id",
+          "type": "varchar",
+          "size": 36,
+          "required": true
+        },
+        {
+          "key": "status",
+          "type": "string",
+          "format": "enum",
+          "elements": [
+            "received",
+            "in_review",
+            "closed"
+          ],
+          "required": true
+        },
+        {
+          "key": "raised_at",
+          "type": "datetime",
+          "required": true
+        },
+        {
+          "key": "updated_at",
+          "type": "datetime",
+          "required": false
+        },
+        {
+          "key": "closed_at",
+          "type": "datetime",
+          "required": false
+        }
+      ],
+      "indexes": [
+        {
+          "key": "unique_case",
+          "type": "unique",
+          "columns": [
+            "case_id"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_reporter",
+          "type": "key",
+          "columns": [
+            "reporter_id"
+          ],
+          "orders": [
             "ASC"
           ]
         }
