@@ -12,9 +12,9 @@ Appwrite project definition for the three Cloud projects (development, staging, 
 
 | File | What |
 |---|---|
-| `schema/*.json` | **Source of truth for tables**: one file per domain (`_base`, `core` (M01), `sessions` (M02), later `catalogue`, ...). A ticket edits only its own file. Format and rules in `schema_build.py`. |
+| `schema/*.json` | **Source of truth for tables**: one file per domain (`_base`, `core` (M01), `sessions` (M02), `catalogue`, `records`, `assessments` (M03), later `money`, ...). A ticket edits only its own file. Format and rules in `schema_build.py`. |
 | `schema_build.py` | `--check` (default, also in `make lint`): validates every table (row security, no public/client-write permissions, field types and sizes, FK indexes, deletion policy per SR 5.5, UTC and integer-money naming rules) and fails if generated files are stale. `--write` regenerates them. |
-| `appwrite.config.json` | Appwrite CLI format. The `tables` array is **generated** from `schema/*.json` (never edit it by hand); database, bucket `teacher-docs` and functions (F04 `job-tick`) are hand-edited. |
+| `appwrite.config.json` | Appwrite CLI format. The `tables` array is **generated** from `schema/*.json` (never edit it by hand); database, buckets `teacher-docs`, `school-reports` (child school reports, M03) and `question-media` (question images and audio, M03), both named by ADR 0012 section Storage and functions (F04 `job-tick`) are hand-edited. |
 | `diff_live.py` | `python3 diff_live.py <snapshot.json> [--only a,b] [--alias repo=live]`: offline report of repo schema vs a read-only live structure snapshot (names and structure only). Snapshots are never committed. |
 | `../docs/erd/<domain>.md` | Generated Mermaid ERD per domain. |
 | `environments.example.json` | Names, endpoint, project-id placeholders, the env var that holds each key. Never a key. Copy to `environments.json` (git-ignored). |
@@ -42,6 +42,16 @@ M01 tables that predate the rule and still need the derived-key treatment (follo
 ## Sessions domain (M02)
 
 `schema/sessions.json`; `session_rules.py` is the executable reference (SR 7.4 `ALLOWED_TRANSITIONS`, derived-key builders, overlap check-then-insert) that the core service (W01 #97) ports. Session status transitions and teacher overlap are enforced by the core service, not the schema (no exclusion constraints, ADR 0002/0012); the schema holds the backstop `unique_teacher_slot`. That unique `teacher_slot_key` only catches the same start: two overlapping sessions with different starts can both insert, so W01 (#97) / S01 (#93) must serialise writes per teacher or re-check after insert. Sessions with `scheduled_end_at <= scheduled_start_at` are rejected by the service (`session_rules.InvalidSession`).
+
+## Catalogue, logs and assessments (M03)
+
+`schema/catalogue.json`, `records.json`, `assessments.json`; `catalogue_rules.py` is the executable reference the core service ports (K02-K04 curator tools, session-log and question-bank services).
+
+- **Published versions are immutable.** A `catalogue_version` is draft, published or retired; only a draft and the levels, subjects, strands and topics under it can change. Curators have no write permission on any table (empty table permissions, row security, checked by `schema_build.py`); the core service writes, and rejects edits to a published or retired version with `catalogue_rules.assert_editable` (all writes go through `edit_catalogue_row`, `add_catalogue_row`, `soft_delete_catalogue_row`). New wording = `copy_version_as_draft`, edit, `publish_version` (which retires the curriculum's previous published version; `published_key` allows one published version per curriculum).
+- **History survives catalogue changes (SR 5.5).** A child is linked to a catalogue version and a log references `topic_id` of that version (`assert_topic_in_child_version`). A topic dropped in a newer version stays in its old version's rows, so old logs resolve through log -> log_topic -> topic -> catalogue_version.
+- **One log per session** (`session_key` unique, resubmission updates it) and **one `topic_progress` row per (child, topic)** (raw unique index; the table is derived and rebuildable with `rebuild_topic_progress`, hence `hard` deletion, removed by the retention job with the child).
+- **Question two-person rule**: `approve_question` / `assert_two_person` / `validate_question_row`: approver is not the author, an approved question has approver and approved_at, only approved questions are assembled, approved questions are retired not edited. The approver must be a curator or senior teacher (core role check). `answer_key` never goes to the parent app before an item is submitted.
+- Child data (logs, school uploads, handover summaries, assessments) has no table-level read for anyone; per-row grants come from M05/M06.
 
 ## CI sequence (wired by F07 #33; not run from here)
 

@@ -72,7 +72,7 @@ class Convention(unittest.TestCase):
 
     def test_duplicate_table_across_domains_rejected(self):
         domains = copy.deepcopy(CORE)
-        domains.append({"domain": "other", "tables": [copy.deepcopy(tbl(domains[1], "zone"))], "meta": {"zone": {"deletion": "soft"}}, "relations": []})
+        domains.append({"domain": "other", "tables": [copy.deepcopy(tbl(next(d for d in domains if d["domain"] == "core"), "zone"))], "meta": {"zone": {"deletion": "soft"}}, "relations": []})
         self.assertTrue(any("duplicate table" in e for e in sb.validate(domains)))
 
     def test_schema_has_no_validation_errors(self):

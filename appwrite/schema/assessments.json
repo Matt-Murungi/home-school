@@ -1,0 +1,540 @@
+{
+  "domain": "assessments",
+  "description": "M03 (#38): question bank (two-person approval), assessment blueprints, assessments and items (SR 5.3, 7.7). Child data in assessment and assessment_item: per-row grants only.",
+  "tables": [
+    {
+      "$id": "question",
+      "name": "question",
+      "enabled": true,
+      "rowSecurity": true,
+      "$permissions": [],
+      "columns": [
+        {
+          "key": "topic_id",
+          "type": "varchar",
+          "size": 36,
+          "required": true
+        },
+        {
+          "key": "level_id",
+          "type": "varchar",
+          "size": 36,
+          "required": true
+        },
+        {
+          "key": "format",
+          "type": "string",
+          "format": "enum",
+          "elements": [
+            "multiple_choice",
+            "short_answer",
+            "picture",
+            "read_aloud"
+          ],
+          "required": true
+        },
+        {
+          "key": "stem",
+          "type": "text",
+          "required": true
+        },
+        {
+          "key": "options",
+          "type": "text",
+          "required": false
+        },
+        {
+          "key": "image_file_id",
+          "type": "varchar",
+          "size": 36,
+          "required": false
+        },
+        {
+          "key": "audio_file_id",
+          "type": "varchar",
+          "size": 36,
+          "required": false
+        },
+        {
+          "key": "answer_key",
+          "type": "text",
+          "required": true
+        },
+        {
+          "key": "difficulty",
+          "type": "string",
+          "format": "enum",
+          "elements": [
+            "easy",
+            "medium",
+            "hard"
+          ],
+          "required": true
+        },
+        {
+          "key": "status",
+          "type": "string",
+          "format": "enum",
+          "elements": [
+            "draft",
+            "in_review",
+            "approved",
+            "retired"
+          ],
+          "required": true
+        },
+        {
+          "key": "author_id",
+          "type": "varchar",
+          "size": 36,
+          "required": true
+        },
+        {
+          "key": "approver_id",
+          "type": "varchar",
+          "size": 36,
+          "required": false
+        },
+        {
+          "key": "submitted_at",
+          "type": "datetime",
+          "required": false
+        },
+        {
+          "key": "approved_at",
+          "type": "datetime",
+          "required": false
+        },
+        {
+          "key": "deleted_at",
+          "type": "datetime",
+          "required": false
+        }
+      ],
+      "indexes": [
+        {
+          "key": "by_topic_status",
+          "type": "key",
+          "columns": [
+            "topic_id",
+            "status"
+          ],
+          "orders": [
+            "ASC",
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_level_status",
+          "type": "key",
+          "columns": [
+            "level_id",
+            "status"
+          ],
+          "orders": [
+            "ASC",
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_author",
+          "type": "key",
+          "columns": [
+            "author_id"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_approver",
+          "type": "key",
+          "columns": [
+            "approver_id"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        }
+      ]
+    },
+    {
+      "$id": "assessment_blueprint",
+      "name": "assessment_blueprint",
+      "enabled": true,
+      "rowSecurity": true,
+      "$permissions": [],
+      "columns": [
+        {
+          "key": "curriculum_id",
+          "type": "varchar",
+          "size": 36,
+          "required": true
+        },
+        {
+          "key": "level_id",
+          "type": "varchar",
+          "size": 36,
+          "required": true
+        },
+        {
+          "key": "subject_id",
+          "type": "varchar",
+          "size": 36,
+          "required": true
+        },
+        {
+          "key": "type",
+          "type": "string",
+          "format": "enum",
+          "elements": [
+            "practice",
+            "checkpoint"
+          ],
+          "required": true
+        },
+        {
+          "key": "rules",
+          "type": "text",
+          "required": true
+        },
+        {
+          "key": "blueprint_key",
+          "type": "varchar",
+          "size": 120,
+          "required": false
+        },
+        {
+          "key": "deleted_at",
+          "type": "datetime",
+          "required": false
+        }
+      ],
+      "indexes": [
+        {
+          "key": "by_curriculum",
+          "type": "key",
+          "columns": [
+            "curriculum_id"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_level",
+          "type": "key",
+          "columns": [
+            "level_id"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_subject",
+          "type": "key",
+          "columns": [
+            "subject_id"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        },
+        {
+          "key": "unique_blueprint",
+          "type": "unique",
+          "columns": [
+            "blueprint_key"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        }
+      ]
+    },
+    {
+      "$id": "assessment",
+      "name": "assessment",
+      "enabled": true,
+      "rowSecurity": true,
+      "$permissions": [],
+      "columns": [
+        {
+          "key": "child_id",
+          "type": "varchar",
+          "size": 36,
+          "required": true
+        },
+        {
+          "key": "blueprint_id",
+          "type": "varchar",
+          "size": 36,
+          "required": true
+        },
+        {
+          "key": "type",
+          "type": "string",
+          "format": "enum",
+          "elements": [
+            "practice",
+            "checkpoint"
+          ],
+          "required": true
+        },
+        {
+          "key": "status",
+          "type": "string",
+          "format": "enum",
+          "elements": [
+            "in_progress",
+            "submitted",
+            "marking",
+            "completed",
+            "abandoned"
+          ],
+          "required": true
+        },
+        {
+          "key": "started_at",
+          "type": "datetime",
+          "required": true
+        },
+        {
+          "key": "completed_at",
+          "type": "datetime",
+          "required": false
+        },
+        {
+          "key": "supervised_confirmed",
+          "type": "boolean",
+          "required": false,
+          "default": false
+        },
+        {
+          "key": "deleted_at",
+          "type": "datetime",
+          "required": false
+        }
+      ],
+      "indexes": [
+        {
+          "key": "by_child_started",
+          "type": "key",
+          "columns": [
+            "child_id",
+            "started_at"
+          ],
+          "orders": [
+            "ASC",
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_blueprint",
+          "type": "key",
+          "columns": [
+            "blueprint_id"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_status",
+          "type": "key",
+          "columns": [
+            "status"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        }
+      ]
+    },
+    {
+      "$id": "assessment_item",
+      "name": "assessment_item",
+      "enabled": true,
+      "rowSecurity": true,
+      "$permissions": [],
+      "columns": [
+        {
+          "key": "assessment_id",
+          "type": "varchar",
+          "size": 36,
+          "required": true
+        },
+        {
+          "key": "question_id",
+          "type": "varchar",
+          "size": 36,
+          "required": true
+        },
+        {
+          "key": "position",
+          "type": "integer",
+          "required": true
+        },
+        {
+          "key": "response",
+          "type": "text",
+          "required": false
+        },
+        {
+          "key": "is_correct",
+          "type": "boolean",
+          "required": false
+        },
+        {
+          "key": "marked_by_id",
+          "type": "varchar",
+          "size": 36,
+          "required": false
+        },
+        {
+          "key": "marked_via",
+          "type": "string",
+          "format": "enum",
+          "elements": [
+            "auto",
+            "curator"
+          ],
+          "required": false
+        },
+        {
+          "key": "marked_at",
+          "type": "datetime",
+          "required": false
+        },
+        {
+          "key": "item_key",
+          "type": "varchar",
+          "size": 80,
+          "required": false
+        },
+        {
+          "key": "deleted_at",
+          "type": "datetime",
+          "required": false
+        }
+      ],
+      "indexes": [
+        {
+          "key": "by_assessment",
+          "type": "key",
+          "columns": [
+            "assessment_id",
+            "position"
+          ],
+          "orders": [
+            "ASC",
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_question",
+          "type": "key",
+          "columns": [
+            "question_id"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_marker",
+          "type": "key",
+          "columns": [
+            "marked_by_id"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        },
+        {
+          "key": "unique_assessment_question",
+          "type": "unique",
+          "columns": [
+            "item_key"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        }
+      ]
+    }
+  ],
+  "meta": {
+    "question": {
+      "deletion": "soft",
+      "note": "Written and approved by people (no AI generation, SR 7.7). status draft -> in_review -> approved -> retired. Two-person rule: approver_id must differ from author_id and an approved row has approver_id and approved_at (catalogue_rules.assert_two_person, approve_question, validate_question_row); enforced by the core service, the schema cannot compare two columns. The approver must be a curator or senior teacher (core role check). Only approved questions enter assessments. options is JSON text; answer_key is JSON text and is NEVER sent to the parent app before the item is submitted. image_file_id/audio_file_id are Storage ids in bucket question-media (lower primary picture/read-aloud). topic_id belongs to one catalogue version; a question is not carried across versions automatically.",
+      "non_fk": {
+        "image_file_id": "Appwrite Storage file id in bucket question-media",
+        "audio_file_id": "Appwrite Storage file id in bucket question-media"
+      }
+    },
+    "assessment_blueprint": {
+      "deletion": "soft",
+      "note": "Fixed blueprint per curriculum, level and subject and type (practice, checkpoint): rules is JSON text (topic coverage, difficulty mix, item count). blueprint_key '<level>:<subject>:<type>' (the level and subject belong to one catalogue version, so the curriculum follows)."
+    },
+    "assessment": {
+      "deletion": "soft",
+      "note": "Child data (sensitive). A practice check or checkpoint taken on the parent's device; supervised_confirmed is the parent's supervision confirmation (required for checkpoints, core rule). completed_at UTC."
+    },
+    "assessment_item": {
+      "deletion": "soft",
+      "note": "One question in one assessment (item_key '<assessment>:<question>'), with the child's response, is_correct (null until marked) and who marked it: objective items auto-marked (marked_via auto, marked_by_id null), short answers by a curator who is not the child's own teacher (core rule, ASM-7). Child data."
+    }
+  },
+  "relations": [
+    {
+      "from": "question.topic_id",
+      "to": "topic"
+    },
+    {
+      "from": "question.level_id",
+      "to": "level"
+    },
+    {
+      "from": "question.author_id",
+      "to": "user_profile"
+    },
+    {
+      "from": "question.approver_id",
+      "to": "user_profile"
+    },
+    {
+      "from": "assessment_blueprint.curriculum_id",
+      "to": "curriculum"
+    },
+    {
+      "from": "assessment_blueprint.level_id",
+      "to": "level"
+    },
+    {
+      "from": "assessment_blueprint.subject_id",
+      "to": "subject"
+    },
+    {
+      "from": "assessment.child_id",
+      "to": "child"
+    },
+    {
+      "from": "assessment.blueprint_id",
+      "to": "assessment_blueprint"
+    },
+    {
+      "from": "assessment_item.assessment_id",
+      "to": "assessment"
+    },
+    {
+      "from": "assessment_item.question_id",
+      "to": "question"
+    },
+    {
+      "from": "assessment_item.marked_by_id",
+      "to": "user_profile"
+    }
+  ]
+}
