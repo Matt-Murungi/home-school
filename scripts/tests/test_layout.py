@@ -177,13 +177,18 @@ class Docs(unittest.TestCase):
 
 class Tooling(unittest.TestCase):
     def test_make_test_and_lint_exit_zero(self):
-        # root-tests / spikes are skipped here: root-tests would recurse into this file,
-        # spikes need npm ci / uv sync (network). `make test` in full is run by hand/CI.
-        skip = "root-tests,spike-admin,spike-jobs"
+        # Exercises the make entry points end to end, cheaply. Skipped here: root-tests (would
+        # recurse into this file), spikes and app-admin (npm ci needs network and a writable npm
+        # cache) and the Flutter packages (minutes of flutter test/analyze, and a hard 600 s
+        # subprocess timeout under load). Each of those runs for real in `make test`/`make lint`.
+        skip = (
+            "root-tests,spike-admin,spike-jobs,app-admin,"
+            "app-parent,app-teacher,flutter-shared"
+        )
         r = run(["make", "test", f"HS_SKIP={skip}"])
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         self.assertIn("SKIP", r.stdout)
-        r = run(["make", "lint"])
+        r = run(["make", "lint", f"HS_SKIP={skip}"])
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
 
     def test_planned_packages_skip_clearly(self):
@@ -264,6 +269,57 @@ class Tooling(unittest.TestCase):
                 env={"HS_STRICT": "1"},
             )
             self.assertNotEqual(r.returncode, 0)
+        finally:
+            shutil.rmtree(d)
+
+    def _needs_manifest(self, d):
+        man = Path(d, "m.json")
+        Path(d, "x").mkdir()
+        man.write_text(
+            json.dumps(
+                {
+                    "packages": [
+                        {
+                            "id": "x",
+                            "path": str(Path(d, "x")),
+                            "status": "implemented",
+                            "needs": "node_modules",
+                            "setup": "npm ci",
+                            "lint": "true",
+                        }
+                    ]
+                }
+            )
+        )
+        return man
+
+    def test_unprepared_package_skips_with_setup_hint(self):
+        # A package whose dependencies are not installed (needs path missing) is skipped
+        # with the exact setup command, not run into an opaque "command not found".
+        d = tempfile.mkdtemp()
+        try:
+            man = self._needs_manifest(d)
+            cmd = [
+                sys.executable,
+                "scripts/run_packages.py",
+                "lint",
+                "--manifest",
+                str(man),
+            ]
+            r = run(cmd)
+            self.assertEqual(r.returncode, 0, r.stdout)
+            self.assertIn(
+                f"SKIP {Path(d, 'x')}: not set up (missing node_modules); run `npm ci` in {Path(d, 'x')}",
+                r.stdout,
+            )
+            r = run(cmd, env={"HS_STRICT": "1"})
+            self.assertNotEqual(
+                r.returncode, 0, "strict mode must fail an unprepared package"
+            )
+            Path(d, "x", "node_modules").mkdir()
+            r = run(cmd)
+            self.assertEqual(r.returncode, 0, r.stdout)
+            self.assertIn("1 ran ok", r.stdout)
         finally:
             shutil.rmtree(d)
 

@@ -211,27 +211,56 @@ class HooksSelectOnlyProcessableFiles(unittest.TestCase):
                 self.assertFalse(re.search(h["files"], f), f"hook {hid} selects {f}")
 
     def test_node_hooks_guarded_until_package_exists(self):
+        # F06 made apps/admin real: the hooks no longer skip silently (that would let
+        # unlinted admin code through). They run the package-local binary and fail with a
+        # clear "needs npm ci first" message when node_modules is absent.
         hooks = precommit_hooks()
         for hid in self.NODE_HOOKS:
             entry = hooks[hid]["entry"]
             self.assertEqual(hooks[hid].get("language"), "system")
-            self.assertIn("apps/admin/package.json", entry, f"{hid} unguarded")
-            self.assertIn("exit 0", entry, f"{hid} guard must skip, not fail")
-            self.assertIn("npx --no-install", entry)
+            self.assertIn(
+                f"apps/admin/node_modules/.bin/{hid}", entry, f"{hid} unguarded"
+            )
+            self.assertIn("needs npm ci first", entry)
+            self.assertNotIn("npx", entry, "must use the lockfile-pinned local binary")
 
-    def test_node_hook_guard_skips_when_package_missing(self):
-        # Execute the guard for real in an empty dir: must exit 0 without running npx.
+    def test_node_hook_guard_fails_clearly_without_npm_ci(self):
+        # Execute the guard for real in a dir without apps/admin/node_modules: it must
+        # fail with the fix in the message and never reach for the network.
         for hid in self.NODE_HOOKS:
             entry = precommit_hooks()[hid]["entry"]
             with tempfile.TemporaryDirectory() as d:
                 r = subprocess.run(
-                    ["bash", "-c", entry + " apps/admin/README.md"],
+                    ["bash", "-c", entry + " apps/admin/src/x.ts"],
                     cwd=d,
                     capture_output=True,
                     text=True,
                     check=False,
                 )
-            self.assertEqual(r.returncode, 0, f"{hid}: {r.stdout}{r.stderr}")
+                self.assertEqual(r.returncode, 1, f"{hid}: {r.stdout}{r.stderr}")
+                self.assertIn("apps/admin needs npm ci first", r.stdout + r.stderr)
+
+    def test_node_hook_runs_local_binary_with_package_relative_paths(self):
+        # With node_modules present the hook runs the local tool from apps/admin with the
+        # `apps/admin/` prefix stripped from each filename.
+        for hid in self.NODE_HOOKS:
+            entry = precommit_hooks()[hid]["entry"]
+            with tempfile.TemporaryDirectory() as d:
+                b = Path(d, "apps/admin/node_modules/.bin")
+                b.mkdir(parents=True)
+                tool = b / hid
+                tool.write_text('#!/bin/sh\necho "cwd=$(basename "$PWD") args=$*"\n')
+                tool.chmod(0o755)
+                r = subprocess.run(
+                    ["bash", "-c", entry + " apps/admin/src/a.ts apps/admin/b.json"],
+                    cwd=d,
+                    capture_output=True,
+                    text=True,
+                    check=False,
+                )
+                self.assertEqual(r.returncode, 0, f"{hid}: {r.stdout}{r.stderr}")
+                self.assertIn("cwd=admin", r.stdout)
+                self.assertIn("src/a.ts b.json", r.stdout)
 
 
 class SecretScanExitCode(unittest.TestCase):

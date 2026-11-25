@@ -2,9 +2,10 @@
 # planned packages and missing tools are skipped with a message (HS_STRICT=1 makes missing tools fail).
 PY ?= python3
 
-.PHONY: help test lint layout secrets pylint hooks tools
+.PHONY: help setup test lint layout secrets pylint hooks tools
 
 help:
+	@echo "make setup    install package dependencies a clean checkout needs (npm ci in apps/admin)"
 	@echo "make test     run every implemented package's tests (skips planned packages with a message)"
 	@echo "make lint     layout check, secret scan, per-package lint"
 	@echo "make layout   only the layout check"
@@ -13,6 +14,9 @@ help:
 	@echo "make hooks    install pre-commit hooks (needs pre-commit)"
 	@echo "make tools    show which tools are installed"
 	@echo "Env: HS_SKIP=id,id skips package ids; HS_STRICT=1 fails when a tool is missing (CI)."
+
+setup:
+	@if command -v npm >/dev/null 2>&1; then (cd apps/admin && npm ci); else echo "SKIP setup apps/admin: npm not installed"; fi
 
 test:
 	@$(PY) scripts/run_packages.py test
