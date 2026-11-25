@@ -960,6 +960,7 @@ Files: Makefile, packages.json, scripts/run_packages.py, scripts/tests/test_layo
 24. (A01) Lockout trade-off: an attacker can lock a victim's number for up to an hour (10 wrong codes) or use up its 5 codes per hour. Default: accept for the pilot; add app attestation (Play Integrity / App Attest) if abused.
 25. (A01) Carrier-recycled numbers: a dormant account (180 days) is only flagged in the response and the log. Default: add a step-up (support re-verification) before a payout number change on a dormant account (belongs to the payout tickets). Confirm.
 26. (A01) SMS cost per OTP in UGX and a monthly budget alert on the Africa's Talking account (not in SR). Default: set a low balance alert and top up weekly during the pilot.
+27. (A01, reviewer) Should phone sign-in be refused (or stepped up) for accounts that carry a privileged label (`opsadmin`, `curator`, `safeguardinglead`, `superadmin`)? Today such a user gets a normal session from the mobile flow without the admin web MFA step. Default: refuse with the generic sign-in error after the code is proven; staff use the admin web app only.
 
 ## Session log
 
@@ -985,3 +986,4 @@ Files: Makefile, packages.json, scripts/run_packages.py, scripts/tests/test_layo
 - 2026-11-26: A01 built (branch `a01-phone-otp`), ready-for-review.
 - 2026-11-25: M04 reviewer round 2: changes-requested (schema notes still say insert-only in core service; device_token reassignment rule).
 - 2026-11-25: M04 merged (PR #186).
+- 2026-11-25: A01 reviewed, PR #187 merged (e47b595), status blocked-foundation-merged.
