@@ -6,6 +6,9 @@ env:   HS_SKIP=id,id   skip these package ids
        HS_STRICT=1     a missing tool is a failure (use in CI) instead of a SKIP
 Planned (not yet scaffolded) packages and packages whose tools are missing are
 skipped with an explicit message; they are never reported as passing.
+A package may declare "needs" (a path inside it, e.g. node_modules) and "setup" (the
+command that creates it); when the path is missing the package is skipped with that
+hint (HS_STRICT=1 fails it). A command that already contains the setup command (admin `test` runs npm ci) is never skipped.
 """
 
 import json
@@ -57,9 +60,18 @@ def main(argv):
             if strict:
                 failed.append(name)
             continue
+        needs = p.get("needs")
+        pkg_dir = (base / name) if (base / name).is_dir() else ROOT / name
+        if needs and p.get("setup", "") not in cmd and not (pkg_dir / needs).exists():
+            print(
+                f"SKIP {name}: not set up (missing {needs}); run `{p.get('setup', 'the package setup')}` in {name}"
+            )
+            skipped.append(name)
+            if strict:
+                failed.append(name)
+            continue
         print(f"==> {kind} {name}: {cmd}", flush=True)
-        cwd = (base / name) if (base / name).is_dir() else ROOT / name
-        r = subprocess.run(cmd, shell=True, cwd=cwd, check=False)
+        r = subprocess.run(cmd, shell=True, cwd=pkg_dir, check=False)
         (ran if r.returncode == 0 else failed).append(name)
         if r.returncode != 0:
             print(f"FAIL {name} (exit {r.returncode})")

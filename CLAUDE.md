@@ -18,6 +18,7 @@ Home School is **home tutoring, not homeschooling**. Never write "homeschool"/"h
 
 | Command | What it does |
 |---|---|
+| `make setup` | `npm ci` in apps/admin (a clean checkout needs it before `make lint`; see CONTRIBUTING.md "Setup from a clean checkout") |
 | `make test` | runs every implemented package's tests; planned packages and missing tools are skipped with a message (`HS_STRICT=1` makes a missing tool fail; `HS_SKIP=id,id` skips ids) |
 | `make lint` | layout guard, secret scan, per-package lint |
 | `make layout` / `make secrets` | one check only |
