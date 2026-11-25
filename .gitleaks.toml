@@ -1,0 +1,17 @@
+# gitleaks config (used by the pre-commit hook and CI once F07 lands).
+# `make secrets` (scripts/secret_scan.py) is the offline fallback with a tested ruleset.
+title = "home-school"
+
+[extend]
+useDefault = true
+
+[[rules]]
+id = "appwrite-api-key"
+description = "Appwrite server API key"
+regex = '''standard_[0-9a-f]{64,}'''
+tags = ["appwrite"]
+
+[allowlist]
+description = "Placeholders and generated lockfiles"
+paths = ['''package-lock\.json$''', '''uv\.lock$''', '''\.env\.example$''']
+regexes = ['''(?i)(your|example|changeme|placeholder|redacted)''']

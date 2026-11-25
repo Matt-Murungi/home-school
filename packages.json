@@ -1,0 +1,15 @@
+{
+  "_comment": "Manifest of packages. status=implemented -> `make test`/`make lint` run its commands; status=planned -> skipped with a message until the ticket in `ticket` scaffolds it. Flip to implemented in that ticket. Adding a directory under apps/, packages/ or services/ without an entry here fails `make lint`.",
+  "packages": [
+    {"id": "app-parent", "path": "apps/parent", "status": "planned", "ticket": "F05", "requires": ["flutter"], "test": "flutter test", "lint": "dart format --set-exit-if-changed . && flutter analyze"},
+    {"id": "app-teacher", "path": "apps/teacher", "status": "planned", "ticket": "F05", "requires": ["flutter"], "test": "flutter test", "lint": "dart format --set-exit-if-changed . && flutter analyze"},
+    {"id": "app-admin", "path": "apps/admin", "status": "planned", "ticket": "F06", "requires": ["node", "npm"], "test": "npm ci && npm test", "lint": "npm run lint"},
+    {"id": "flutter-shared", "path": "packages/flutter_shared", "status": "planned", "ticket": "F05", "requires": ["flutter"], "test": "flutter test", "lint": "dart format --set-exit-if-changed . && flutter analyze"},
+    {"id": "core", "path": "services/core", "status": "planned", "ticket": "F03", "requires": ["uv"], "test": "uv run pytest -q", "lint": "uv run ruff check . && uv run ruff format --check ."},
+    {"id": "appwrite", "path": "appwrite", "status": "planned", "ticket": "F02", "requires": ["node"], "test": "npm test"},
+    {"id": "docs", "path": "docs", "status": "implemented", "requires": ["python3"], "test": "python3 adr/check-adrs.py", "lint": "python3 adr/check-adrs.py"},
+    {"id": "root-tests", "path": "scripts", "status": "implemented", "requires": ["python3"], "test": "python3 -m unittest discover -s tests", "lint": "python3 -m py_compile run_packages.py check_layout.py secret_scan.py"},
+    {"id": "spike-admin", "path": "spikes/admin-appwrite", "status": "implemented", "requires": ["node", "npm"], "test": "npm ci && npx tsc --noEmit && npm run lint && npm run build"},
+    {"id": "spike-jobs", "path": "spikes/jobs-demo", "status": "implemented", "requires": ["uv"], "test": "uv run pytest -q"}
+  ]
+}
