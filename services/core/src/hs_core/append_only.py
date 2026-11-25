@@ -1,14 +1,25 @@
 """Insert-only access to the append-only tables (M04 #39, SEC-6, SR 7.10, ADR 0012).
 
-Appwrite cannot revoke update/delete from the server API key, so the guarantee is
-made here: code that writes ledger_entry, ledger_transaction, audit_log or
-safeguarding_action holds an `AppendOnlyRepository`, which has create/get/list only
-(update/delete raise). `find_append_only_violations` is the CI-style scan used by
-tests: it fails when any module calls update/delete (or the raw SDK
-update_row/delete_row) with one of these tables as an argument. The set must equal
-the tables marked `append_only` in appwrite/schema/*.json (checked by a test).
-Limit: a call whose table name is computed at run time cannot be seen by the scan;
-the wrapper is the runtime guard.
+Appwrite cannot revoke update/delete from the server API key, so the protection is
+two separate, partial things; nothing uses it yet (the wrapper is not wired in).
+
+1. `AppendOnlyRepository` is OPT-IN runtime protection: code that holds it can only
+   create/get/list; update, delete and the bulk/upsert/increment variants raise.
+   Nothing forces core code to hold it: M05+ repositories for these tables must be
+   built only with the wrapper (a review rule, not enforced).
+2. `find_append_only_violations` is a TRIPWIRE, not coverage. It parses src/hs_core
+   and flags a call to a write-style method (WRITE_METHODS: update, delete,
+   update_row(s), delete_row(s), upsert_row(s), increment/decrement_row_column,
+   create_operations) when an argument is a string literal naming an append-only
+   table, or a name bound at module level (NAME = "x" or NAME: str = "x") to one.
+   It MISSES: table names that are computed (f-strings, concatenation, dynamic
+   lookups), passed as a function parameter, held in a class attribute, tuple or
+   other container constant, supplied through *args/**kwargs splats, reached via
+   getattr(repo, "update"), a bound-method alias (u = repo.update; u("ledger_entry")),
+   or dict dispatch. It also cannot see write methods added to the SDK later; a
+   test compares the list with the installed SDK.
+The set of tables must equal the tables marked `append_only` in appwrite/schema/*.json
+(checked by a test).
 """
 
 from __future__ import annotations
@@ -22,7 +33,21 @@ from .repository import Repository
 APPEND_ONLY_TABLES = frozenset(
     {"ledger_entry", "ledger_transaction", "audit_log", "safeguarding_action"}
 )
-_WRITE_METHODS = frozenset({"update", "delete", "update_row", "delete_row"})
+WRITE_METHODS = frozenset(
+    {
+        "update",
+        "delete",
+        "update_row",
+        "update_rows",
+        "delete_row",
+        "delete_rows",
+        "upsert_row",
+        "upsert_rows",
+        "increment_row_column",
+        "decrement_row_column",
+        "create_operations",
+    }
+)
 
 
 class AppendOnlyViolation(Exception):
@@ -52,25 +77,50 @@ class AppendOnlyRepository:
         self._check(table)
         return self._inner.create(table, row_id, data, permissions)
 
+    def _refuse(self, table: str, what: str) -> None:
+        raise AppendOnlyViolation(f"{table} is append-only: {what} is not allowed")
+
     def update(self, table: str, *args: Any, **kwargs: Any) -> None:
-        raise AppendOnlyViolation(f"{table} is append-only: update is not allowed")
+        self._refuse(table, "update")
 
     def delete(self, table: str, *args: Any, **kwargs: Any) -> None:
-        raise AppendOnlyViolation(f"{table} is append-only: delete is not allowed")
+        self._refuse(table, "delete")
+
+    def update_rows(self, table: str, *args: Any, **kwargs: Any) -> None:
+        self._refuse(table, "bulk update")
+
+    def delete_rows(self, table: str, *args: Any, **kwargs: Any) -> None:
+        self._refuse(table, "bulk delete")
+
+    def upsert_row(self, table: str, *args: Any, **kwargs: Any) -> None:
+        self._refuse(table, "upsert")
+
+    def upsert_rows(self, table: str, *args: Any, **kwargs: Any) -> None:
+        self._refuse(table, "bulk upsert")
+
+    def increment_row_column(self, table: str, *args: Any, **kwargs: Any) -> None:
+        self._refuse(table, "increment")
+
+    def decrement_row_column(self, table: str, *args: Any, **kwargs: Any) -> None:
+        self._refuse(table, "decrement")
 
 
 def _string_constants(tree: ast.AST) -> dict[str, str]:
     """NAME = "literal" assignments, so `T = "ledger_entry"; repo.update(T, ...)` is seen."""
     out: dict[str, str] = {}
     for n in ast.walk(tree):
-        if (
-            isinstance(n, ast.Assign)
-            and isinstance(n.value, ast.Constant)
-            and isinstance(n.value.value, str)
-        ):
-            for t in n.targets:
-                if isinstance(t, ast.Name):
-                    out[t.id] = n.value.value
+        value = getattr(n, "value", None)
+        if not (isinstance(value, ast.Constant) and isinstance(value.value, str)):
+            continue
+        if isinstance(n, ast.Assign):
+            targets = n.targets
+        elif isinstance(n, ast.AnnAssign):
+            targets = [n.target]
+        else:
+            continue
+        for t in targets:
+            if isinstance(t, ast.Name):
+                out[t.id] = value.value
     return out
 
 
@@ -87,7 +137,7 @@ def find_append_only_violations(
             if not (
                 isinstance(n, ast.Call)
                 and isinstance(n.func, ast.Attribute)
-                and n.func.attr in _WRITE_METHODS
+                and n.func.attr in WRITE_METHODS
             ):
                 continue
             for arg in [*n.args, *(k.value for k in n.keywords)]:

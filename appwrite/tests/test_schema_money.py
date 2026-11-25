@@ -226,6 +226,32 @@ class ValidatorMutations(unittest.TestCase):
         self.assertIn(("transaction_id", "line"), uniques("ledger_entry"))
 
 
+class RoundTwoNotes(unittest.TestCase):
+    def test_payment_note_has_no_stale_soft_delete_sentence(self):
+        self.assertNotIn("after a soft delete", META["payment"]["note"])
+
+    def test_retention_pointer_on_payment_payout_invoice(self):
+        for t in ("payment", "payout", "invoice"):
+            note = META[t]["note"]
+            self.assertIn("DP-6", note, t)
+            self.assertIn("DP-5", note, t)
+            self.assertIn("lawyer-brief", note, t)
+
+    def test_device_token_has_unique_hash_and_sensitivity_note(self):
+        self.assertIn(("token_hash",), uniques("device_token"))
+        self.assertTrue(cols("device_token")["token_hash"]["required"])
+        self.assertEqual(cols("device_token")["token_hash"]["size"], 64)
+        note = META["device_token"]["note"].lower()
+        for word in ("sensitive", "never logged", "per-row", "token_hash"):
+            self.assertIn(word, note)
+        self.assertEqual(TABLES["device_token"]["$permissions"], [])
+
+    def test_notification_and_audit_notes(self):
+        self.assertIn("quiet hours", META["notification"]["note"].lower())
+        self.assertIn("global", META["notification"]["note"].lower())
+        self.assertIn("summaris", META["audit_log"]["note"].lower())
+
+
 class MoneyRules(unittest.TestCase):
     def test_money_columns_are_integer_ugx_and_no_floats(self):
         for t in M04:

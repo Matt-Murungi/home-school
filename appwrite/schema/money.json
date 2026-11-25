@@ -1440,11 +1440,11 @@
     },
     "invoice": {
       "deletion": "hard",
-      "note": "Created at period start. Unique (subscription, period start) makes the period job idempotent. parent_id is the payer (read grant). Voiding is a status, not a delete. Never soft-deleted (a soft delete would either hide a financial/idempotency record or free its unique value): the lifecycle is the status column; only the retention job hard-deletes it, after the retention period (DP-6, SR 5.5). Voiding is the status void."
+      "note": "Created at period start. Unique (subscription, period start) makes the period job idempotent. parent_id is the payer (read grant). Voiding is a status, not a delete. Never soft-deleted (a soft delete would either hide a financial/idempotency record or free its unique value): the lifecycle is the status column; only the retention job hard-deletes it, after the retention period (DP-6, SR 5.5). Voiding is the status void. Retention: payment records are kept for the tax-law period (DP-6) even against a DP-5 deletion request; the conflict is Q4/Q16-17 in docs/legal/lawyer-brief.md (C04)."
     },
     "payment": {
       "deletion": "hard",
-      "note": "idempotency_key UNIQUE (NFR-8): the core service claims the key by create (409 = already requested). provider_reference is unique per provider once known (NULLs allowed until then). raw_callback stores the verified provider callback verbatim (PAY-1..3, SR 7.8). Provider is free text on purpose: the owner has not chosen providers. Idempotency keys are never reused after a soft delete (intended). Never soft-deleted (a soft delete would either hide a financial/idempotency record or free its unique value): the lifecycle is the status column; only the retention job hard-deletes it, after the retention period (DP-6, SR 5.5). idempotency_key and provider_reference stay claimed forever (NFR-8)."
+      "note": "idempotency_key UNIQUE (NFR-8): the core service claims the key by create (409 = already requested). provider_reference is unique per provider once known (NULLs allowed until then). raw_callback stores the verified provider callback verbatim (PAY-1..3, SR 7.8). Provider is free text on purpose: the owner has not chosen providers. Never soft-deleted (a soft delete would either hide a financial/idempotency record or free its unique value): the lifecycle is the status column; only the retention job hard-deletes it, after the retention period (DP-6, SR 5.5). idempotency_key and provider_reference stay claimed forever (NFR-8). Retention: payment records are kept for the tax-law period (DP-6) even against a DP-5 deletion request; the conflict is Q4/Q16-17 in docs/legal/lawyer-brief.md (C04)."
     },
     "earning": {
       "deletion": "hard",
@@ -1456,11 +1456,11 @@
     },
     "payout": {
       "deletion": "hard",
-      "note": "One payout per (batch, teacher); idempotency_key UNIQUE (NFR-8). Failures retry on the same row and end in needs_ops. The teacher's payout number lives with the teacher profile (re-verification and 48 h hold, SEC-11, are a core-service rule outside this ticket). Never soft-deleted (a soft delete would either hide a financial/idempotency record or free its unique value): the lifecycle is the status column; only the retention job hard-deletes it, after the retention period (DP-6, SR 5.5). idempotency_key stays claimed (NFR-8); failure = status."
+      "note": "One payout per (batch, teacher); idempotency_key UNIQUE (NFR-8). Failures retry on the same row and end in needs_ops. The teacher's payout number lives with the teacher profile (re-verification and 48 h hold, SEC-11, are a core-service rule outside this ticket). Never soft-deleted (a soft delete would either hide a financial/idempotency record or free its unique value): the lifecycle is the status column; only the retention job hard-deletes it, after the retention period (DP-6, SR 5.5). idempotency_key stays claimed (NFR-8); failure = status. Retention: payment records are kept for the tax-law period (DP-6) even against a DP-5 deletion request; the conflict is Q4/Q16-17 in docs/legal/lawyer-brief.md (C04)."
     },
     "ledger_account": {
       "deletion": "hard",
-      "note": "SR 7.10 minimum accounts plus one teacher payable per teacher (teacher_id set). code is unique, e.g. cash:mtn_momo, teacher_payable:<teacher_id>. Balances are derived from ledger_entry, never stored. Never soft-deleted (a soft delete would either hide a financial/idempotency record or free its unique value): the lifecycle is the status column; only the retention job hard-deletes it, after the retention period (DP-6, SR 5.5). code is never reused; retire with active=false."
+      "note": "SR 7.10 minimum accounts plus one teacher payable per teacher (teacher_id set). code is unique, e.g. cash:mtn_momo, teacher_payable:<teacher_id>. Balances are derived from ledger_entry, never stored. Never soft-deleted (a soft delete would either hide a financial/idempotency record or free its unique value): the lifecycle is the status column; only the retention job hard-deletes it, after the retention period (DP-6, SR 5.5). code is never reused; retire with active=false. The M04 migration seeds no rows: the ledger service ($01 #76) must create the SR 7.10 accounts (parent receivables, cash at MTN MoMo / Airtel / card gateway, teacher payables per teacher via teacher_id, platform revenue, refunds and credits, provider fees)."
     },
     "ledger_transaction": {
       "deletion": "immutable",
