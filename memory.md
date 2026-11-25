@@ -59,17 +59,16 @@ Suggested order: E00 decisions (D01–D03, D05; D04, D06 later/owner) → E01 fo
 - Open: owner sign-off on the ADR (status "Proposed"); spike's table-timing step needs a throwaway project to re-run.
 
 ### D02 · Job runner (#22)
-- Status: **changes-requested** (branch `d02-job-runner`; reviewer 2026-11-25)
-- Review commands: `cd spikes/jobs-demo && uv run pytest -q` -> 11 passed; concurrency test x20 -> 20/20 passed (not flaky, but see finding 3). Diff has no secrets (uv.lock hashes only). Branch is behind main only by D01/memory commits, no conflict expected.
-- Criteria: ADR compares options on cost/ops/retries/cron/exactly-once OK; auth (HMAC header, 5 min skew, 25 s timeout/20 s budget) OK; retries and catch-up location OK; staging hello-world honestly marked not done and listed under Blocked on owner OK (accepted for a decision ADR + tested demo). Constant-time compare, body binding, timestamp skew, backoff arithmetic (base*2^(attempts-1)), catch-up arithmetic, chunk/cursor, lease expiry on final attempt (verified by repro: goes to failed + alert): all correct.
-- FINDINGS (must fix):
-  1. **BUG, run can be stranded forever (violates "nothing is lost").** `Runner._claim` creates the `job_attempt` row, then updates `job_run`. If the worker dies/times out/hits an Appwrite error between those two calls, the run stays `queued` with `attempts` unchanged; every later tick computes the same attempt ID, gets Conflict, counts it as `lost_claims`, and the run is never executed or failed. Reproduced: attempt row inserted for (run, chunk 0, attempt 1) with run still queued, ticks at +0/+10/+600 min -> handler never called, status stays queued. Fix suggestion: on Conflict, read the existing job_attempt and, if its `started_at` is older than LEASE and job_run is still queued/attempts==attempt-1, treat it as an orphaned claim (bump attempts / move to next attempt ID, or mark the run running-with-expired-lease so the existing recovery path takes over). Same hole applies to the Continue path (cursor update fails after handler ran: re-run of same chunk is fine since effects are idempotent). Add a test that simulates the crash between the two writes (the existing crash test only covers crash after both writes) and update ADR rule 2/5 to describe the recovery.
-  2. ADR "Evidence" says "All 11 tests pass" but the table lists 10; and no test covers lease expiry on the final attempt (code handles it; add a test: max_attempts=1, claim, tick after lease -> failed + alert, handler not re-run). ADR edge case "crash recovery" should name this.
-  3. Concurrency test is weak (handlers finish in microseconds, so threads may mostly serialise under the GIL). Strengthen: add a barrier and a handler that sleeps briefly, or inject a store that yields between list and claim, and also assert `lost_claims` > 0 in total.
-  4. ADR claims the live `job_run`/`job_attempt` columns and the `by_status_run_at` index exist; this could not be verified (live project is read-only, no API calls). State in the ADR that these come from the owner's earlier inspection and must be re-checked in F04, or drop the claim.
-  5. Minor / follow-up (not blocking): `materialise` makes one create call per period in the window on every tick (a 1-minute job with 2-day catch-up = 2,880 calls/tick, each a 409 after the first); record a "last materialised" watermark or bound the window per job in F04. `compare_digest` raises TypeError (500) on a non-ASCII signature header; encode to bytes or catch. `runner.tick()` is sync inside an async FastAPI handler (blocks the loop); use a plain `def` endpoint. `_claimable` lists all job_run rows (5,000 cap, ADR 0004); ADR already notes the index follow-up.
-- Built: ADR `docs/adr/0002-job-runner.md`; demo `spikes/jobs-demo/` (runner, signed tick endpoint, Appwrite Function, 11 tests, all passing).
-- Open: "hello-world job on staging" needs F03 (#29) + F02 (#28) and a non-live Appwrite project → **Blocked on owner**. Owner sign-off on ADR. Check Appwrite plan allows ~43,000 function runs/month.
+- Status: **ready-for-review** (branch `d02-job-runner`, fix commit a82b4db; main agent 2026-11-25, round 2)
+- Round 1 reviewer verdict: changes-requested (findings 1-5 below). Round 2 fixes:
+  1. **Stranded run (bug) fixed.** `Runner._claim` now treats a `job_attempt` row older than LEASE whose run never advanced as an orphaned claim and takes over with a next-generation attempt ID `(run, chunk, attempt, generation)`; still an atomic create so one taker wins. Tests: `test_claim_orphaned_by_crash_between_the_two_writes_is_recovered_once`, `test_orphan_takeover_is_atomic_across_concurrent_ticks`. Verified both FAIL on the previous runner and pass now.
+  2. Added `test_lease_expiry_on_final_attempt_fails_and_alerts_without_rerunning`; ADR test count/table corrected (now 14 tests, table lists all).
+  3. Concurrency test strengthened: `BarrierStore` makes 8 threads take the same snapshot then race; handler sleeps 5 ms; asserts exactly 7 effects and `lost_claims == 7*(8-1)`. Ran 25x: 25/25 pass.
+  4. ADR now says the live `job_run`/`job_attempt` columns and `by_status_run_at` index come from a read-only inspection on 25 Nov and **must be re-verified in F04**.
+  5. Cheap minor items done: non-ASCII signature -> 401 (bytes compare; test added); `tick` runs in a threadpool. Remaining minor items recorded as F04 follow-ups in the ADR (materialise watermark, indexed claimable query).
+- Test command: `cd spikes/jobs-demo && uv run pytest -q` -> 14 passed.
+- Acceptance: ADR + demo meet the criteria except "hello-world job on staging" which is **Blocked on owner** (needs F03 + F02 + non-live Appwrite project). Reviewer accepted that for a decision ADR plus tested demo.
+- Open: owner sign-off on ADR 0002; check Appwrite plan allows ~43,000 function runs/month.
 
 ## Blocked on owner (credentials / deployments / accounts)
 
@@ -85,4 +84,5 @@ Suggested order: E00 decisions (D01–D03, D05; D04, D06 later/owner) → E01 fo
 
 ## Session log
 
+- 2026-11-25: D01 merged (PR #156). D02 round 1 changes-requested, round 2 ready-for-review.
 - 2026-11-25: Repo bootstrapped; backlog (135 tickets) imported and updated for Appwrite; D01, D02 built; two-agent workflow agreed.
