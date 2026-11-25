@@ -5,7 +5,7 @@
     {"id": "app-teacher", "path": "apps/teacher", "status": "planned", "ticket": "F05", "requires": ["flutter"], "test": "flutter test", "lint": "dart format --set-exit-if-changed . && flutter analyze"},
     {"id": "app-admin", "path": "apps/admin", "status": "planned", "ticket": "F06", "requires": ["node", "npm"], "test": "npm ci && npm test", "lint": "npm run lint"},
     {"id": "flutter-shared", "path": "packages/flutter_shared", "status": "planned", "ticket": "F05", "requires": ["flutter"], "test": "flutter test", "lint": "dart format --set-exit-if-changed . && flutter analyze"},
-    {"id": "core", "path": "services/core", "status": "planned", "ticket": "F03", "requires": ["uv"], "test": "uv run pytest -q", "lint": "uv run ruff check . && uv run ruff format --check ."},
+    {"id": "core", "path": "services/core", "status": "implemented", "ticket": "F03", "requires": ["uv"], "test": "uv run pytest -q", "lint": "uv run ruff check . && uv run ruff format --check ."},
     {"id": "appwrite", "path": "appwrite", "status": "planned", "ticket": "F02", "requires": ["node"], "test": "npm test"},
     {"id": "docs", "path": "docs", "status": "implemented", "requires": ["python3"], "test": "python3 adr/check-adrs.py", "lint": "python3 adr/check-adrs.py"},
     {"id": "root-tests", "path": "scripts", "status": "implemented", "requires": ["python3"], "test": "python3 -m unittest discover -s tests", "lint": "python3 -m py_compile run_packages.py check_layout.py secret_scan.py"},
