@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
+from datetime import datetime
+
 from ..jobs.alerts import AlertSink
 from ..repository import Repository
 from ..settings import Settings
@@ -14,7 +17,10 @@ from .templates import TemplateStore
 
 
 def build_notification_service(
-    settings: Settings, repo: Repository, alerts: AlertSink | None = None
+    settings: Settings,
+    repo: Repository,
+    alerts: AlertSink | None = None,
+    clock: Callable[[], datetime] | None = None,
 ) -> NotificationService:
     """Wiring until N02 (#127): push and email channels are 'unconfigured' (every send fails
     permanently and loudly), the in-app channel is real (the row is the message)."""
@@ -29,6 +35,7 @@ def build_notification_service(
         preferences=RepositoryPreferenceStore(repo),
         config=NotificationConfig.from_settings(settings),
         alerts=alerts,
+        clock=clock,
         escalation=NullEscalation(),
     )
 

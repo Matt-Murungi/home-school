@@ -1,7 +1,7 @@
 """N01 (#126): preferences store, retention hook, email contract mapping, wiring."""
 
 import json
-from datetime import timedelta
+from datetime import datetime, timedelta
 
 import pytest
 from fastapi.testclient import TestClient
@@ -21,6 +21,7 @@ from hs_core.notifications.preferences import (
     RepositoryPreferenceStore,
     blocked_reason,
 )
+from hs_core.notifications.quiet_hours import KAMPALA
 from hs_core.notifications.retention import expire_payloads
 from hs_core.notifications.service import (
     NoDirectory,
@@ -116,14 +117,20 @@ def test_retention_hook_clears_payloads_once_and_is_chunked():
     assert all(r["deleted_at"] and json.loads(r["payload"])["vars"] == {} for r in rows)
 
 
-def test_app_binds_the_dispatch_job_and_wires_no_real_channels(settings, repo, verifier):
+DAY = datetime(2027, 3, 10, 9, 0, tzinfo=KAMPALA)  # 09:00 Africa/Kampala: outside quiet hours
+NIGHT = datetime(2027, 3, 10, 23, 30, tzinfo=KAMPALA)  # inside quiet hours (21:00-07:00)
+
+
+def test_app_binds_the_dispatch_job(settings, repo, verifier):
     dispatch._bound.clear()
     app = create_app(settings=settings, repository=repo, verifier=verifier)
     TestClient(app)
     assert dispatch._bound["service"] is app.state.notifications
-    svc = build_notification_service(Settings(_env_file=None), InMemoryRepository())
+
+
+def _unconfigured_send(clock):
+    svc = build_notification_service(Settings(_env_file=None), InMemoryRepository(), clock=clock)
     svc.store.seed_defaults()
-    # no push/email adapter yet (N02): an operational send fails loudly, nothing is "sent"
     svc.directory = NoDirectory()
     res = svc.send(
         "session_log_published_parent",
@@ -131,11 +138,26 @@ def test_app_binds_the_dispatch_job_and_wires_no_real_channels(settings, repo, v
         {"lesson_time": LESSON},
         "k-unconfigured",
     )
+    return svc, res
+
+
+def test_wires_no_real_channels_by_day():
+    # no push/email adapter yet (N02): an operational send fails loudly, nothing is "sent".
+    # The clock is injected: the real wall clock would put the suite inside quiet hours at night.
+    svc, res = _unconfigured_send(lambda: DAY)
     assert {n.channel: n.status for n in res.notifications} == {
         "push": "failed",
         "in_app": "delivered",
     }
     assert svc.repo.list("notification")[0]["last_error"] == "permanent:no_device"
+
+
+def test_wires_no_real_channels_at_night_push_is_deferred():
+    svc, res = _unconfigured_send(lambda: NIGHT)
+    assert {n.channel: n.status for n in res.notifications} == {
+        "push": "deferred",
+        "in_app": "delivered",
+    }
 
 
 def test_email_message_repr_hides_address_and_content():

@@ -39,3 +39,4 @@ Per-package test commands are in each package README and in `memory.md` "How to 
 8. **New packages** go only under `apps/`, `packages/`, `services/` and must be registered in `packages.json` with a README (`## Purpose`, `## Test command`). `make lint` fails otherwise.
 9. **memory.md** is committed straight to `main` (`memory: ...`), never inside a ticket PR. Follow the hand-off protocol there. Builders do not open PRs; the reviewer does.
 10. Branch protection and required checks are an owner setting (see "Blocked on owner" in `memory.md`); never try to change repository settings.
+11. **Tests never read the wall clock.** Inject the clock (service `clock=` parameter, test `Clock`/`FakeClock` helpers); `scripts/clock_matrix.py` freezes time at night, month end, year end etc. and catches tests whose result depends on it (see CONTRIBUTING.md).

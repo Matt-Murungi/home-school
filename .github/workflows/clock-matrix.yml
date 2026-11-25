@@ -1,0 +1,37 @@
+# Weekly clock matrix: runs the test suites under frozen wall-clock times (night, month end, year end,
+# leap day, UTC date != Kampala date) and fails on any test whose result depends on the real clock.
+# Tests must use an injected clock; see CONTRIBUTING.md "Tests must not read the wall clock".
+# No secrets, read-only token, inert on forks (the job only runs in the owner's repository).
+name: clock-matrix
+
+on:
+  schedule:
+    - cron: "17 3 * * 1" # Mondays 03:17 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: clock-matrix
+  cancel-in-progress: false
+
+jobs:
+  matrix:
+    name: clock matrix (all clocks, all Python suites)
+    if: github.repository == 'Matt-Murungi/home-school'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d # v10.4.0
+        with:
+          enable-cache: true
+          cache-dependency-glob: services/core/uv.lock
+      - name: Sync core dependencies (includes time-machine)
+        working-directory: services/core
+        run: uv sync --frozen
+      - name: Run every suite at every frozen clock
+        run: python3 scripts/clock_matrix.py --clocks all
