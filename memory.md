@@ -86,7 +86,12 @@ Suggested order: E00 decisions (D01–D03, D05; D04, D06 later/owner) → E01 fo
 - Open: owner sign-off on ADR 0002; check Appwrite plan allows ~43,000 function runs/month.
 
 ### D03 · Hosting decisions (#23)
-- Status: **changes-requested** (branch `d03-hosting-adrs`, commit 517110f; PR not opened). Reviewer round 1, 25 Nov 2026.
+- Status: **ready-for-review** (round 2; branch `d03-hosting-adrs`, fix commit on top of 517110f; PR not opened). Round-1 findings below were resolved 25 Nov 2026:
+  1. Labels: all `ops_admin`/`safeguarding_lead`/`super_admin` in ADR 0012 renamed `opsadmin`/`safeguardinglead`/`superadmin` (ADR 0003 had none); principle 4 states the SR §6.1-minus-underscores mapping and that the rule is from the SDK doc comment (users.d.ts), not verified live; re-verify in A03/M05 on staging. GitHub #40 and #45 edited (only issues with underscore labels; note line appended).
+  2. Safeguarding scope: removed `label:safeguardinglead` from `child`, `home_address`, `session_log`, `teacher_document`; now `read("user:<S>")` per assigned lead while a case concerns the row, revoked on case close via `permission-reconcile` (new "Safeguarding scope" rule + divergence row). `safeguarding_case`/`case_status` keep the label. `audit_log` keeps blanket label read, marked as a deviation (new owner question).
+  3. Substitute window: added to `child`, address, `session_log`, `handover_summary` rows, a rule paragraph and a divergence-table row; `desired_permissions` takes the window as input; revoked by `address-revoke`/`permission-reconcile`.
+  4. `read("users")` on published catalogue stated as intentional exception, M05 AC applies to user-data tables; `permission-reconcile`/`permission-audit` noted as to-add to ADR 0002 table in F04. Fly cost wording untouched. `check-adrs.py` 4/4 ok.
+- (Round 1 reviewer block, resolved:)
 - Reviewer checks: clean worktree, `python3 docs/adr/check-adrs.py` -> 4/4 ok; a bad ADR (bad Status, no Date/Ticket/Decision/Consequences) -> exit 1 with 5 messages, so the lint is meaningful. Latency re-measured 20x on public `/v1/health/version`: connect min/median/p95 87/92/95 ms, TLS 179/184/188, total 429/445/477 (all 200); consistent with the ADR (83 ms median connect; ADR numbers stand, workstation variance). Diff is only the 3 D03 files, no secrets. Cost labelling, capability checklist "verify" marks, DP-7 open item, ledger question, edge cases, blocked-on-owner items: OK. Permission strings match SDK syntax (`Role.label` -> `label:x`, `Role.users()` -> `users`, `Role.user(id)` -> `user:id`).
 - **Findings (fix on the branch, then re-submit):**
   1. **Role labels with underscores are invalid.** The installed node-appwrite docs for `users.updateLabels` say labels are "each up to 36 alphanumeric characters" (spikes/admin-appwrite/node_modules/node-appwrite/dist/services/users.d.ts:479). ADR 0012 principle 4 and every table use `ops_admin`, `safeguarding_lead`, `super_admin` (and M05 #40 text uses `safeguarding_lead`). Rename to alphanumeric (e.g. `opsadmin`, `safeguardinglead`, `superadmin`, or camelCase) throughout ADR 0012 and say that the SR §6.1 role names map to labels with underscores removed; note that M05 (#40) and any ticket text must follow. Add a line that this was checked against the SDK doc comment, not the live service.
@@ -133,6 +138,7 @@ Suggested order: E00 decisions (D01–D03, D05; D04, D06 later/owner) → E01 fo
 9. (D03) Create a Fly.io account and a throwaway app, and run the latency script from Kampala on fibre and on MTN and Airtel phones. Default: do it with the F03 staging deploy.
 10. (D03) Ledger in Appwrite or Postgres (SR 14 item 2)? Default: keep behind a `LedgerStore` interface on Appwrite for the pilot, decide before automated payouts after a crash-between-postings spike (leaning Postgres).
 11. (D03) Fly Standard support ($29/month)? Default: skip for the pilot.
+12. (D03) Accept safeguarding lead's blanket read of `audit_log` (deviates from SR §6.2 "Read (cases)")? Default: accept for the pilot, or scope to case-related entries.
 
 ## Session log
 
