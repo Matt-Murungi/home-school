@@ -44,14 +44,17 @@ describe("no API key in the admin app", () => {
       expect(line).not.toMatch(/KEY/);
     }
   });
-  it.skipIf(!existsSync(join(root, ".next/static")))("the built client bundle has no API key reference", () => {
-    const files = walk(join(root, ".next/static")).filter((f) => f.endsWith(".js"));
-    expect(files.length).toBeGreaterThan(0);
-    for (const f of files) {
-      const text = readFileSync(f, "utf8");
-      expect(text, f).not.toMatch(/APPWRITE_API_KEY|X-Appwrite-Key|node-appwrite/i);
-    }
-  });
+  it.skipIf(!existsSync(join(root, ".next/static")))(
+    "the built client bundle has no API key reference",
+    () => {
+      const files = walk(join(root, ".next/static")).filter((f) => f.endsWith(".js"));
+      expect(files.length).toBeGreaterThan(0);
+      for (const f of files) {
+        const text = readFileSync(f, "utf8");
+        expect(text, f).not.toMatch(/APPWRITE_API_KEY|X-Appwrite-Key|node-appwrite/i);
+      }
+    },
+  );
   it("git tracks no .env file other than .env.example", () => {
     const out = execSync("git ls-files .", { cwd: root }).toString();
     const env = out.split("\n").filter((l) => /(^|\/)\.env/.test(l) && !l.endsWith(".env.example"));

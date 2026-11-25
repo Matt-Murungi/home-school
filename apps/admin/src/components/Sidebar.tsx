@@ -11,7 +11,10 @@ export function Sidebar({ roles }: { roles: AdminRole[] }) {
       <div className="brand">Home School</div>
       <ul>
         {navFor(roles).map((n) => {
-          const active = n.href === "/" ? pathname === "/" : pathname === n.href || pathname.startsWith(n.href + "/");
+          const active =
+            n.href === "/"
+              ? pathname === "/"
+              : pathname === n.href || pathname.startsWith(n.href + "/");
           return (
             <li key={n.href}>
               <Link href={n.href} aria-current={active ? "page" : undefined}>

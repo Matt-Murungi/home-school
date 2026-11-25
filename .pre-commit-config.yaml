@@ -35,12 +35,12 @@ repos:
         files: ^(services/core|scripts)/.*\.py$
       - id: prettier
         name: prettier (apps/admin)
-        entry: bash -c 'test -f apps/admin/package.json || exit 0; npx --no-install prettier --check "$@"' --
+        entry: bash -c 'test -f apps/admin/node_modules/.bin/prettier || { echo "apps/admin needs npm ci first"; exit 1; }; cd apps/admin && node_modules/.bin/prettier --check "${@#apps/admin/}"' --
         language: system
         files: ^apps/admin/.*\.(ts|tsx|js|jsx|json|css)$
       - id: eslint
         name: eslint (apps/admin)
-        entry: bash -c 'test -f apps/admin/package.json || exit 0; npx --no-install eslint "$@"' --
+        entry: bash -c 'test -f apps/admin/node_modules/.bin/eslint || { echo "apps/admin needs npm ci first"; exit 1; }; cd apps/admin && node_modules/.bin/eslint "${@#apps/admin/}"' --
         language: system
         files: ^apps/admin/.*\.(ts|tsx|js|jsx)$
       - id: make-lint

@@ -13,14 +13,25 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
       <EnvBadge label={loadConfig().envLabel} />
       <h1>{mfa ? "Enter your authentication code" : "Admin sign in"}</h1>
       {sp.expired && <p role="status">Your session timed out. Sign in again.</p>}
-      {sp.error && <p role="alert" className="field-error">{sp.error}</p>}
+      {sp.error && (
+        <p role="alert" className="field-error">
+          {sp.error}
+        </p>
+      )}
       <form action="/api/session" method="post">
         <input type="hidden" name="next" value={next} />
         {mfa ? (
           <>
             <input type="hidden" name="step" value="mfa" />
             <label htmlFor="code">6-digit code</label>
-            <input id="code" name="code" inputMode="numeric" autoComplete="one-time-code" pattern="\d{6}" required />
+            <input
+              id="code"
+              name="code"
+              inputMode="numeric"
+              autoComplete="one-time-code"
+              pattern="\d{6}"
+              required
+            />
           </>
         ) : (
           <>
@@ -28,7 +39,13 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
             <label htmlFor="email">Email</label>
             <input id="email" name="email" type="email" autoComplete="username" required />
             <label htmlFor="password">Password</label>
-            <input id="password" name="password" type="password" autoComplete="current-password" required />
+            <input
+              id="password"
+              name="password"
+              type="password"
+              autoComplete="current-password"
+              required
+            />
           </>
         )}
         <button type="submit">{mfa ? "Verify" : "Continue"}</button>

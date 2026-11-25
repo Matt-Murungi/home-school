@@ -1,7 +1,13 @@
 import type { AdminRole } from "../roles";
 
 export type MfaFactor = "totp" | "email";
-export type Account = { id: string; name: string; email: string; labels: string[] };
+export type Account = {
+  id: string;
+  name: string;
+  email: string;
+  labels: string[];
+  mfaEnrolled: boolean;
+};
 export type AdminAccount = { id: string; name: string; email: string; roles: AdminRole[] };
 
 export type AccountState =

@@ -19,10 +19,16 @@ describe("pagination honours the 5,000 cap", () => {
     expect(p.hasPrev).toBe(true);
   });
   it("at the cap, a short page ends paging", () => {
-    expect(describePage({ total: 5000, page: 200, pageSize: 25, returned: 10 }).hasNext).toBe(false);
+    expect(describePage({ total: 5000, page: 200, pageSize: 25, returned: 10 }).hasNext).toBe(
+      false,
+    );
   });
   it("first page has no previous; empty result has no next", () => {
-    expect(describePage({ total: 0, page: 1, pageSize: 25, returned: 0 })).toMatchObject({ hasPrev: false, hasNext: false, totalLabel: "0" });
+    expect(describePage({ total: 0, page: 1, pageSize: 25, returned: 0 })).toMatchObject({
+      hasPrev: false,
+      hasNext: false,
+      totalLabel: "0",
+    });
   });
   it("last exact page under the cap has no next", () => {
     expect(describePage({ total: 50, page: 2, pageSize: 25, returned: 25 }).hasNext).toBe(false);
@@ -30,7 +36,11 @@ describe("pagination honours the 5,000 cap", () => {
   it("parses and clamps page params", () => {
     expect(parsePageParams({ page: "abc" })).toEqual({ page: 1, pageSize: 25, offset: 0 });
     expect(parsePageParams({ page: "-4" }).page).toBe(1);
-    expect(parsePageParams({ page: "3", pageSize: "1000" })).toEqual({ page: 3, pageSize: 100, offset: 200 });
+    expect(parsePageParams({ page: "3", pageSize: "1000" })).toEqual({
+      page: 3,
+      pageSize: 100,
+      offset: 200,
+    });
     expect(parsePageParams({ page: "3", pageSize: "10" }).offset).toBe(20);
   });
 });

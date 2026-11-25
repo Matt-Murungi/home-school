@@ -1,5 +1,10 @@
 import "server-only";
-import { Account as AppwriteAccount, AppwriteException, AuthenticationFactor, Client } from "node-appwrite";
+import {
+  Account as AppwriteAccount,
+  AppwriteException,
+  AuthenticationFactor,
+  Client,
+} from "node-appwrite";
 import type { AdminConfig } from "../config";
 import type { AccountState, AuthProvider, MfaFactor } from "./types";
 
@@ -19,7 +24,10 @@ export class AppwriteAuthProvider implements AuthProvider {
 
   async createPasswordSession(email: string, password: string) {
     try {
-      const s = await new AppwriteAccount(this.client()).createEmailPasswordSession(email, password);
+      const s = await new AppwriteAccount(this.client()).createEmailPasswordSession(
+        email,
+        password,
+      );
       return s.secret || null;
     } catch (e) {
       if (e instanceof AppwriteException && e.code >= 400 && e.code < 500) return null;
@@ -31,7 +39,16 @@ export class AppwriteAuthProvider implements AuthProvider {
     const account = new AppwriteAccount(this.client(secret));
     try {
       const u = await account.get();
-      return { status: "ok", account: { id: u.$id, name: u.name, email: u.email, labels: u.labels } };
+      return {
+        status: "ok",
+        account: {
+          id: u.$id,
+          name: u.name,
+          email: u.email,
+          labels: u.labels,
+          mfaEnrolled: u.mfa === true,
+        },
+      };
     } catch (e) {
       if (e instanceof AppwriteException) {
         if (e.type === "user_more_factors_required") {

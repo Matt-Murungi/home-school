@@ -10,7 +10,12 @@ export function parsePageParams(p: { page?: string; pageSize?: string }) {
   return { page, pageSize, offset: (page - 1) * pageSize };
 }
 
-export function describePage(i: { total: number; page: number; pageSize: number; returned: number }) {
+export function describePage(i: {
+  total: number;
+  page: number;
+  pageSize: number;
+  returned: number;
+}) {
   const capped = i.total >= LIST_TOTAL_CAP;
   const pageCount = capped ? null : Math.max(1, Math.ceil(i.total / i.pageSize));
   const hasPrev = i.page > 1;

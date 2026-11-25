@@ -15,7 +15,8 @@ Playwright is not used: browser binaries need a download, and tests must run off
 - **No Appwrite API key, ever.** Every request builds a client scoped to the signed-in admin's session (`setSession`) so row permissions and the audit trail apply. Trusted writes go to core-service endpoints (SR 6.3). Enforced by `tests/no-api-key.test.ts`.
 - Session cookie `hs_admin_session` (httpOnly, sameSite strict, secure in production) is set only by the server route `src/app/api/session/route.ts`. A pending-MFA cookie lives 10 minutes.
 - MFA sits behind `AuthProvider` (`src/lib/auth/types.ts`): `AppwriteAuthProvider` for real, `FakeAuthProvider` for tests. Admins without MFA enrolled are refused.
-- Roles are Appwrite user labels, alphanumeric: `opsadmin`, `curator`, `safeguardinglead`, `superadmin` (ADR 0012). Which role sees which nav item is in `src/lib/nav.ts` (assumption to confirm with the owner).
+- Roles are Appwrite user labels, alphanumeric: `opsadmin`, `curator`, `safeguardinglead`, `superadmin` (ADR 0012). Which role sees which nav item is in `src/lib/nav.ts` (follows SR 6.2 where it speaks; unconfirmed guesses are listed in the file).
+- **Every admin page, server action and route handler must call `requireAccess("/route")` from `src/lib/session.ts`.** The layout guard is not enough: Next.js skips layouts on client navigations and on RSC requests that already hold them (a test, `tests/page-guard.test.ts`, enforces it for pages). A session is only accepted when MFA is enrolled (`src/lib/auth/guard.ts`).
 - Lists: Appwrite caps `total` at 5,000. `DataTable` shows `5,000+` and offers Previous/Next only at the cap (`src/lib/pagination.ts`).
 - Environment badge (Staging/Production/Local) comes from `ADMIN_ENV`; missing or unknown means Local, never Production.
 

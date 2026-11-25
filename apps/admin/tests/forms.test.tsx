@@ -5,14 +5,21 @@ import { validate, required, minLength, type Schema } from "@/lib/forms";
 
 const schema: Schema = {
   name: [required("Name is required")],
-  reason: [required("Give a reason for this change"), minLength(10, "Reason must be at least 10 characters")],
+  reason: [
+    required("Give a reason for this change"),
+    minLength(10, "Reason must be at least 10 characters"),
+  ],
 };
 
 describe("form validation helpers (server-side)", () => {
   it("returns one error per field", () => {
     const r = validate(schema, { name: "", reason: "short" });
     expect(r.ok).toBe(false);
-    if (!r.ok) expect(r.errors).toEqual({ name: "Name is required", reason: "Reason must be at least 10 characters" });
+    if (!r.ok)
+      expect(r.errors).toEqual({
+        name: "Name is required",
+        reason: "Reason must be at least 10 characters",
+      });
   });
   it("trims and accepts valid input", () => {
     const r = validate(schema, { name: " Ann ", reason: "Updated per ticket 12" });

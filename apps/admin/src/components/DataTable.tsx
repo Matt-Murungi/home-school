@@ -2,7 +2,12 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 import { describePage } from "@/lib/pagination";
 
-export type Column<T> = { key: string; header: string; sortable?: boolean; render: (row: T) => ReactNode };
+export type Column<T> = {
+  key: string;
+  header: string;
+  sortable?: boolean;
+  render: (row: T) => ReactNode;
+};
 
 type Props<T> = {
   basePath: string;
@@ -37,9 +42,19 @@ export function DataTable<T>(props: Props<T>) {
                 const active = query.sort === c.key;
                 const dir = active ? query.dir : undefined;
                 return (
-                  <th key={c.key} scope="col" aria-sort={active ? (dir === "desc" ? "descending" : "ascending") : undefined}>
+                  <th
+                    key={c.key}
+                    scope="col"
+                    aria-sort={active ? (dir === "desc" ? "descending" : "ascending") : undefined}
+                  >
                     {c.sortable ? (
-                      <Link href={href(basePath, query, { sort: c.key, dir: active && dir === "asc" ? "desc" : "asc", page: "1" })}>
+                      <Link
+                        href={href(basePath, query, {
+                          sort: c.key,
+                          dir: active && dir === "asc" ? "desc" : "asc",
+                          page: "1",
+                        })}
+                      >
                         {c.header}
                       </Link>
                     ) : (
@@ -71,7 +86,8 @@ export function DataTable<T>(props: Props<T>) {
         {info.hasPrev && <Link href={go(page - 1)}>Previous</Link>}
         <span>
           Page {page}
-          {info.pageCount ? ` of ${info.pageCount}` : ""} · <span data-testid="total">{info.totalLabel}</span> total
+          {info.pageCount ? ` of ${info.pageCount}` : ""} ·{" "}
+          <span data-testid="total">{info.totalLabel}</span> total
         </span>
         {info.hasNext && <Link href={go(page + 1)}>Next</Link>}
         {info.showLast && info.pageCount && <Link href={go(info.pageCount)}>Last</Link>}

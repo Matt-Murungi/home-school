@@ -3,7 +3,15 @@ import type { EnvLabel } from "@/lib/config";
 import { Sidebar } from "./Sidebar";
 import { TopBar, type ShellAdmin } from "./TopBar";
 
-export function AdminShell({ envLabel, admin, children }: { envLabel: EnvLabel; admin: ShellAdmin; children: ReactNode }) {
+export function AdminShell({
+  envLabel,
+  admin,
+  children,
+}: {
+  envLabel: EnvLabel;
+  admin: ShellAdmin;
+  children: ReactNode;
+}) {
   return (
     <div className="shell">
       <Sidebar roles={admin.roles} />

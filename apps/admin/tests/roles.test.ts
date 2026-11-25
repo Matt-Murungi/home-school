@@ -4,20 +4,40 @@ import { ADMIN_ROLES, canAccessPath, rolesFromLabels } from "@/lib/roles";
 
 describe("roles from Appwrite labels (alphanumeric, ADR 0012)", () => {
   it("maps the four labels and ignores everything else", () => {
-    expect(rolesFromLabels(["opsadmin", "parent", "superadmin"])).toEqual(["opsadmin", "superadmin"]);
+    expect(rolesFromLabels(["opsadmin", "parent", "superadmin"])).toEqual([
+      "opsadmin",
+      "superadmin",
+    ]);
     expect(rolesFromLabels(["ops_admin", "OpsAdmin"])).toEqual([]);
     expect(rolesFromLabels([])).toEqual([]);
   });
   it("lists exactly the four admin roles", () => {
-    expect([...ADMIN_ROLES].sort()).toEqual(["curator", "opsadmin", "safeguardinglead", "superadmin"]);
+    expect([...ADMIN_ROLES].sort()).toEqual([
+      "curator",
+      "opsadmin",
+      "safeguardinglead",
+      "superadmin",
+    ]);
   });
 });
 
 describe("sidebar navigation (Design Brief, admin left sidebar)", () => {
   it("has the 14 mockup items in order", () => {
     expect(NAV_ITEMS.map((n) => n.label)).toEqual([
-      "Overview", "Queues", "Teachers", "Families", "Matching", "Sessions", "Payments",
-      "Payouts", "Safeguarding", "Curriculum", "Question bank", "Reports", "Settings", "Audit log",
+      "Overview",
+      "Queues",
+      "Teachers",
+      "Families",
+      "Matching",
+      "Sessions",
+      "Payments",
+      "Payouts",
+      "Safeguarding",
+      "Curriculum",
+      "Question bank",
+      "Reports",
+      "Settings",
+      "Audit log",
     ]);
   });
   it("every item has a unique route", () => {
@@ -47,7 +67,13 @@ describe("route guard by label", () => {
     ["/safeguarding", ["superadmin"], true],
     ["/curriculum", ["curator"], true],
     ["/curriculum/42", ["curator"], true],
-    ["/curriculum", ["opsadmin"], false],
+    ["/curriculum", ["opsadmin"], true], // SR 6.2: ops read the catalogue
+    ["/curriculum", ["safeguardinglead"], false],
+    ["/audit-log", ["opsadmin"], true], // SR 6.2: ops and safeguarding read the audit log
+    ["/audit-log", ["safeguardinglead"], true],
+    ["/audit-log", ["curator"], false],
+    ["/payments", ["ops_admin"], false],
+    ["/payments", ["OpsAdmin"], false],
     ["/settings", ["superadmin"], true],
     ["/settings", ["opsadmin"], false],
     ["/", ["curator"], true],

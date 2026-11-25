@@ -1,6 +1,13 @@
 import type { Account, AccountState, AuthProvider, MfaFactor } from "./types";
 
-export type FakeUser = { email: string; password: string; name: string; labels: string[]; mfa?: MfaFactor; code?: string };
+export type FakeUser = {
+  email: string;
+  password: string;
+  name: string;
+  labels: string[];
+  mfa?: MfaFactor;
+  code?: string;
+};
 
 /** In-memory stand-in for Appwrite Auth used by tests and local UI work. */
 export class FakeAuthProvider implements AuthProvider {
@@ -23,7 +30,13 @@ export class FakeAuthProvider implements AuthProvider {
     const s = this.sessions.get(secret);
     if (!s) return { status: "invalid" };
     if (s.user.mfa && !s.mfaDone) return { status: "mfa_required", factor: s.user.mfa };
-    const account: Account = { id: s.user.email, name: s.user.name, email: s.user.email, labels: s.user.labels };
+    const account: Account = {
+      id: s.user.email,
+      name: s.user.name,
+      email: s.user.email,
+      labels: s.user.labels,
+      mfaEnrolled: !!s.user.mfa,
+    };
     return { status: "ok", account };
   }
   async startMfa(secret: string) {

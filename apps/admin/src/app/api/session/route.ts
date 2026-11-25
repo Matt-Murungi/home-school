@@ -30,7 +30,8 @@ export async function POST(req: NextRequest) {
 
   if (step === "password") {
     const r = await signIn(auth, str("email"), str("password"));
-    if (r.status === "error") return back(req, `/login?error=${encodeURIComponent(r.message)}${nextQ}`);
+    if (r.status === "error")
+      return back(req, `/login?error=${encodeURIComponent(r.message)}${nextQ}`);
     if (r.status === "mfa_required") {
       const res = back(req, `/login?step=mfa${nextQ}`);
       res.cookies.set(MFA_COOKIE, JSON.stringify(r.pendingSession), cookieOptions(60 * 10));
@@ -46,7 +47,8 @@ export async function POST(req: NextRequest) {
     } catch {
       pending = null;
     }
-    if (!pending?.secret) return back(req, `/login?error=${encodeURIComponent("Sign-in expired. Start again.")}`);
+    if (!pending?.secret)
+      return back(req, `/login?error=${encodeURIComponent("Sign-in expired. Start again.")}`);
     const r = await verifyMfa(auth, pending, str("code"));
     if (r.status !== "ok") {
       const bad = r.status === "error" ? r.message : "Try again.";

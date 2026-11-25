@@ -4,8 +4,14 @@ export type ValidationResult =
   | { ok: true; values: Record<string, string> }
   | { ok: false; errors: Record<string, string>; values: Record<string, string> };
 
-export const required = (msg: string): Rule => (v) => (v.length === 0 ? msg : null);
-export const minLength = (n: number, msg: string): Rule => (v) => (v.length < n ? msg : null);
+export const required =
+  (msg: string): Rule =>
+  (v) =>
+    v.length === 0 ? msg : null;
+export const minLength =
+  (n: number, msg: string): Rule =>
+  (v) =>
+    v.length < n ? msg : null;
 
 /** Run on the server (server actions). One error per field, first failing rule wins. */
 export function validate(schema: Schema, input: Record<string, unknown>): ValidationResult {
@@ -26,5 +32,8 @@ export function validate(schema: Schema, input: Record<string, unknown>): Valida
 }
 
 export const REASON_SCHEMA: Schema = {
-  reason: [required("Give a reason for this change"), minLength(10, "Reason must be at least 10 characters")],
+  reason: [
+    required("Give a reason for this change"),
+    minLength(10, "Reason must be at least 10 characters"),
+  ],
 };

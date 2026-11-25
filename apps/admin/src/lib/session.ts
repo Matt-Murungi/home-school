@@ -3,7 +3,10 @@ import { cookies, headers } from "next/headers";
 import { SESSION_COOKIE } from "./access";
 import { AppwriteAuthProvider } from "./auth/appwrite";
 import { loadConfig } from "./config";
-import { rolesFromLabels } from "./roles";
+import { redirect } from "next/navigation";
+import { cache } from "react";
+import { adminFromState } from "./auth/guard";
+import { canAccessPath } from "./roles";
 import type { AdminAccount } from "./auth/types";
 
 export const MFA_COOKIE = "hs_admin_mfa";
@@ -21,16 +24,23 @@ export function authProvider() {
   return new AppwriteAuthProvider(loadConfig());
 }
 
-/** Validates the cookie against Appwrite as that admin (setSession). Null if missing/expired/not an admin. */
-export async function currentAdmin(): Promise<AdminAccount | null> {
+/** Validates the cookie against Appwrite as that admin (setSession). Null if missing/expired/no MFA/not an admin. */
+export const currentAdmin = cache(async (): Promise<AdminAccount | null> => {
   const secret = (await cookies()).get(SESSION_COOKIE)?.value;
   if (!secret) return null;
-  const state = await authProvider().accountState(secret);
-  if (state.status !== "ok") return null;
-  const roles = rolesFromLabels(state.account.labels);
-  if (roles.length === 0) return null;
-  const { id, name, email } = state.account;
-  return { id, name, email, roles };
+  return adminFromState(await authProvider().accountState(secret));
+});
+
+/**
+ * Call at the top of EVERY admin page (and server action / route handler): `await requireAccess("/payments")`.
+ * The layout guard alone is not enough: Next.js skips re-rendering a layout on client navigations
+ * and on RSC requests that already hold it, so the page itself must check (verified on a built app).
+ */
+export async function requireAccess(route: string): Promise<AdminAccount> {
+  const admin = await currentAdmin();
+  if (!admin) redirect("/api/session/clear");
+  if (!canAccessPath(route, admin.roles)) redirect("/forbidden");
+  return admin;
 }
 
 export async function requestPathname(): Promise<string> {
