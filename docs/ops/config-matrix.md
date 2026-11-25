@@ -62,6 +62,14 @@ Which variable exists in which environment, what kind it is and where it lives. 
 | `LOG_LEVEL` | config | core-service | DEBUG | INFO | INFO | fly_env |
 | `MOMO_COLLECTION_API_USER` | config | core-service | own user id | own user id | own user id | fly_env |
 | `MOMO_DISBURSEMENT_API_USER` | config | core-service | own user id | own user id | own user id | fly_env |
+| `NOTIFY_ESCALATE_AFTER_MIN` | config | core-service | 15 | 15 | 15 | fly_env |
+| `NOTIFY_LEASE_S` | config | core-service | 120 | 120 | 120 | fly_env |
+| `NOTIFY_MAX_ATTEMPTS` | config | core-service | 4 | 4 | 4 | fly_env |
+| `NOTIFY_QUIET_END_HOUR` | config | core-service | 7 | 7 | 7 | fly_env |
+| `NOTIFY_QUIET_START_HOUR` | config | core-service | 21 | 21 | 21 | fly_env |
+| `NOTIFY_RATE_LIMIT` | config | core-service | 5 | 5 | 5 | fly_env |
+| `NOTIFY_RATE_WINDOW_S` | config | core-service | 600 | 600 | 600 | fly_env |
+| `NOTIFY_RETRY_BASE_S` | config | core-service | 60 | 60 | 60 | fly_env |
 | `OTP_APP_HASH` | config | core-service | (empty until the release signing key exists) | (empty until the release signing key exists) | (empty until the release signing key exists) | fly_env |
 | `OTP_DORMANT_DAYS` | config | core-service | 180 | 180 | 180 | fly_env |
 | `OTP_IP_REQUESTS_PER_DAY` | config | core-service | 60 | 60 | 60 | fly_env |
