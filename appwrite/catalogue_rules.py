@@ -10,6 +10,9 @@ specification the core service ports (K02-K04 curator tools, the session-log ser
 - Logs reference the topic of the CHILD's catalogue version (SR 5.5): `assert_topic_in_child_version`, `submit_session_log`
   (idempotent: one log per session, unique `session_key` is the backstop), `upsert_topic_progress` / `derive_progress` /
   `rebuild_topic_progress` (topic_progress is derived and rebuildable).
+- topic_progress is derived from the child's live log entries. SR 5.3 says "logs and assessments": assessment evidence
+  (checkpoint and practice results, ASM-8) is added by Q04/Q05, which extend `child_evidence`; until then rebuilds use logs only.
+- Handover summaries are immutable generations (`save_handover`, `ensure_handover`, `latest_handover`).
 - Questions: two-person rule (`assert_two_person`, `approve_question`, `validate_question_row`), status transitions.
 
 Any client with `list_rows`, `get_row`, `create_row`, `update_row` works (the fake in tests, the Appwrite adapter in
@@ -116,14 +119,6 @@ def with_item_keys(row):
     return _keys(row, item_key=f"{row['assessment_id']}:{row['question_id']}")
 
 
-def handover_source_key(*, assignment_id: str | None = None, session_id: str | None = None) -> str:
-    if assignment_id:
-        return f"assignment:{assignment_id}"
-    if session_id:
-        return f"session:{session_id}"
-    raise ValueError("a handover summary needs an assignment or a session")
-
-
 _KEY_BUILDERS = {"level": with_level_keys, "subject": with_subject_keys, "topic": with_topic_keys,
                  "catalogue_version": with_version_keys, "strand": lambda r: dict(r)}
 
@@ -163,6 +158,7 @@ def edit_catalogue_row(client, table: str, row_id: str, patch: dict) -> dict:
     if forbidden:
         raise CatalogueError(f"{sorted(forbidden)} cannot be edited here")
     merged = _KEY_BUILDERS[table]({**row, **patch})
+    _check_refs(client, table, merged)
     keys = {k: v for k, v in merged.items() if k.endswith("_key")}
     return client.update_row(table, row_id, {**patch, **keys})
 
@@ -173,8 +169,7 @@ def add_catalogue_row(client, table: str, data: dict) -> dict:
         raise CatalogueError(f"{table} is not a version-scoped catalogue table")
     assert_editable(client.get_row("catalogue_version", data["catalogue_version_id"])["status"])
     row = _KEY_BUILDERS[table](data)
-    if table == "topic":
-        check_topic_refs(client, row)
+    _check_refs(client, table, row)
     return client.create_row(table, row)
 
 
@@ -184,6 +179,30 @@ def soft_delete_catalogue_row(client, table: str, row_id: str, now: str) -> dict
     return client.update_row(table, row_id, schema_build.soft_delete_patch(_table(table), now))
 
 
+def _check_refs(client, table: str, row: dict) -> None:
+    if table == "topic":
+        check_topic_refs(client, row)
+    elif table == "strand":
+        check_strand_refs(client, row)
+
+
+def check_strand_refs(client, strand: dict) -> None:
+    """A strand's subject and level must belong to the strand's own catalogue version."""
+    for table, col in (("subject", "subject_id"), ("level", "level_id")):
+        if client.get_row(table, strand[col])["catalogue_version_id"] != strand["catalogue_version_id"]:
+            raise CatalogueError(f"strand.{col} belongs to another catalogue version")
+
+
+def check_parent_chain(client, topic: dict) -> None:
+    """parent_topic_id must not be the topic itself and the chain of parents must not loop (any length)."""
+    me, parent, seen = topic.get("$id"), topic.get("parent_topic_id"), set()
+    while parent:
+        if parent == me or parent in seen:
+            raise CatalogueError("parent_topic_id would create a cycle")
+        seen.add(parent)
+        parent = client.get_row("topic", parent).get("parent_topic_id")
+
+
 def check_topic_refs(client, topic: dict) -> None:
     """subject, level, strand and parent topic must belong to the topic's own catalogue version."""
     version = topic["catalogue_version_id"]
@@ -191,6 +210,7 @@ def check_topic_refs(client, topic: dict) -> None:
         if topic.get(col):
             if client.get_row(table, topic[col])["catalogue_version_id"] != version:
                 raise CatalogueError(f"topic.{col} belongs to another catalogue version")
+    check_parent_chain(client, topic)
 
 
 def publish_version(client, version_id: str, now: str) -> dict:
@@ -289,14 +309,15 @@ def submit_session_log(client, *, child: dict, session_id: str, teacher_id: str,
     def find_log():
         return next((r for r in client.list_rows("session_log", session_id=session_id) if _live(r)), None)
 
-    data = {"session_id": session_id, "teacher_id": teacher_id, "submitted_at": now, "note": note, "homework": homework}
+    data = {"session_id": session_id, "child_id": child["$id"], "teacher_id": teacher_id, "submitted_at": now, "note": note, "homework": homework}
     log = _upsert(client, "session_log", find_log, data, with_session_log_keys,
                   patch={"note": note, "homework": homework, "edited_at": now})
+    previous = {r["topic_id"] for r in client.list_rows("session_log_topic", session_log_id=log["$id"]) if _live(r)}
     _sync_children(client, log["$id"], "session_log_topic", "topic_id", [(t, {"mastery": m}) for t, m in topics], with_log_topic_keys, now)
     _sync_children(client, log["$id"], "session_log_struggle", "struggle_tag_id",
                    [(f"{g}:{t or '-'}", {"struggle_tag_id": g, "topic_id": t}) for g, t in struggles], with_log_struggle_keys, now, composite=True)
-    for topic_id, mastery in topics:
-        upsert_topic_progress(client, child["$id"], topic_id, mastery, session_id, log["submitted_at"])
+    # progress follows the child's remaining evidence for every topic this submit added, changed or removed
+    recompute_topic_progress(client, child["$id"], previous | {t for t, _ in topics})
     return log
 
 
@@ -317,9 +338,9 @@ def _sync_children(client, log_id, table, id_col, wanted, keys, now, composite=F
             client.update_row(table, r["$id"], schema_build.soft_delete_patch(_table(table), now))
 
 
-def upsert_topic_progress(client, child_id: str, topic_id: str, mastery: str, session_id: str | None, at: str) -> dict:
-    """One row per (child, topic): the unique index is the backstop for two concurrent first writes. Evidence older than
-    the stored row (an edit of an earlier session) does not overwrite newer progress."""
+def upsert_topic_progress(client, child_id: str, topic_id: str, mastery: str, session_id: str | None, at: str, force: bool = False) -> dict:
+    """One row per (child, topic): the unique index is the backstop for two concurrent first writes. Without `force`,
+    evidence older than the stored row does not overwrite it; recompute and rebuild always pass force=True."""
     if mastery not in MASTERY:
         raise ValueError(f"mastery must be one of {MASTERY}")
 
@@ -327,27 +348,125 @@ def upsert_topic_progress(client, child_id: str, topic_id: str, mastery: str, se
         return next((r for r in client.list_rows("topic_progress", child_id=child_id) if r["topic_id"] == topic_id), None)
 
     row = find()
-    if row is not None and parse_utc(at) < parse_utc(row["updated_at"]):
+    if not force and row is not None and parse_utc(at) < parse_utc(row["updated_at"]):
         return row
     data = {"child_id": child_id, "topic_id": topic_id, "current_mastery": mastery, "last_session_id": session_id, "updated_at": at}
     return _upsert(client, "topic_progress", find, data, lambda d: d, patch={k: data[k] for k in ("current_mastery", "last_session_id", "updated_at")})
 
 
+def child_evidence(client, child_id: str) -> list[dict]:
+    """The child's progress evidence: one entry per live log topic of their live logs. Today logs only; Q04/Q05 add
+    assessment results here (SR 5.3: progress is rebuilt from logs AND assessments). At scale page by cursor."""
+    out = []
+    for log in client.list_rows("session_log", child_id=child_id):
+        if not _live(log):
+            continue
+        for lt in client.list_rows("session_log_topic", session_log_id=log["$id"]):
+            if _live(lt):
+                out.append({"topic_id": lt["topic_id"], "mastery": lt["mastery"], "session_id": log["session_id"],
+                            "log_id": log["$id"], "submitted_at": log["submitted_at"]})
+    return out
+
+
 def derive_progress(entries) -> dict:
-    """Pure: {topic_id: {current_mastery, last_session_id, updated_at}} from log entries
-    [{topic_id, mastery, session_id, submitted_at}]; the latest submission per topic wins."""
+    """Pure: {topic_id: {current_mastery, last_session_id, updated_at}} from entries
+    [{topic_id, mastery, session_id, submitted_at, log_id?}]. The latest entry per topic wins; ties on the instant are
+    broken by session_id, then log_id, so the result never depends on input order."""
     out: dict[str, dict] = {}
-    for e in sorted(entries, key=lambda e: parse_utc(e["submitted_at"])):
+    for e in sorted(entries, key=lambda e: (parse_utc(e["submitted_at"]), e["session_id"], e.get("log_id") or "")):
         out[e["topic_id"]] = {"current_mastery": e["mastery"], "last_session_id": e["session_id"], "updated_at": e["submitted_at"]}
     return out
 
 
-def rebuild_topic_progress(client, child_id: str, entries) -> dict:
-    """Recompute a child's topic_progress from their log entries (derived, rebuildable data)."""
-    derived = derive_progress(entries)
-    for topic_id, p in derived.items():
-        upsert_topic_progress(client, child_id, topic_id, p["current_mastery"], p["last_session_id"], p["updated_at"])
+def recompute_topic_progress(client, child_id: str, topic_ids) -> dict:
+    """Recompute the given topics from the child's remaining evidence: overwrite where evidence exists, DELETE the row where
+    none is left. Absence means 'no evidence'; resetting to not_yet would claim the topic was taught but not understood."""
+    topic_ids = set(topic_ids)
+    derived = derive_progress([e for e in child_evidence(client, child_id) if e["topic_id"] in topic_ids])
+    _apply_progress(client, child_id, topic_ids, derived)
     return derived
+
+
+def _apply_progress(client, child_id, scope, derived) -> None:
+    for topic_id, p in derived.items():
+        upsert_topic_progress(client, child_id, topic_id, p["current_mastery"], p["last_session_id"], p["updated_at"], force=True)
+    for row in client.list_rows("topic_progress", child_id=child_id):
+        if row["topic_id"] in scope and row["topic_id"] not in derived:
+            client.delete_row("topic_progress", row["$id"])  # derived table: hard delete is allowed (README, M03)
+
+
+def rebuild_topic_progress(client, child_id: str, entries=None) -> dict:
+    """Rebuild a child's topic_progress from `entries` (default: the child's stored evidence). Unconditional: stored rows are
+    overwritten even when the evidence is older, and rows without any evidence are deleted."""
+    derived = derive_progress(child_evidence(client, child_id) if entries is None else entries)
+    existing = {r["topic_id"] for r in client.list_rows("topic_progress", child_id=child_id)}
+    _apply_progress(client, child_id, existing | set(derived), derived)
+    return derived
+
+
+# --- handover summaries: immutable generations -------------------------------------------------------------------------
+def handover_source_key(*, assignment_id: str | None = None, session_id: str | None = None, generation: int = 1) -> str:
+    if generation < 1:
+        raise ValueError("generation starts at 1")
+    if assignment_id:
+        return f"assignment:{assignment_id}:gen:{generation}"
+    if session_id:
+        return f"session:{session_id}:gen:{generation}"
+    raise ValueError("a handover summary needs an assignment or a session")
+
+
+def save_handover(client, *, child_id: str, teacher_id: str, content: str, now: str, generation: int = 1,
+                  assignment_id: str | None = None, session_id: str | None = None) -> dict:
+    """Insert one generation. A duplicate of the same generation is a UniqueViolation (409); rows are never edited."""
+    row = {"child_id": child_id, "teacher_id": teacher_id, "generation": generation, "snapshot_at": now, "content": content,
+           "source_key": handover_source_key(assignment_id=assignment_id, session_id=session_id, generation=generation)}
+    if assignment_id:
+        row["assignment_id"] = assignment_id
+    else:
+        row["session_id"] = session_id
+    return client.create_row("handover_summary", row)
+
+
+def latest_handover(client, *, assignment_id: str | None = None, session_id: str | None = None) -> dict | None:
+    key, value = ("assignment_id", assignment_id) if assignment_id else ("session_id", session_id)
+    rows = client.list_rows("handover_summary", **{key: value})
+    return max(rows, key=lambda r: r["generation"], default=None)
+
+
+def ensure_handover(client, *, latest_log_at: str | None, now: str, **kwargs) -> dict:
+    """Idempotent generation (L04 #106): keep the latest snapshot unless a log is newer than it, then store the next
+    generation. A concurrent generator that loses the unique-key race returns the winner's row."""
+    where = {k: kwargs.get(k) for k in ("assignment_id", "session_id") if kwargs.get(k)}
+    latest = latest_handover(client, **where)
+    if latest and (latest_log_at is None or parse_utc(latest["snapshot_at"]) >= parse_utc(latest_log_at)):
+        return latest
+    try:
+        return save_handover(client, now=now, generation=(latest["generation"] + 1) if latest else 1, **kwargs)
+    except UniqueViolation:
+        return latest_handover(client, **where)
+
+
+# --- level equivalence (matching only) -------------------------------------------------------------------------------
+def add_level_equivalence(client, level_id: str, equivalent_level_id: str) -> dict:
+    """Pair two levels of DIFFERENT curricula (CUR-4). Mapping is matching metadata, so it may be added to levels of a
+    draft or published version, but not to a retired one. The pair is symmetric (pair_key)."""
+    level_pair_key(level_id, equivalent_level_id)  # rejects a level paired with itself
+    curricula = []
+    for level_id_ in (level_id, equivalent_level_id):
+        level = client.get_row("level", level_id_)
+        if not _live(level):
+            raise CatalogueError("level is deleted")
+        version = client.get_row("catalogue_version", level["catalogue_version_id"])
+        if version["status"] == "retired":
+            raise VersionImmutable("retired catalogue versions get no new level equivalences")
+        curricula.append(version["curriculum_id"])
+    if curricula[0] == curricula[1]:
+        raise CatalogueError("level equivalence maps levels of different curricula")
+    return client.create_row("level_equivalence", with_level_equivalence_keys({"level_id": level_id, "equivalent_level_id": equivalent_level_id}))
+
+
+def remove_level_equivalence(client, equivalence_id: str, now: str) -> dict:
+    return client.update_row("level_equivalence", equivalence_id, schema_build.soft_delete_patch(_table("level_equivalence"), now))
 
 
 # --- questions --------------------------------------------------------------------------------------------------------

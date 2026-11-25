@@ -76,13 +76,13 @@ class Tables(unittest.TestCase):
             "subject": {"catalogue_version_id", "name"},
             "topic": {"subject_id", "level_id", "code", "title", "description", "sort_order", "parent_topic_id", "catalogue_version_id"},
             "struggle_tag": {"subject_id", "label"},
-            "session_log": {"session_id", "teacher_id", "submitted_at", "note", "homework", "edited_at"},
+            "session_log": {"session_id", "child_id", "teacher_id", "submitted_at", "note", "homework", "edited_at"},
             "session_log_topic": {"session_log_id", "topic_id", "mastery"},
             "session_log_struggle": {"session_log_id", "struggle_tag_id", "topic_id"},
             "topic_progress": {"child_id", "topic_id", "current_mastery", "last_session_id", "updated_at"},
             "school_upload": {"child_id", "type", "file_id", "uploaded_at"},
             "handover_summary": {"child_id", "teacher_id", "content"},
-            "handover_rating": {"handover_summary_id", "teacher_id", "useful"},
+            "handover_rating": {"handover_summary_id", "teacher_id", "rating"},
             "question": {"topic_id", "level_id", "format", "stem", "options", "answer_key", "difficulty", "status", "author_id", "approver_id"},
             "assessment_blueprint": {"curriculum_id", "level_id", "subject_id", "type", "rules"},
             "assessment": {"child_id", "blueprint_id", "type", "status", "started_at", "completed_at", "supervised_confirmed"},
@@ -433,10 +433,10 @@ class Logs(unittest.TestCase):
 
     def test_one_log_per_session_backstop(self):  # AC: one per session
         c, v, t, child = self.setup_child_log()
-        c.create_row("session_log", rules.with_session_log_keys({"session_id": "s1", "teacher_id": "t1", "submitted_at": NOW}))
+        c.create_row("session_log", rules.with_session_log_keys({"session_id": "s1", "child_id": "child1", "teacher_id": "t1", "submitted_at": NOW}))
         with self.assertRaises(UniqueViolation):
-            c.create_row("session_log", rules.with_session_log_keys({"session_id": "s1", "teacher_id": "t1", "submitted_at": NOW}))
-        c.create_row("session_log", rules.with_session_log_keys({"session_id": "s2", "teacher_id": "t1", "submitted_at": NOW}))
+            c.create_row("session_log", rules.with_session_log_keys({"session_id": "s1", "child_id": "child1", "teacher_id": "t1", "submitted_at": NOW}))
+        c.create_row("session_log", rules.with_session_log_keys({"session_id": "s2", "child_id": "child1", "teacher_id": "t1", "submitted_at": NOW}))
 
     def test_submit_is_idempotent_and_marks_edits(self):
         c, v, t, child = self.setup_child_log()
@@ -559,28 +559,308 @@ class Logs(unittest.TestCase):
 
     def test_soft_deleted_log_releases_the_session(self):
         c = fresh_client()
-        log = c.create_row("session_log", rules.with_session_log_keys({"session_id": "s1", "teacher_id": "t1", "submitted_at": NOW}))
+        log = c.create_row("session_log", rules.with_session_log_keys({"session_id": "s1", "child_id": "child1", "teacher_id": "t1", "submitted_at": NOW}))
         c.update_row("session_log", log["$id"], sb.soft_delete_patch(TABLES["session_log"], NOW))
-        c.create_row("session_log", rules.with_session_log_keys({"session_id": "s1", "teacher_id": "t1", "submitted_at": NOW}))
+        c.create_row("session_log", rules.with_session_log_keys({"session_id": "s1", "child_id": "child1", "teacher_id": "t1", "submitted_at": NOW}))
 
     def test_handover_snapshot_and_rating_uniques(self):
         c = fresh_client()
-        row = {"child_id": "c1", "teacher_id": "t1", "assignment_id": "a1", "source_key": "assignment:a1", "snapshot_at": NOW, "content": "{}"}
+        row = {"child_id": "c1", "teacher_id": "t1", "assignment_id": "a1", "generation": 1,
+               "source_key": rules.handover_source_key(assignment_id="a1"), "snapshot_at": NOW, "content": "{}"}
         s = c.create_row("handover_summary", row)
         with self.assertRaises(UniqueViolation):
             c.create_row("handover_summary", row)
-        c.create_row("handover_rating", {"handover_summary_id": s["$id"], "teacher_id": "t1", "useful": True, "created_at": NOW})
+        c.create_row("handover_rating", {"handover_summary_id": s["$id"], "teacher_id": "t1", "rating": "yes", "created_at": NOW})
         with self.assertRaises(UniqueViolation):
-            c.create_row("handover_rating", {"handover_summary_id": s["$id"], "teacher_id": "t1", "useful": False, "created_at": NOW})
-        self.assertEqual(rules.handover_source_key(assignment_id="a1"), "assignment:a1")
-        self.assertEqual(rules.handover_source_key(session_id="s1"), "session:s1")
+            c.create_row("handover_rating", {"handover_summary_id": s["$id"], "teacher_id": "t1", "rating": "no", "created_at": NOW})
+        self.assertEqual(rules.handover_source_key(assignment_id="a1"), "assignment:a1:gen:1")
+        self.assertEqual(rules.handover_source_key(session_id="s1", generation=3), "session:s1:gen:3")
         with self.assertRaises(ValueError):
             rules.handover_source_key()
+        with self.assertRaises(ValueError):
+            rules.handover_source_key(assignment_id="a1", generation=0)
 
     def test_handover_tables_have_no_update_columns(self):
         for t in ("handover_summary", "handover_rating"):
             self.assertNotIn("updated_at", cols(t))
             self.assertNotIn("deleted_at", cols(t))
+
+
+def log_with(c, child, session_id, topics, now, **kw):
+    return rules.submit_session_log(c, child=child, session_id=session_id, teacher_id="t1", topics=topics, now=now, **kw)
+
+
+D1, D2, D3 = "2026-12-01T06:00:00.000+00:00", "2026-12-08T06:00:00.000+00:00", "2026-12-15T06:00:00.000+00:00"
+
+
+class Round2References(unittest.TestCase):  # finding 1
+    def draft(self):
+        c = fresh_client()
+        v = make_version(c)
+        t = make_level_subject_topic(c, v, "T1")
+        return c, v, t
+
+    def other_version_rows(self, c):
+        v2 = make_version(c, version=2)
+        return (c.create_row("subject", rules.with_subject_keys({"catalogue_version_id": v2["$id"], "code": "ENG", "name": "English"})),
+                c.create_row("level", rules.with_level_keys({"catalogue_version_id": v2["$id"], "code": "P5", "name": "P5", "sort_order": 5})))
+
+    def test_edit_to_a_subject_or_level_of_another_version_is_rejected(self):
+        c, v, t = self.draft()
+        subject, level = self.other_version_rows(c)
+        for patch in ({"subject_id": subject["$id"]}, {"level_id": level["$id"]}):
+            with self.assertRaises(rules.CatalogueError):
+                rules.edit_catalogue_row(c, "topic", t["$id"], patch)
+        row = c.get_row("topic", t["$id"])
+        self.assertEqual((row["subject_id"], row["level_id"]), (t["subject_id"], t["level_id"]))
+
+    def test_edit_strand_reference_to_another_version_is_rejected(self):
+        c, v, t = self.draft()
+        subject, level = self.other_version_rows(c)
+        strand = rules.add_catalogue_row(c, "strand", {"catalogue_version_id": v["$id"], "subject_id": t["subject_id"], "level_id": t["level_id"], "name": "Numbers", "sort_order": 1})
+        foreign = c.create_row("strand", {"catalogue_version_id": subject["catalogue_version_id"], "subject_id": subject["$id"], "level_id": level["$id"], "name": "X", "sort_order": 1})
+        with self.assertRaises(rules.CatalogueError):
+            rules.edit_catalogue_row(c, "topic", t["$id"], {"strand_id": foreign["$id"]})
+        with self.assertRaises(rules.CatalogueError):  # strand edit: its subject must be in the strand's version
+            rules.edit_catalogue_row(c, "strand", strand["$id"], {"subject_id": subject["$id"]})
+        with self.assertRaises(rules.CatalogueError):
+            rules.add_catalogue_row(c, "strand", {"catalogue_version_id": v["$id"], "subject_id": subject["$id"], "level_id": t["level_id"], "name": "Bad", "sort_order": 2})
+        ok = rules.edit_catalogue_row(c, "topic", t["$id"], {"strand_id": strand["$id"]})
+        self.assertEqual(ok["strand_id"], strand["$id"])
+        rules.edit_catalogue_row(c, "strand", strand["$id"], {"name": "Numbers and counting"})
+
+    def test_parent_cannot_be_the_topic_itself(self):
+        c, v, t = self.draft()
+        with self.assertRaises(rules.CatalogueError):
+            rules.edit_catalogue_row(c, "topic", t["$id"], {"parent_topic_id": t["$id"]})
+        self.assertIsNone(c.get_row("topic", t["$id"]).get("parent_topic_id"))
+
+    def test_parent_cycles_are_rejected_for_any_length(self):
+        c, v, a = self.draft()
+        chain = [a]
+        for i in range(3):
+            chain.append(make_level_subject_topic(c, v, f"C{i}", parent=chain[-1]["$id"]))
+        for ancestor in chain[:-1]:  # making any ancestor a child of the last one closes a cycle
+            with self.assertRaises(rules.CatalogueError, msg=ancestor["code"]):
+                rules.edit_catalogue_row(c, "topic", ancestor["$id"], {"parent_topic_id": chain[-1]["$id"]})
+        self.assertIsNone(c.get_row("topic", a["$id"]).get("parent_topic_id"))
+
+    def test_reference_checks_happy_path(self):
+        c, v, a = self.draft()
+        b = make_level_subject_topic(c, v, "B")
+        out = rules.edit_catalogue_row(c, "topic", b["$id"], {"parent_topic_id": a["$id"], "title": "Child topic"})
+        self.assertEqual(out["parent_topic_id"], a["$id"])
+        out = rules.edit_catalogue_row(c, "topic", b["$id"], {"parent_topic_id": None})
+        self.assertIsNone(out["parent_topic_id"])
+        rules.edit_catalogue_row(c, "topic", b["$id"], {"subject_id": a["subject_id"], "level_id": a["level_id"]})
+
+    def test_parent_in_another_version_is_rejected_on_edit(self):
+        c, v, a = self.draft()
+        v2 = make_version(c, version=2)
+        foreign = make_level_subject_topic(c, v2, "F")
+        with self.assertRaises(rules.CatalogueError):
+            rules.edit_catalogue_row(c, "topic", a["$id"], {"parent_topic_id": foreign["$id"]})
+
+
+class Round2Progress(unittest.TestCase):  # finding 2
+    def setup(self):
+        c = fresh_client()
+        v = make_version(c)
+        t = make_level_subject_topic(c, v)
+        return c, {"$id": "child1", "catalogue_version_id": v["$id"]}, t
+
+    def progress(self, c, topic_id):
+        rows = [r for r in c.rows.get("topic_progress", {}).values() if r["topic_id"] == topic_id]
+        return rows[0] if rows else None
+
+    def test_resubmitting_the_latest_log_without_the_topic_returns_progress_to_the_earlier_session(self):
+        c, child, t = self.setup()
+        log_with(c, child, "s1", [(t["$id"], "developing")], D1)
+        log_with(c, child, "s2", [(t["$id"], "secure")], D2)
+        self.assertEqual(self.progress(c, t["$id"])["current_mastery"], "secure")
+        log_with(c, child, "s2", [], D3)
+        row = self.progress(c, t["$id"])
+        self.assertEqual((row["current_mastery"], row["last_session_id"], row["updated_at"]), ("developing", "s1", D1))
+
+    def test_lowering_mastery_in_the_latest_log_lowers_progress(self):
+        c, child, t = self.setup()
+        log_with(c, child, "s1", [(t["$id"], "developing")], D1)
+        log_with(c, child, "s2", [(t["$id"], "secure")], D2)
+        log_with(c, child, "s2", [(t["$id"], "not_yet")], D3)
+        self.assertEqual(self.progress(c, t["$id"])["current_mastery"], "not_yet")
+
+    def test_topic_with_no_remaining_evidence_loses_its_progress_row(self):
+        c, child, t = self.setup()
+        log_with(c, child, "s1", [(t["$id"], "developing")], D1)
+        log_with(c, child, "s1", [], D2)
+        self.assertIsNone(self.progress(c, t["$id"]))  # absence = no evidence (not "not_yet", which means taught but not understood)
+        self.assertEqual(len(c.rows["topic_progress"]), 0)
+
+    def test_editing_an_older_log_does_not_regress_newer_progress(self):
+        c, child, t = self.setup()
+        log_with(c, child, "s1", [(t["$id"], "developing")], D1)
+        log_with(c, child, "s2", [(t["$id"], "secure")], D2)
+        log_with(c, child, "s1", [(t["$id"], "not_yet")], D3)  # resubmitted later, but s1 is still the older session
+        row = self.progress(c, t["$id"])
+        self.assertEqual((row["current_mastery"], row["last_session_id"]), ("secure", "s2"))
+
+    def test_rebuild_overwrites_unconditionally_and_deletes_rows_without_evidence(self):
+        c, child, t = self.setup()
+        other = make_level_subject_topic(c, c.get_row("catalogue_version", child["catalogue_version_id"]), "T2")
+        for tid, m in ((t["$id"], "secure"), (other["$id"], "secure")):
+            c.create_row("topic_progress", {"child_id": "child1", "topic_id": tid, "current_mastery": m, "last_session_id": "sX", "updated_at": D3})
+        derived = rules.rebuild_topic_progress(c, "child1", [{"topic_id": t["$id"], "mastery": "developing", "session_id": "s1", "submitted_at": D1}])
+        row = self.progress(c, t["$id"])
+        self.assertEqual((row["current_mastery"], row["updated_at"]), ("developing", D1))  # older evidence than the stored row wins
+        self.assertIsNone(self.progress(c, other["$id"]))
+        self.assertEqual(set(derived), {t["$id"]})
+        again = rules.rebuild_topic_progress(c, "child1", [{"topic_id": t["$id"], "mastery": "developing", "session_id": "s1", "submitted_at": D1}])
+        self.assertEqual(again, derived)
+        self.assertEqual(len(c.rows["topic_progress"]), 1)
+
+    def test_rebuild_from_the_stored_logs_equals_the_incremental_result(self):
+        c, child, t = self.setup()
+        log_with(c, child, "s1", [(t["$id"], "developing")], D1)
+        log_with(c, child, "s2", [(t["$id"], "secure")], D2)
+        before = dict(self.progress(c, t["$id"]))
+        c.rows["topic_progress"].clear()
+        rules.rebuild_topic_progress(c, "child1")  # collects the evidence from the child's live logs
+        after = self.progress(c, t["$id"])
+        for k in ("current_mastery", "last_session_id", "updated_at"):
+            self.assertEqual(after[k], before[k])
+
+    def test_soft_deleted_logs_and_topics_are_not_evidence(self):
+        c, child, t = self.setup()
+        log_with(c, child, "s1", [(t["$id"], "developing")], D1)
+        (log,) = c.rows["session_log"].values()
+        c.update_row("session_log", log["$id"], sb.soft_delete_patch(TABLES["session_log"], D2))
+        rules.rebuild_topic_progress(c, "child1")
+        self.assertIsNone(self.progress(c, t["$id"]))
+
+    def test_upsert_force_overrides_the_stale_guard(self):
+        c = fresh_client()
+        rules.upsert_topic_progress(c, "c1", "t1", "secure", "s2", D2)
+        rules.upsert_topic_progress(c, "c1", "t1", "developing", "s1", D1)  # stale: ignored
+        self.assertEqual(next(iter(c.rows["topic_progress"].values()))["current_mastery"], "secure")
+        rules.upsert_topic_progress(c, "c1", "t1", "developing", "s1", D1, force=True)
+        self.assertEqual(next(iter(c.rows["topic_progress"].values()))["current_mastery"], "developing")
+
+    def test_derive_progress_is_deterministic_on_ties(self):
+        a = {"topic_id": "t", "mastery": "developing", "session_id": "s1", "log_id": "l1", "submitted_at": D1}
+        b = {"topic_id": "t", "mastery": "secure", "session_id": "s2", "log_id": "l2", "submitted_at": D1}
+        c3 = {"topic_id": "t", "mastery": "not_yet", "session_id": "s2", "log_id": "l3", "submitted_at": "2026-12-01T09:00:00.000+03:00"}  # same instant in UTC+3
+        for order in ([a, b], [b, a]):
+            self.assertEqual(rules.derive_progress(order)["t"]["last_session_id"], "s2")
+        self.assertEqual(rules.derive_progress([b, c3])["t"]["current_mastery"], "not_yet")  # log id breaks the tie after session id
+        self.assertEqual(rules.derive_progress([c3, b])["t"]["current_mastery"], "not_yet")
+
+    def test_assessment_evidence_is_documented_as_follow_up(self):
+        self.assertIn("Q04", (APPWRITE_DIR / "catalogue_rules.py").read_text())
+        self.assertIn("Q05", (APPWRITE_DIR / "README.md").read_text())
+
+
+class Round2Handover(unittest.TestCase):  # finding 3 and #108
+    def base(self, **extra):
+        return dict(child_id="c1", teacher_id="t1", assignment_id="a1", content="{}", now=NOW, **extra)
+
+    def test_a_new_generation_is_accepted_and_old_ones_stay_readable(self):
+        c = fresh_client()
+        g1 = rules.save_handover(c, generation=1, **self.base())
+        g2 = rules.save_handover(c, generation=2, **{**self.base(), "now": "2026-12-02T06:00:00.000+00:00"})
+        self.assertEqual((g1["source_key"], g2["source_key"]), ("assignment:a1:gen:1", "assignment:a1:gen:2"))
+        self.assertEqual(len(c.rows["handover_summary"]), 2)
+        self.assertEqual(c.get_row("handover_summary", g1["$id"])["generation"], 1)  # unchanged and readable
+
+    def test_duplicate_generation_is_rejected(self):
+        c = fresh_client()
+        rules.save_handover(c, generation=1, **self.base())
+        with self.assertRaises(UniqueViolation):
+            rules.save_handover(c, generation=1, **self.base())
+
+    def test_latest_lookup_is_index_backed_and_picks_the_highest_generation(self):
+        c = fresh_client()
+        for g in (1, 3, 2):
+            rules.save_handover(c, generation=g, **self.base())
+        latest = rules.latest_handover(c, assignment_id="a1")
+        self.assertEqual(latest["generation"], 3)
+        self.assertEqual(c.last_query_index, "by_assignment_generation")
+        idx = {i["key"]: i for i in TABLES["handover_summary"]["indexes"]}
+        self.assertEqual((idx["by_assignment_generation"]["columns"], idx["by_assignment_generation"]["orders"]), (["assignment_id", "generation"], ["ASC", "DESC"]))
+        self.assertEqual(idx["by_session_generation"]["columns"], ["session_id", "generation"])
+        self.assertIsNone(rules.latest_handover(c, assignment_id="nope"))
+
+    def test_regenerates_only_when_older_than_the_latest_log(self):
+        c = fresh_client()
+        first = rules.ensure_handover(c, latest_log_at=None, **self.base())
+        same = rules.ensure_handover(c, latest_log_at=NOW, **self.base())  # log not newer than the snapshot
+        self.assertEqual(first["$id"], same["$id"])
+        newer = rules.ensure_handover(c, latest_log_at="2026-12-03T06:00:00.000+00:00", **{**self.base(), "now": "2026-12-03T07:00:00.000+00:00"})
+        self.assertEqual(newer["generation"], 2)
+        self.assertEqual(len(c.rows["handover_summary"]), 2)
+        again = rules.ensure_handover(c, latest_log_at="2026-12-03T06:00:00.000+00:00", **{**self.base(), "now": "2026-12-03T08:00:00.000+00:00"})
+        self.assertEqual(again["$id"], newer["$id"])
+
+    def test_concurrent_generation_creates_one_row(self):
+        c = fresh_client()
+        out = []
+        threads = [threading.Thread(target=lambda: out.append(rules.ensure_handover(c, latest_log_at=None, **self.base()))) for _ in range(8)]
+        [t.start() for t in threads]
+        [t.join() for t in threads]
+        self.assertEqual(len(c.rows["handover_summary"]), 1)
+        self.assertEqual(len({r["$id"] for r in out}), 1)
+
+    def test_substitute_summary_is_keyed_by_session(self):
+        c = fresh_client()
+        rules.save_handover(c, generation=1, child_id="c1", teacher_id="t2", session_id="s9", content="{}", now=NOW)
+        self.assertEqual(rules.latest_handover(c, session_id="s9")["source_key"], "session:s9:gen:1")
+
+    def test_rating_is_yes_partly_no(self):
+        self.assertEqual(cols("handover_rating")["rating"]["elements"], ["yes", "partly", "no"])
+        self.assertNotIn("useful", cols("handover_rating"))
+        self.assertIn("deviation", M03["records"]["meta"]["handover_rating"]["note"])
+        self.assertIn("L05", M03["records"]["meta"]["handover_rating"]["note"])  # read receipt lives elsewhere
+
+
+class Round2LevelEquivalence(unittest.TestCase):
+    def setup(self):
+        c = fresh_client()
+        ug, cam = make_version(c, curriculum="ug", version=1), make_version(c, curriculum="cam", version=1)
+        la = c.create_row("level", rules.with_level_keys({"catalogue_version_id": ug["$id"], "code": "P4", "name": "P4", "sort_order": 4}))
+        lb = c.create_row("level", rules.with_level_keys({"catalogue_version_id": cam["$id"], "code": "S3", "name": "Stage 3", "sort_order": 3}))
+        lc = c.create_row("level", rules.with_level_keys({"catalogue_version_id": ug["$id"], "code": "P5", "name": "P5", "sort_order": 5}))
+        return c, ug, cam, la, lb, lc
+
+    def test_pair_must_cross_curricula_and_is_symmetric(self):
+        c, ug, cam, la, lb, lc = self.setup()
+        row = rules.add_level_equivalence(c, la["$id"], lb["$id"])
+        self.assertEqual(row["pair_key"], rules.level_pair_key(la["$id"], lb["$id"]))
+        with self.assertRaises(UniqueViolation):
+            rules.add_level_equivalence(c, lb["$id"], la["$id"])
+        with self.assertRaises(rules.CatalogueError):  # same curriculum
+            rules.add_level_equivalence(c, la["$id"], lc["$id"])
+        with self.assertRaises(ValueError):
+            rules.add_level_equivalence(c, la["$id"], la["$id"])
+
+    def test_retired_version_levels_cannot_get_new_pairs_but_published_can(self):
+        c, ug, cam, la, lb, lc = self.setup()
+        rules.publish_version(c, ug["$id"], NOW)
+        rules.add_level_equivalence(c, la["$id"], lb["$id"])  # mapping is matching data, allowed after publish
+        rules.retire_version(c, ug["$id"], NOW)
+        with self.assertRaises(rules.VersionImmutable):
+            rules.add_level_equivalence(c, lc["$id"], lb["$id"])
+
+    def test_remove_and_recreate(self):
+        c, ug, cam, la, lb, lc = self.setup()
+        row = rules.add_level_equivalence(c, la["$id"], lb["$id"])
+        rules.remove_level_equivalence(c, row["$id"], NOW)
+        self.assertIsNone(c.get_row("level_equivalence", row["$id"])["pair_key"])
+        rules.add_level_equivalence(c, la["$id"], lb["$id"])
+
+    def test_unknown_or_deleted_level_is_rejected(self):
+        c, ug, cam, la, lb, lc = self.setup()
+        c.update_row("level", la["$id"], sb.soft_delete_patch(TABLES["level"], NOW))
+        with self.assertRaises(rules.CatalogueError):
+            rules.add_level_equivalence(c, la["$id"], lb["$id"])
 
 
 class Questions(unittest.TestCase):

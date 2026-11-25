@@ -190,6 +190,11 @@ class FakeAppwriteClient(AppwriteClient):
             self.rows[table][row_id] = row
             return dict(row)
 
+    def delete_row(self, table, row_id):
+        """Hard delete (only for derived/rebuildable tables such as topic_progress, and the retention job)."""
+        with self._row_lock:
+            return self.rows[table].pop(row_id)
+
     def get_row(self, table, row_id):
         return dict(self.rows[table][row_id])
 

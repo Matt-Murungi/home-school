@@ -2431,6 +2431,12 @@
           "required": true
         },
         {
+          "key": "child_id",
+          "type": "varchar",
+          "size": 36,
+          "required": true
+        },
+        {
           "key": "teacher_id",
           "type": "varchar",
           "size": 36,
@@ -2476,6 +2482,18 @@
             "session_id"
           ],
           "orders": [
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_child_submitted",
+          "type": "key",
+          "columns": [
+            "child_id",
+            "submitted_at"
+          ],
+          "orders": [
+            "ASC",
             "ASC"
           ]
         },
@@ -2843,9 +2861,14 @@
           "required": false
         },
         {
+          "key": "generation",
+          "type": "integer",
+          "required": true
+        },
+        {
           "key": "source_key",
           "type": "varchar",
-          "size": 60,
+          "size": 80,
           "required": true
         },
         {
@@ -2883,23 +2906,27 @@
           ]
         },
         {
-          "key": "by_assignment",
+          "key": "by_assignment_generation",
           "type": "key",
           "columns": [
-            "assignment_id"
+            "assignment_id",
+            "generation"
           ],
           "orders": [
-            "ASC"
+            "ASC",
+            "DESC"
           ]
         },
         {
-          "key": "by_session",
+          "key": "by_session_generation",
           "type": "key",
           "columns": [
-            "session_id"
+            "session_id",
+            "generation"
           ],
           "orders": [
-            "ASC"
+            "ASC",
+            "DESC"
           ]
         },
         {
@@ -2935,8 +2962,14 @@
           "required": true
         },
         {
-          "key": "useful",
-          "type": "boolean",
+          "key": "rating",
+          "type": "string",
+          "format": "enum",
+          "elements": [
+            "yes",
+            "partly",
+            "no"
+          ],
           "required": true
         },
         {

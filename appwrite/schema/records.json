@@ -16,6 +16,12 @@
           "required": true
         },
         {
+          "key": "child_id",
+          "type": "varchar",
+          "size": 36,
+          "required": true
+        },
+        {
           "key": "teacher_id",
           "type": "varchar",
           "size": 36,
@@ -61,6 +67,18 @@
             "session_id"
           ],
           "orders": [
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_child_submitted",
+          "type": "key",
+          "columns": [
+            "child_id",
+            "submitted_at"
+          ],
+          "orders": [
+            "ASC",
             "ASC"
           ]
         },
@@ -423,9 +441,14 @@
           "required": false
         },
         {
+          "key": "generation",
+          "type": "integer",
+          "required": true
+        },
+        {
           "key": "source_key",
           "type": "varchar",
-          "size": 60,
+          "size": 80,
           "required": true
         },
         {
@@ -463,23 +486,27 @@
           ]
         },
         {
-          "key": "by_assignment",
+          "key": "by_assignment_generation",
           "type": "key",
           "columns": [
-            "assignment_id"
+            "assignment_id",
+            "generation"
           ],
           "orders": [
-            "ASC"
+            "ASC",
+            "DESC"
           ]
         },
         {
-          "key": "by_session",
+          "key": "by_session_generation",
           "type": "key",
           "columns": [
-            "session_id"
+            "session_id",
+            "generation"
           ],
           "orders": [
-            "ASC"
+            "ASC",
+            "DESC"
           ]
         },
         {
@@ -514,8 +541,14 @@
           "required": true
         },
         {
-          "key": "useful",
-          "type": "boolean",
+          "key": "rating",
+          "type": "string",
+          "format": "enum",
+          "elements": [
+            "yes",
+            "partly",
+            "no"
+          ],
           "required": true
         },
         {
@@ -553,7 +586,7 @@
   "meta": {
     "session_log": {
       "deletion": "soft",
-      "note": "Child data (sensitive): what was taught. One per session: unique index on session_key = session_id (nulled on soft delete); a resubmission after an offline retry finds the existing log by session and updates it (idempotent submit, SR 7.6), edited_at marks the edit. note and homework are free text from the teacher. Written only by the core service on behalf of the session's teacher; read grants per row (parent of the child, the teacher, admins), never at table level."
+      "note": "Child data (sensitive): what was taught. child_id is denormalised from the session so a child's evidence (progress rebuild) is one indexed query. One per session: unique index on session_key = session_id (nulled on soft delete); a resubmission after an offline retry finds the existing log by session and updates it (idempotent submit, SR 7.6), edited_at marks the edit. note and homework are free text from the teacher. Written only by the core service on behalf of the session's teacher; read grants per row (parent of the child, the teacher, admins), never at table level."
     },
     "session_log_topic": {
       "deletion": "soft",
@@ -576,11 +609,11 @@
     },
     "handover_summary": {
       "deletion": "immutable",
-      "note": "Snapshot generated when an assignment or substitute offer is accepted (SR 7.6): snapshot_at (SR: generated_at, renamed for the same reason) UTC; content is structured JSON text (child summary, last 5 sessions per subject, open struggles, homework, latest assessments, school documents). Insert-only so the snapshot is what the teacher saw. source_key 'assignment:<id>' or 'session:<id>' makes generation idempotent. Child data: per-row read for the receiving teacher and admins."
+      "note": "Snapshot generated when an assignment or substitute offer is accepted (SR 7.6) and REGENERATED when older than the latest log (L04 #106): each generation is a new immutable row, none is ever edited. generation (>= 1) per assignment or session; source_key 'assignment:<id>:gen:<n>' or 'session:<id>:gen:<n>' is unique, so the first generation is idempotent and a duplicate of the same generation is rejected (409); the latest is the highest generation (indexes (assignment_id, generation DESC) and (session_id, generation DESC)); older generations stay readable. snapshot_at (SR: generated_at, renamed because the validator reserves names containing 'rate' for money) UTC; content is structured JSON text (child summary, last 5 sessions per subject, open struggles, homework, latest assessments, school documents). Child data: per-row read for the receiving teacher and admins."
     },
     "handover_rating": {
       "deletion": "immutable",
-      "note": "A teacher's (teacher_id = the rating teacher; SR calls it rated_by_teacher_id, renamed because the validator reserves names containing 'rate' for money) useful/not-useful rating of a handover; unique (summary, teacher), insert-only."
+      "note": "A teacher's (teacher_id = the rating teacher; SR calls it rated_by_teacher_id, renamed because the validator reserves names containing 'rate' for money) rating of a handover, insert-only, unique (summary, teacher). rating is yes/partly/no as L06 #108 asks; SR 5.3 says a boolean `useful`, replaced now because the table is immutable and a later change would need a new column (deviation: yes = useful, no = not useful, partly in between). Attribution to the teachers who wrote the logs is computed from the logs when metrics are built, not stored per rating. The read receipt of L05 #107 is NOT here (L05 adds its own table)."
     }
   },
   "relations": [
@@ -655,6 +688,10 @@
     {
       "from": "handover_rating.teacher_id",
       "to": "teacher_profile"
+    },
+    {
+      "from": "session_log.child_id",
+      "to": "child"
     }
   ]
 }
