@@ -120,10 +120,26 @@ Suggested order: E00 decisions (D01–D03, D05; D04, D06 later/owner) → E01 fo
 - Deviations: ADR 0003 and 0012 status "Proposed" pending owner sign-off (same as 0002, 0004). Latency to Fly and mobile not measurable by an agent.
 - Follow-ups: F02 builds schema from the table split in ADR 0012 and records the diff to the 35 live tables; F03 builds Dockerfile/fly.toml and does the Fly latency run; role-played access tests need a non-live Appwrite project.
 
+### D05 · Email provider decision (#25)
+- Status: **ready-for-review** (branch `d05-email-adr`, commit 8dc77b7, not yet a PR)
+- Built: `docs/adr/0005-email-provider.md` (Proposed): Resend (chosen in SR v0.2) vs Postmark vs Amazon SES, comparison table, `EmailSender` interface contract, webhook event mapping table (delivered, bounced hard/soft, complained) for the three providers, sending-domain DNS plan as a template (`mail.<domain>`, SPF/DKIM/DMARC, p=none then quarantine then reject), owner checklist, deliverability test procedure, Ugandan-hosts mitigation. Prices from public pages fetched 25 Nov 2026, labelled unverified. Event names/signature scheme written from public docs knowledge, marked to verify in N02. No code: adapter is N02 (#127).
+- Test: `python3 docs/adr/check-adrs.py` -> 5/5 ok.
+- Note: SR section for notifications is §8 (not §9).
+
+| Acceptance criterion / edge case | Evidence |
+|---|---|
+| ADR 0005 compares deliverability, price, templates, bounce/complaint webhooks | ADR "Options considered" + comparison table (deliverability is qualitative, no measurements) |
+| Sending domain chosen | BLOCKED on owner (domain is an owner decision); template plan with placeholders in ADR |
+| SPF, DKIM, DMARC plan written | ADR "Sending domain plan" |
+| Ugandan mail hosts edge case | ADR test matrix + 5-step mitigation; real test BLOCKED on owner |
+| Test email from staging lands in inbox for 3 providers | BLOCKED on owner (domain, Resend account, DNS); procedure in ADR |
+| ADR merged / linked from dependent tickets | After review; link from #127 and #44 at merge |
+
 ## Blocked on owner (credentials / deployments / accounts)
 
 - D02: staging demo of the job tick (needs deployed core service + non-live Appwrite project).
 - D03: Fly.io account/org and billing; throwaway Fly app to measure Kampala to `fra`; mobile-network latency (MTN, Airtel) to Appwrite and Fly; a non-live Appwrite project (`hs-staging`, Frankfurt) with a scoped API key; Appwrite plan/cost confirmation; lawyer/DPO review of the DP-7 note (ADR 0012).
+- D05: sending domain; Resend account (Free ok for staging); DNS access to add SPF/DKIM/MX/DMARC records for `mail.<domain>`; Resend API key + webhook secret into staging Fly secrets; DPA signed (DP-9); then the inbox test (Gmail, Yahoo, a Ugandan host). Exact steps: owner checklist in ADR 0005.
 
 ## Questions for the owner (collected; ask at the end)
 
@@ -139,6 +155,9 @@ Suggested order: E00 decisions (D01–D03, D05; D04, D06 later/owner) → E01 fo
 10. (D03) Ledger in Appwrite or Postgres (SR 14 item 2)? Default: keep behind a `LedgerStore` interface on Appwrite for the pilot, decide before automated payouts after a crash-between-postings spike (leaning Postgres).
 11. (D03) Fly Standard support ($29/month)? Default: skip for the pilot.
 12. (D03) Accept safeguarding lead's blanket read of `audit_log` (deviates from SR §6.2 "Read (cases)")? Default: accept for the pilot, or scope to case-related entries.
+13. (D05) Sign off ADR 0005 (Resend). Default: accept.
+14. (D05) Which domain sends mail? Default: `mail.<main domain>` subdomain, from `no-reply@` and `safeguarding@`, reply-to `support@<main domain>`. DNS checklist: add Resend's SPF TXT, bounce MX and DKIM records on `mail.<domain>`, then DMARC `v=DMARC1; p=none; rua=mailto:dmarc@<domain>` on `_dmarc.mail.<domain>` (tighten to quarantine/reject after 2-4 weeks of reports); verify in Resend.
+15. (D05) Run the inbox test from staging to Gmail, Yahoo and a Ugandan ISP/company address and send the headers (spf/dkim/dmarc pass). Default: fall back to Postmark if any fail.
 
 ## Session log
 
@@ -146,3 +165,4 @@ Suggested order: E00 decisions (D01–D03, D05; D04, D06 later/owner) → E01 fo
 - 2026-11-25: Repo bootstrapped; backlog (135 tickets) imported and updated for Appwrite; D01, D02 built; two-agent workflow agreed.
 - 2026-11-25: D03 built (ADRs 0003, 0012, ADR lint), ready-for-review on `d03-hosting-adrs`.
 - 2026-11-25: D03 round 2 reviewed, PR #158 merged, status blocked-foundation-merged.
+- 2026-11-25: D05 built (ADR 0005), ready-for-review on `d05-email-adr`.
