@@ -24,10 +24,11 @@ Rotate each server secret on its interval (table below). Put a calendar reminder
 | `FCM_SERVICE_ACCOUNT_JSON` | core-service | platform-owner | 180 d | service-account | yes | Send push notifications to any device registered in one environment's Firebase project (phishing risk), no data read. |
 | `FLY_API_TOKEN` | ci-deploy | platform-owner | 90 d | fly-token | yes | Deploy and read secrets of one Fly app. Must be an app-scoped deploy token, never an org token. Production token sits in the protected production environment. |
 | `GOOGLE_MAPS_SERVER_KEY` | core-service | platform-owner | 180 d | provider-key | yes | Run Routes/Distance Matrix on our bill. Restrict by API and, where possible, by IP; budget alert on. |
+| `HS_HEARTBEAT_URL` | core-service | platform-owner | 365 d | provider-key | yes | Capability URL: whoever holds it can fake 'job tick alive' to the uptime vendor and hide an outage (or, if leaked, spam false recoveries). It cannot read data. Rotate by creating a new heartbeat in the vendor and deleting the old one. |
 | `IOS_DISTRIBUTION_CERTIFICATE` | app-stores (owner-blocked) | platform-owner | 365 d | signing-credential | yes | Sign iOS builds as the company; Apple certificates expire after 1 year. Revoke in the Apple Developer account on a leak. |
 | `IOS_PROVISIONING_PROFILES` | app-stores (owner-blocked) | platform-owner | 365 d | signing-credential | yes | Profiles tie the certificate to the app ids; regenerated whenever the certificate is replaced. Low impact alone. |
-| `JOB_TICK_SECRET` | core-service | platform-owner | 90 d | job-tick-secret | yes | Forge a job tick: trigger payout, reminder and expiry jobs on demand in one environment (jobs are idempotent, so impact is load and timing, not duplicate payments). |
-| `JOB_TICK_SECRET` | job-tick-function | platform-owner | 90 d | job-tick-secret | yes | Same value as the core service copy; leak lets an attacker sign ticks. |
+| `JOB_TICK_SECRET` | core-service | platform-owner | 90 d | job-tick-secret | no | Forge a job tick: trigger payout, reminder and expiry jobs on demand in one environment (jobs are idempotent, so impact is load and timing, not duplicate payments). |
+| `JOB_TICK_SECRET` | job-tick-function | platform-owner | 90 d | job-tick-secret | no | Same value as the core service copy; leak lets an attacker sign ticks. |
 | `MOMO_COLLECTION_API_KEY` | core-service | platform-owner | 180 d | payment-credential | yes | Authenticate to MoMo Collections with our API user. Production: request payments from parents' wallets in our name. |
 | `MOMO_COLLECTION_SUBSCRIPTION_KEY` | core-service | platform-owner | 180 d | payment-credential | yes | Call MoMo Collections as us (request payments). Production: live money movement into our account. |
 | `MOMO_DISBURSEMENT_API_KEY` | core-service | platform-owner | 180 d | payment-credential | yes | Authenticate to MoMo Disbursements. Production: send payouts to arbitrary numbers; highest financial blast radius. |
@@ -92,7 +93,7 @@ Used by: `APNS_AUTH_KEY` (firebase-console)
 Used by: `APPWRITE_API_KEY` (ci-deploy), `APPWRITE_API_KEY` (core-service)
 
 1. In the Appwrite console of THIS environment's project (never another), create a new API key with the same scopes as appwrite/keys.md, name it hs-<consumer>-<env>-<yyyymmdd>, expiry 90d.
-2. Set the new value in the store listed for that environment (Fly: `fly secrets import -a <app>` with `APPWRITE_API_KEY=<value>` on stdin (from a mode-600 file you delete afterwards); GitHub: environment secret). Fly restarts machines one at a time, so the old key keeps serving until each machine has the new one.
+2. Set the new value in the store listed for that environment (Fly: `fly secrets import -a <app>` with `APPWRITE_API_KEY=<value>` on stdin (from a mode-600 file you delete afterwards); GitHub: environment secret). Fly redeploys the machines on a secrets change; whether the old key keeps serving during the rollout is unverified (confirm in the staging drill), so keep the OLD key valid until step 3 passes.
 3. Verify: GET /health/ready on the app is 200 and one authenticated request succeeds; for CI, re-run the staging deploy workflow.
 4. Delete the OLD key in the Appwrite console (this is the revoke step; on a leak do it as soon as step 3 passes, target within one hour).
 5. Run `python3 appwrite/check_keys.py`, update appwrite/keys.md if scopes or names changed, and add a line to the rotation log (date, who, secret name, environment; no values).
@@ -101,10 +102,10 @@ Used by: `APPWRITE_API_KEY` (ci-deploy), `APPWRITE_API_KEY` (core-service)
 
 Used by: `FLY_API_TOKEN` (ci-deploy)
 
-1. Create a new app-scoped deploy token: `fly tokens create deploy -a hs-core-<env> -x 2160h` (90 days).
+1. Create a new app-scoped deploy token: `fly tokens create deploy -a <fly-app> -x 2160h` (90 days).
 2. Replace the GitHub environment secret FLY_API_TOKEN for that environment (production: a required reviewer approves the change).
 3. Verify by re-running the deploy workflow for staging (or the production workflow with approval).
-4. Revoke the old token: `fly tokens list -a hs-core-<env>` then `fly tokens revoke <id>`.
+4. Revoke the old token: `fly tokens list -a <fly-app>` then `fly tokens revoke <id>`.
 5. Add a line to the rotation log.
 
 ### Procedure `github-env-secret`
@@ -122,9 +123,9 @@ Used by: `SENTRY_AUTH_TOKEN` (ci-deploy)
 Used by: `JOB_TICK_SECRET` (core-service), `JOB_TICK_SECRET` (job-tick-function)
 
 1. Generate a new random value (`openssl rand -hex 32`) locally; never paste it into chat or an issue.
-2. Set it on the core service first (`fly secrets import -a hs-core-<env>` with `JOB_TICK_SECRET=<value>` on stdin), then on the job-tick function variable in the same environment's Appwrite project, then redeploy the function. Until the function has the new value, ticks signed with the old value are rejected and retried on the next tick (ADR 0002 jobs are idempotent), so there is no data loss; a brief gap of one tick is the worst case. F04 has no previous-secret mechanism today, so rotation is NOT fully overlapping; accepting a previous value during rotation is an F04 follow-up (see docs/ops/secrets.md).
-3. Verify: the next tick appears in the job-run log with status ok.
-4. Unset any previous-secret value and record the rotation in the log.
+2. Set it on the core service first (`fly secrets import -a <fly-app>` with `JOB_TICK_SECRET=<value>` on stdin), then on the job-tick function variable in the same environment's Appwrite project, then redeploy the function. F04 has no previous-secret mechanism, so rotation is NOT overlapping: ticks signed with the old value are rejected from the moment the core service has the new value until the function has it. Ticks are idempotent (ADR 0002) and retried on the next tick, so there is no data loss; expect at most a gap of one tick. Accepting a previous value during rotation is an F04 follow-up (docs/ops/secrets.md).
+3. Verify: the next tick appears in the job-run log with status ok, and the uptime heartbeat (`HS_HEARTBEAT_URL`) is received.
+4. Record the rotation in the log; there is no previous value to unset.
 
 ### Procedure `payment-credential`
 
@@ -132,17 +133,17 @@ Used by: `AIRTEL_CLIENT_SECRET` (core-service), `CARD_GATEWAY_SECRET_KEY` (core-
 
 1. Stop payouts for the environment by hand so no disbursement is in flight: in the admin app do not approve any payout batch until step 5 (collections keep working because they are retried by provider callbacks). If the DISBURSEMENT credential is the leaked one, revoke it at the provider first. The core service has no automatic payout switch today (payout ticket follow-up).
 2. In the provider portal create a new API user key / secret for THIS environment (sandbox for development and staging; live only for production). MoMo: new API key for the existing API user, or a new API user if the user id is suspect.
-3. Set the new values in the store (`fly secrets import -a hs-core-<env>` with `NAME=<value>` on stdin); machines restart one at a time.
+3. Set the new values in the store (`fly secrets import -a <fly-app>` with `NAME=<value>` on stdin); Fly redeploys the app's machines when secrets change (whether the rollout is rolling, one machine at a time, is unverified: confirm in the staging drill).
 4. Verify with one sandbox (or, in production, the smallest live) collection and, for disbursement credentials, one payout; confirm callbacks reach the service.
 5. Revoke the OLD credential in the provider portal, resume approving payout batches, and reconcile the ledger for the window between steps 1 and 5 (ADR on idempotent payouts).
 6. Add a line to the rotation log. In production, rotate in a low-traffic window (not weekdays 15:00-20:00 or weekends 08:00-18:00, SR NFR-5).
 
 ### Procedure `provider-key`
 
-Used by: `AFRICASTALKING_API_KEY` (core-service), `GOOGLE_MAPS_SERVER_KEY` (core-service), `RESEND_API_KEY` (core-service), `SENTRY_DSN` (core-service)
+Used by: `AFRICASTALKING_API_KEY` (core-service), `GOOGLE_MAPS_SERVER_KEY` (core-service), `HS_HEARTBEAT_URL` (core-service), `RESEND_API_KEY` (core-service), `SENTRY_DSN` (core-service)
 
 1. In the provider's dashboard for THIS environment (sandbox account for development and staging, live account only for production) create a second key; do not delete the first yet.
-2. Set the new value in the store listed for that environment (`fly secrets import -a <app>` with `NAME=<value>` on stdin; rolling restart, no downtime).
+2. Set the new value in the store listed for that environment (`fly secrets import -a <app>` with `NAME=<value>` on stdin; Fly redeploys the machines; zero downtime is unverified until the staging drill).
 3. Verify with the provider's smoke call in the staging runbook (send a test message / sandbox request) and that error rates in Sentry stay flat for 15 minutes.
 4. Revoke the OLD key in the provider dashboard (this is the revoke step; on a leak do it immediately after step 3).
 5. Add a line to the rotation log (date, who, secret name, environment; no values).
@@ -152,7 +153,7 @@ Used by: `AFRICASTALKING_API_KEY` (core-service), `GOOGLE_MAPS_SERVER_KEY` (core
 Used by: `FCM_SERVICE_ACCOUNT_JSON` (core-service)
 
 1. In the Firebase/Google Cloud console create a new service-account key (JSON) for THIS environment's Firebase project; keep the old key active.
-2. Set it on the core service (`fly secrets import -a hs-core-<env>` with `FCM_SERVICE_ACCOUNT_JSON=<single-line JSON>` on stdin from a mode-600 file, then delete the local file).
+2. Set it on the core service (`fly secrets import -a <fly-app>` with `FCM_SERVICE_ACCOUNT_JSON=<single-line JSON>` on stdin from a mode-600 file, then delete the local file).
 3. Verify by sending a test push to a staging device.
 4. Delete the OLD key in the service-account page (this is the revoke step).
 5. Add a line to the rotation log.
@@ -172,7 +173,7 @@ Used by: `APP_STORE_CONNECT_API_KEY` (codemagic), `CODEMAGIC_SECURE_VARIABLES` (
 Used by: `CARD_GATEWAY_WEBHOOK_SECRET` (core-service), `RESEND_WEBHOOK_SECRET` (core-service)
 
 1. In the provider dashboard create a new webhook signing secret for THIS environment; most providers allow two active secrets during a window, so keep the old one.
-2. Set the new value on the core service (`fly secrets import -a hs-core-<env>` with `NAME=<value>` on stdin); the service must verify against the new value.
+2. Set the new value on the core service (`fly secrets import -a <fly-app>` with `NAME=<value>` on stdin); the service must verify against the new value.
 3. Trigger a test webhook from the provider and confirm it verifies (HTTP 200, no signature errors in logs).
 4. Remove the old signing secret at the provider.
 5. Add a line to the rotation log.

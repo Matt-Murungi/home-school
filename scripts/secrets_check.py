@@ -50,6 +50,14 @@ SKIP_DIRS = {
     ".git",
 }
 INV = "docs/ops/secrets-inventory.json"
+UPTIME = "ops/uptime.json"
+# ADR 0003 names the Fly apps `homeschool-core-staging` and `homeschool-core-prod`, so a store may end in the
+# short environment name as well as the long one.
+ENV_SUFFIXES = {
+    "development": ("development", "dev"),
+    "staging": ("staging",),
+    "production": ("production", "prod"),
+}
 
 
 def load(root: Path):
@@ -88,6 +96,9 @@ def core_settings_fields(root: Path) -> dict[str, bool]:
 APP_PATTERNS = [
     re.compile(r"process\.env\.([A-Z][A-Z0-9_]*)"),
     re.compile(r"process\.env\[\s*['\"]([A-Z][A-Z0-9_]*)['\"]\s*\]"),
+    re.compile(
+        r"(?<![\w.])env\??\.([A-Z][A-Z0-9_]*)"
+    ),  # an `env` object passed in (admin config.ts)
     re.compile(r"fromEnvironment\(\s*['\"]([A-Za-z][A-Za-z0-9_]*)['\"]"),
 ]
 
@@ -289,7 +300,89 @@ def _keys_md(root: Path):
     return check_keys.parse(p.read_text()) if p.exists() else []
 
 
+def shape_errors(inv) -> list[str]:
+    """Type problems that would make later checks crash; every message names the field."""
+    if not isinstance(inv, dict):
+        return ["inventory must be a JSON object"]
+    out: list[str] = []
+    for key, typ, label in (
+        ("environments", list, "a list"),
+        ("consumers", dict, "an object"),
+        ("procedures", dict, "an object"),
+        ("entries", list, "a list"),
+    ):
+        if key not in inv:
+            out.append(f"top-level {key} is missing")
+        elif not isinstance(inv[key], typ):
+            out.append(f"top-level {key} must be {label}")
+    if out:
+        return out
+    if inv["environments"] != list(ENVS):
+        out.append(f"environments must be exactly {list(ENVS)}")
+    for n, c in inv["consumers"].items():
+        if not isinstance(c, dict) or not isinstance(
+            c.get("allowed_environments"), list
+        ):
+            out.append(
+                f"consumer {n}: must be an object with an allowed_environments list"
+            )
+    for n, steps in inv["procedures"].items():
+        if not isinstance(steps, list) or not all(isinstance(x, str) for x in steps):
+            out.append(f"procedure {n}: must be a list of text steps")
+    text_fields = (
+        "name",
+        "kind",
+        "consumer",
+        "location",
+        "procedure",
+        "rotation_owner",
+        "blast_radius",
+        "downtime_note",
+        "notes",
+        "restriction",
+    )
+    for idx, e in enumerate(inv["entries"]):
+        if not isinstance(e, dict):
+            out.append(f"entries[{idx}] must be an object")
+            continue
+        who = f"{e['name']}" if isinstance(e.get("name"), str) else f"entries[{idx}]"
+        for f in text_fields:
+            if f in e and not isinstance(e[f], str):
+                out.append(f"{who}: {f} must be text")
+        for f in ("stores", "values", "value_class"):
+            if f in e and not isinstance(e[f], dict):
+                out.append(f"{who}: {f} must be an object")
+        if "environments" in e and (
+            not isinstance(e["environments"], list)
+            or not all(isinstance(x, str) for x in e["environments"])
+        ):
+            out.append(f"{who}: environments must be a list of text")
+        for f in ("rotation_overlap", "owner_blocked", "value_per_environment"):
+            if f in e and not isinstance(e[f], bool):
+                out.append(f"{who}: {f} must be true or false")
+    return out
+
+
+def uptime_vars(root: Path) -> dict[str, str]:
+    """{variable: 'secret'|'config'} named in ops/uptime.json (heartbeat URL = capability secret)."""
+    p = root / UPTIME
+    if not p.exists():
+        return {}
+    data = json.loads(p.read_text())
+    out: dict[str, str] = {}
+    hb = data.get("heartbeat", {}).get("url_var")
+    if hb:
+        out[hb] = "secret"
+    for c in data.get("checks", []):
+        if c.get("base_url_var"):
+            out[c["base_url_var"]] = "config"
+    return out
+
+
 def validate(inv, root: Path, extra_app_keys=None) -> list[str]:
+    bad = shape_errors(inv)
+    if bad:
+        return bad
     errs: list[str] = []
     entries = inv.get("entries", [])
     consumers = inv.get("consumers", {})
@@ -348,9 +441,9 @@ def validate(inv, root: Path, extra_app_keys=None) -> list[str]:
                 errs.append(f"{who}: no store for {env}")
             elif blocked and s == "TBD":
                 continue  # owner-blocked: store not chosen yet; owner, interval, blast radius, procedure still required
-            elif not s.endswith(env):
+            elif not s.endswith(ENV_SUFFIXES.get(env, (env,))):
                 errs.append(
-                    f"{who}: store {s!r} is not an {env} store (production secrets never in dev/staging)"
+                    f"{who}: store {s!r} is not a {env} store (production secrets never in dev/staging)"
                 )
         if not blocked and len({stores.get(env) for env in envs}) < len(envs):
             errs.append(
@@ -409,6 +502,21 @@ def validate(inv, root: Path, extra_app_keys=None) -> list[str]:
         for c in sorted(need - held.get(n, set())):
             errs.append(
                 f"{n}: missing consumer {c} (a secret shared by several consumers must list each one)"
+            )
+
+    # variables named in ops/uptime.json (no Settings field, so the code scan cannot see them)
+    by_name = {e["name"]: e for e in entries if e.get("name")}
+    for n, cls in sorted(uptime_vars(root).items()):
+        e = by_name.get(n)
+        if e is None:
+            errs.append(f"{n}: named in ops/uptime.json but missing from the inventory")
+        elif cls == "secret" and e.get("kind") != "server_secret":
+            errs.append(
+                f"{n}: heartbeat URL is a capability secret, so it must be a server_secret"
+            )
+        elif cls == "config" and e.get("kind") == "server_secret":
+            errs.append(
+                f"{n}: uptime base URL is a hostname, so it must be non_secret config"
             )
 
     # config keys read by code must be in the inventory
@@ -475,7 +583,7 @@ def main(argv=None):
     argv = sys.argv[1:] if argv is None else argv
     root = Path(__file__).resolve().parents[1]
     inv = load(root)
-    if "--write" in argv:
+    if "--write" in argv and not shape_errors(inv):
         write_docs(root, inv)
         print("secrets: generated blocks rewritten")
     errs = validate(inv, root)

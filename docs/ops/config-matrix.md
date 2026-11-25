@@ -6,32 +6,33 @@ Which variable exists in which environment, what kind it is and where it lives. 
 | Variable | Kind | Consumer | development | staging | production | Where it lives |
 |---|---|---|---|---|---|---|
 | `ADMIN_COOKIE_SECRET` | server secret | app-admin | host-env:admin-development | host-env:admin-staging | host-env:admin-production | host_env |
-| `AFRICASTALKING_API_KEY` | server secret | core-service | fly:hs-core-development | fly:hs-core-staging | fly:hs-core-production | fly_secret |
-| `AIRTEL_CLIENT_SECRET` | server secret | core-service | fly:hs-core-development (sandbox) | fly:hs-core-staging (sandbox) | fly:hs-core-production (live) | fly_secret |
+| `AFRICASTALKING_API_KEY` | server secret | core-service | fly:homeschool-core-dev | fly:homeschool-core-staging | fly:homeschool-core-prod | fly_secret |
+| `AIRTEL_CLIENT_SECRET` | server secret | core-service | fly:homeschool-core-dev (sandbox) | fly:homeschool-core-staging (sandbox) | fly:homeschool-core-prod (live) | fly_secret |
 | `APNS_AUTH_KEY` | server secret | firebase-console | provider-console:firebase-development | provider-console:firebase-staging | provider-console:firebase-production | provider_console |
 | `APPWRITE_API_KEY` | server secret | ci-deploy | github-env:development | github-env:staging | github-env:production | github_actions_secret |
-| `APPWRITE_API_KEY` | server secret | core-service | fly:hs-core-development | fly:hs-core-staging | fly:hs-core-production | fly_secret |
+| `APPWRITE_API_KEY` | server secret | core-service | fly:homeschool-core-dev | fly:homeschool-core-staging | fly:homeschool-core-prod | fly_secret |
 | `APP_STORE_CONNECT_API_KEY` | server secret | codemagic | - | - | TBD (owner-blocked) | codemagic_variable |
-| `CARD_GATEWAY_SECRET_KEY` | server secret | core-service | fly:hs-core-development (sandbox) | fly:hs-core-staging (sandbox) | fly:hs-core-production (live) | fly_secret |
-| `CARD_GATEWAY_WEBHOOK_SECRET` | server secret | core-service | fly:hs-core-development (sandbox) | fly:hs-core-staging (sandbox) | fly:hs-core-production (live) | fly_secret |
+| `CARD_GATEWAY_SECRET_KEY` | server secret | core-service | fly:homeschool-core-dev (sandbox) | fly:homeschool-core-staging (sandbox) | fly:homeschool-core-prod (live) | fly_secret |
+| `CARD_GATEWAY_WEBHOOK_SECRET` | server secret | core-service | fly:homeschool-core-dev (sandbox) | fly:homeschool-core-staging (sandbox) | fly:homeschool-core-prod (live) | fly_secret |
 | `CODEMAGIC_SECURE_VARIABLES` | server secret | codemagic | - | TBD (owner-blocked) | TBD (owner-blocked) | codemagic_variable |
-| `FCM_SERVICE_ACCOUNT_JSON` | server secret | core-service | fly:hs-core-development | fly:hs-core-staging | fly:hs-core-production | fly_secret |
+| `FCM_SERVICE_ACCOUNT_JSON` | server secret | core-service | fly:homeschool-core-dev | fly:homeschool-core-staging | fly:homeschool-core-prod | fly_secret |
 | `FLY_API_TOKEN` | server secret | ci-deploy | github-env:development | github-env:staging | github-env:production | github_actions_secret |
-| `GOOGLE_MAPS_SERVER_KEY` | server secret | core-service | fly:hs-core-development | fly:hs-core-staging | fly:hs-core-production | fly_secret |
+| `GOOGLE_MAPS_SERVER_KEY` | server secret | core-service | fly:homeschool-core-dev | fly:homeschool-core-staging | fly:homeschool-core-prod | fly_secret |
+| `HS_HEARTBEAT_URL` | server secret | core-service | - | fly:homeschool-core-staging | fly:homeschool-core-prod | fly_secret |
 | `IOS_DISTRIBUTION_CERTIFICATE` | server secret | app-stores | - | - | TBD (owner-blocked) | app_store_console |
 | `IOS_PROVISIONING_PROFILES` | server secret | app-stores | - | - | TBD (owner-blocked) | app_store_console |
-| `JOB_TICK_SECRET` | server secret | core-service | fly:hs-core-development | fly:hs-core-staging | fly:hs-core-production | fly_secret |
+| `JOB_TICK_SECRET` | server secret | core-service | fly:homeschool-core-dev | fly:homeschool-core-staging | fly:homeschool-core-prod | fly_secret |
 | `JOB_TICK_SECRET` | server secret | job-tick-function | appwrite-fn:job-tick-development | appwrite-fn:job-tick-staging | appwrite-fn:job-tick-production | appwrite_function_variable |
-| `MOMO_COLLECTION_API_KEY` | server secret | core-service | fly:hs-core-development (sandbox) | fly:hs-core-staging (sandbox) | fly:hs-core-production (live) | fly_secret |
-| `MOMO_COLLECTION_SUBSCRIPTION_KEY` | server secret | core-service | fly:hs-core-development (sandbox) | fly:hs-core-staging (sandbox) | fly:hs-core-production (live) | fly_secret |
-| `MOMO_DISBURSEMENT_API_KEY` | server secret | core-service | fly:hs-core-development (sandbox) | fly:hs-core-staging (sandbox) | fly:hs-core-production (live) | fly_secret |
-| `MOMO_DISBURSEMENT_SUBSCRIPTION_KEY` | server secret | core-service | fly:hs-core-development (sandbox) | fly:hs-core-staging (sandbox) | fly:hs-core-production (live) | fly_secret |
+| `MOMO_COLLECTION_API_KEY` | server secret | core-service | fly:homeschool-core-dev (sandbox) | fly:homeschool-core-staging (sandbox) | fly:homeschool-core-prod (live) | fly_secret |
+| `MOMO_COLLECTION_SUBSCRIPTION_KEY` | server secret | core-service | fly:homeschool-core-dev (sandbox) | fly:homeschool-core-staging (sandbox) | fly:homeschool-core-prod (live) | fly_secret |
+| `MOMO_DISBURSEMENT_API_KEY` | server secret | core-service | fly:homeschool-core-dev (sandbox) | fly:homeschool-core-staging (sandbox) | fly:homeschool-core-prod (live) | fly_secret |
+| `MOMO_DISBURSEMENT_SUBSCRIPTION_KEY` | server secret | core-service | fly:homeschool-core-dev (sandbox) | fly:homeschool-core-staging (sandbox) | fly:homeschool-core-prod (live) | fly_secret |
 | `PLAY_UPLOAD_KEYSTORE` | server secret | app-stores | - | - | TBD (owner-blocked) | app_store_console |
 | `PLAY_UPLOAD_KEYSTORE_PASSWORD` | server secret | codemagic | - | - | TBD (owner-blocked) | codemagic_variable |
-| `RESEND_API_KEY` | server secret | core-service | fly:hs-core-development | fly:hs-core-staging | fly:hs-core-production | fly_secret |
-| `RESEND_WEBHOOK_SECRET` | server secret | core-service | fly:hs-core-development | fly:hs-core-staging | fly:hs-core-production | fly_secret |
+| `RESEND_API_KEY` | server secret | core-service | fly:homeschool-core-dev | fly:homeschool-core-staging | fly:homeschool-core-prod | fly_secret |
+| `RESEND_WEBHOOK_SECRET` | server secret | core-service | fly:homeschool-core-dev | fly:homeschool-core-staging | fly:homeschool-core-prod | fly_secret |
 | `SENTRY_AUTH_TOKEN` | server secret | ci-deploy | github-env:development | github-env:staging | github-env:production | github_actions_secret |
-| `SENTRY_DSN` | server secret | core-service | fly:hs-core-development | fly:hs-core-staging | fly:hs-core-production | fly_secret |
+| `SENTRY_DSN` | server secret | core-service | fly:homeschool-core-dev | fly:homeschool-core-staging | fly:homeschool-core-prod | fly_secret |
 | `GOOGLE_MAPS_ANDROID_KEY` | public client key | app-parent | build define | build define | build define | build_define |
 | `GOOGLE_MAPS_IOS_KEY` | public client key | app-parent | build define | build define | build define | build_define |
 | `SENTRY_DSN_APP` | public client key | app-parent | build define | build define | build define | build_define |
@@ -50,6 +51,10 @@ Which variable exists in which environment, what kind it is and where it lives. 
 | `GIT_SHA` | config | core-service | set by build | set by build | set by build | fly_env |
 | `HS_DEBUG` | config | core-service | false | false | false | fly_env |
 | `HS_ENV` | config | core-service | dev | staging | production | fly_env |
+| `HS_PRODUCTION_ADMIN_URL` | config | ops-uptime | - | - | https base URL of the production admin app (hostname, owner-blocked until it exists) | provider_console |
+| `HS_PRODUCTION_API_URL` | config | ops-uptime | - | - | https base URL of the production core service (hostname, owner-blocked until it exists) | provider_console |
+| `HS_STAGING_ADMIN_URL` | config | ops-uptime | - | https base URL of the staging admin app (hostname, owner-blocked until it exists) | - | provider_console |
+| `HS_STAGING_API_URL` | config | ops-uptime | - | https base URL of the staging core service (hostname, owner-blocked until it exists) | - | provider_console |
 | `JOB_ALERT_AFTER_FAILURES` | config | core-service | 3 | 3 | 3 | fly_env |
 | `LOG_LEVEL` | config | core-service | DEBUG | INFO | INFO | fly_env |
 | `MOMO_COLLECTION_API_USER` | config | core-service | own user id | own user id | own user id | fly_env |

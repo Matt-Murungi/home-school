@@ -247,6 +247,137 @@ class Validator(unittest.TestCase):
         self.assertNotIn("inventory already lists", text)
         self.assertNotIn("=- -a", text)
 
+    # Round 3: uptime vars, Fly names, wrong types, overlap truth
+    def test_uptime_manifest_variables_all_have_rows(self):
+        names = {e["name"] for e in inv()["entries"]}
+        for v in (
+            "HS_HEARTBEAT_URL",
+            "HS_STAGING_API_URL",
+            "HS_STAGING_ADMIN_URL",
+            "HS_PRODUCTION_API_URL",
+            "HS_PRODUCTION_ADMIN_URL",
+        ):
+            self.assertIn(v, names)
+        self.assertEqual(entry(inv(), "HS_HEARTBEAT_URL")["kind"], "server_secret")
+        self.assertEqual(entry(inv(), "HS_STAGING_API_URL")["kind"], "non_secret")
+
+    def test_missing_uptime_variable_row_flagged(self):
+        for name in ("HS_HEARTBEAT_URL", "HS_STAGING_API_URL"):
+            i = inv()
+            i["entries"] = [e for e in i["entries"] if e["name"] != name]
+            self.assertFails(i, f"{name}: named in ops/uptime.json")
+
+    def test_heartbeat_url_must_be_server_secret_and_base_urls_config(self):
+        i = inv()
+        entry(i, "HS_HEARTBEAT_URL")["kind"] = "non_secret"
+        self.assertFails(i, "HS_HEARTBEAT_URL: heartbeat URL is a capability secret")
+        i = inv()
+        e = entry(i, "HS_STAGING_API_URL")
+        e["kind"] = "server_secret"
+        self.assertFails(i, "HS_STAGING_API_URL: uptime base URL")
+
+    def test_fly_app_names_follow_adr_0003(self):
+        adr = next((ROOT / "docs/adr").glob("0003*")).read_text()
+        for n in ("homeschool-core-staging", "homeschool-core-prod"):
+            self.assertIn(n, adr)
+        e = entry(inv(), "APPWRITE_API_KEY", "core-service")
+        self.assertEqual(e["stores"]["staging"], "fly:homeschool-core-staging")
+        self.assertEqual(e["stores"]["production"], "fly:homeschool-core-prod")
+        for f in (
+            "docs/ops/secrets.md",
+            "docs/runbooks/secrets.md",
+            "docs/ops/secrets-inventory.json",
+            "docs/ops/config-matrix.md",
+        ):
+            text = (ROOT / f).read_text()
+            self.assertNotIn("fly:hs-", text, f)
+            self.assertNotIn("-a hs-core-", text, f)
+            self.assertNotIn("Fly apps `hs-core", text, f)
+
+    def test_wrong_types_give_named_errors_not_tracebacks(self):
+        def mutate(fn):
+            i = inv()
+            fn(i)
+            return i
+
+        cases = {
+            "top-level list": [],
+            "entries not a list": mutate(lambda i: i.update(entries={})),
+            "procedures missing": mutate(lambda i: i.pop("procedures")),
+            "procedures list": mutate(lambda i: i.update(procedures=[])),
+            "consumers null": mutate(lambda i: i.update(consumers=None)),
+            "entry not an object": mutate(lambda i: i["entries"].append("oops")),
+            "name int": mutate(lambda i: entry(i, "RESEND_API_KEY").update(name=5)),
+            "stores list": mutate(
+                lambda i: entry(i, "RESEND_API_KEY").update(stores=[])
+            ),
+            "stores null": mutate(
+                lambda i: entry(i, "RESEND_API_KEY").update(stores=None)
+            ),
+            "consumer list": mutate(
+                lambda i: entry(i, "RESEND_API_KEY").update(consumer=["core-service"])
+            ),
+            "kind list": mutate(
+                lambda i: entry(i, "RESEND_API_KEY").update(kind=["server_secret"])
+            ),
+            "procedure list": mutate(
+                lambda i: entry(i, "RESEND_API_KEY").update(procedure=["x"])
+            ),
+            "blast_radius int": mutate(
+                lambda i: entry(i, "RESEND_API_KEY").update(blast_radius=3)
+            ),
+            "rotation_owner list": mutate(
+                lambda i: entry(i, "RESEND_API_KEY").update(rotation_owner=[])
+            ),
+        }
+        for label, bad in cases.items():
+            with self.subTest(label):
+                out = sc.validate(bad, ROOT)
+                self.assertTrue(out, label)
+                self.assertTrue(all(isinstance(m, str) for m in out))
+
+    def test_wrong_type_errors_name_the_field(self):
+        i = inv()
+        entry(i, "RESEND_API_KEY")["blast_radius"] = 3
+        self.assertFails(i, "blast_radius must be text")
+        i = inv()
+        entry(i, "RESEND_API_KEY")["stores"] = []
+        self.assertFails(i, "stores must be an object")
+
+    def test_deleted_top_level_environments_fails(self):
+        i = inv()
+        i.pop("environments")
+        self.assertFails(i, "environments")
+
+    def test_removed_admin_env_row_is_named(self):
+        i = inv()
+        i["entries"] = [e for e in i["entries"] if e["name"] != "ADMIN_ENV"]
+        self.assertFails(i, "ADMIN_ENV: read by an app but missing from the inventory")
+
+    def test_store_message_grammar(self):
+        i = inv()
+        entry(i, "RESEND_API_KEY")["stores"]["development"] = "fly:x-staging"
+        out = errs(i)
+        self.assertTrue(any("is not a development store" in m for m in out), out)
+        self.assertFalse(
+            any("an production" in m or "an development" in m for m in out)
+        )
+
+    def test_job_tick_secret_rotation_is_not_overlapping(self):
+        i = inv()
+        for e in i["entries"]:
+            if e["name"] == "JOB_TICK_SECRET":
+                self.assertFalse(e["rotation_overlap"])
+                self.assertIn("tick", e["downtime_note"])
+        steps = " ".join(i["procedures"]["job-tick-secret"]).lower()
+        self.assertNotIn("previous-secret value", steps)
+        self.assertNotIn("unset any previous", steps)
+
+    def test_rolling_restart_claim_is_labelled_unverified(self):
+        text = (ROOT / "docs/ops/secrets-inventory.json").read_text()
+        self.assertNotIn("machines restart one at a time", text)
+        self.assertNotIn("rolling restart, no downtime", text)
+
     # Rotation
     def test_missing_rotation_procedure_rejected(self):
         i = inv()
