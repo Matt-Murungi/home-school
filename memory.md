@@ -71,6 +71,7 @@ Reviewer writes: commands run, results, criterion-by-criterion verdict, findings
 | appwrite (F02) | `cd appwrite && python3 -m unittest discover -s tests -v` (60 tests, stdlib only, offline). Also `python3 appwrite/check_keys.py` validates `appwrite/keys.md`. Migration runner: `python3 appwrite/migrate.py --env staging` (needs real env, owner-blocked). |
 
 | appwrite schema (M01) | `cd appwrite && python3 -m unittest discover -s tests -v` (119 tests incl. `tests/test_schema.py`); `python3 appwrite/schema_build.py --check` (validate + generated files fresh), `--write` to regenerate config and `docs/erd`; `python3 appwrite/diff_live.py <snapshot.json>` (offline live diff) |
+| secrets (F09) | `python3 scripts/secrets_check.py` (validates `docs/ops/secrets-inventory.json`, `.env.example`, generated docs; `--write` regenerates tables), tests `python3 -m unittest scripts.tests.test_secrets` (36) and `cd services/core && uv run pytest tests/test_config_inventory.py`. Also part of `make test`/`make lint` via `root-tests`. Stdlib only, offline. |
 
 (Add a row for each new package.)
 
@@ -423,6 +424,30 @@ Suggested order: E00 decisions (D01–D03, D05; D04, D06 later/owner) → E01 fo
   3. **Insert-only claim is overstated in the schema notes.** `core.json` meta for `consent_record` says "the core service exposes no update or delete for it", which is not true today (F03 `Repository` has update/delete for every table). Reword in `core.json` (and regenerate ERD) to: no client write permission now; core-service guard is a follow-up (M05/M06). Also state in the notes (and `appwrite/README.md` convention section) how `immutable`/`soft` tables meet DP-6/SR 5.5 ("hard delete only under the retention policy"): the retention job is the only allowed hard-deleter (child consent rows are removed with the child under the retention policy), so M05/M06 must make that explicit exception. Docs only.
   4. **Drift semantics, document or detect:** `ensure_table` ignores differing index definitions (same key, different columns/type) and table `rowSecurity`/`$permissions` drift, in both fake and real adapter. Either raise on them or document "index and permission drift is not detected" in the `ensure_table` docstring and README. Also note in `availability_slot` meta that overlapping slots are allowed by the schema and de-duplicated/merged by the core service (the edge case is otherwise silent).
   Owner-blocked and accepted as-is: applying 0002 to a non-live project, live REST shape verification, source-of-truth choice, repository-level insert-only guard as a clearly stated M05/M06 follow-up. The `sample_item.status` change (required column with a default is invalid in Appwrite) is justified.
+
+### F09 · Secrets management and environment configuration (#35)
+- Status: **ready-for-review** on branch `f09-secrets-config` (commits start `F09:`, pushed, PR not opened). Foundation done; staging drill and real secret setup are owner-blocked.
+- Built: `docs/ops/secrets-inventory.json` (40 entries: 20 server secrets, 3 public client keys per app set, config; per entry name, kind, consumer, environments, store per environment, owner, interval, procedure, overlap, blast radius), `scripts/secrets_check.py` (validator + `--write` doc generator), `docs/ops/secrets.md` (policy, status, owner steps with defaults), `docs/ops/config-matrix.md` (generated matrix + rules), `docs/runbooks/secrets.md` (schedule, leak response, committed-to-git, shared key, generated procedures, staging drill checklist, rotation log), scanner rules for Google/Resend/Sentry DSN/Fly/Africa's Talking in `scripts/secret_scan.py`, `services/core/tests/test_config_inventory.py`, `packages.json` root-tests lint runs the validator. Runbook is at `docs/runbooks/secrets.md` (issue path), docs at `docs/ops/` (no `ops/` top-level dir: layout guard).
+- Tests: `python3 -m unittest scripts.tests.test_secrets` 36 OK; core `uv run pytest -q` 92 passed (19 new), ruff clean; `make test` and `make lint` 0 on the branch before F06 merged. After rebase `scripts/tests/test_round2.py` hook tests (2) failed in my worktree because F06 put `apps/admin` on main (prettier hook guard needs `npm ci`); not F09 code, reviewer please confirm on a clean main.
+- GitHub secret scanning and push protection are already **enabled** on the repo (read via API 25 Nov); validity checks and non-provider patterns are off.
+- Criterion/edge case to test:
+
+| Criterion / edge case | Test |
+|---|---|
+| No secrets in repo or bundles except public keys | `test_server_secret_in_app_bundle_rejected`, `test_public_client_key_needs_restriction`, `test_public_key_outside_build_define_rejected`, `test_repo_is_clean`, `test_inventory_never_contains_secret_values`, `test_unlisted_app_key_flagged_and_public_secretlike_flagged` |
+| Secret scanning enabled | scanner: `test_provider_keys_flagged_without_echo`, `test_clean_file_passes`, `test_gitignore_blocks_env_files_but_not_example`; GitHub setting verified read-only (not testable offline) |
+| Rotation runbook in docs/runbooks/secrets.md | `test_runbook_has_leak_response_and_drill`, `test_missing_runbook_section_flagged`, `test_every_server_secret_has_full_rotation_record`, `test_missing_rotation_procedure_rejected`, `test_short_procedure_rejected`, `test_generated_docs_in_sync`, `test_drift_detected` |
+| Edge: key leaks, rotate within an hour without downtime | runbook "Leak response" (1 h budget, overlap procedures); `test_no_overlap_requires_downtime_note`, `test_rotation_interval_bounds` |
+| Edge: secret accidentally committed | `test_provider_keys_flagged_without_echo` + runbook "Committed to git" section |
+| Edge: shared dev key / prod secret in dev | `test_shared_key_between_environments_detected`, `test_production_store_in_dev_consumer_rejected`, `test_live_value_in_non_production_rejected`, `test_dev_only_consumer_with_production_scope_rejected`, `test_server_secret_must_declare_distinct_value_per_environment`, `test_appwrite_keys_distinct_per_consumer_and_environment` |
+| Missing variable at startup fails fast, clearly | core `test_missing_deployed_variable_fails_fast_naming_it` (imports F03 `load_settings`, names variable, no value) |
+| `.env.example` complete with empty values | `test_core_env_example_complete_and_empty`, `test_missing_nonempty_and_extra_variables_flagged`, core `test_env_example_lists_every_setting_with_empty_value` |
+| Every config key in inventory or marked non-secret | `test_every_core_setting_is_in_inventory`, `test_secretstr_setting_must_be_server_secret`, `test_app_sources_scanned_for_config_keys`, core `test_every_setting_is_in_inventory_with_matching_kind` |
+| Appwrite keys consistent with F02 keys.md | `test_appwrite_interval_not_longer_than_keys_md_expiry` |
+| Rotation tested once on staging; deployed to staging | owner-blocked (needs Fly staging app + Appwrite staging project); drill checklist ready |
+
+- Notes for other tickets: any new `Settings` field or app env var fails `secrets_check.py` until added to the inventory (F04's `JOB_ALERT_AFTER_FAILURES`, `CORE_SERVICE_URL`, F06's `ADMIN_ENV` already listed). F08's new settings, if any, need rows. F04 follow-up: accept `JOB_TICK_SECRET_PREVIOUS` for overlapping rotation.
+- Blocked on owner (steps in `docs/ops/secrets.md`): create Fly apps `hs-core-<env>`; Appwrite projects and keys per `appwrite/keys.md`; `fly secrets set`; GitHub environments with required reviewers on production and the three secrets; provider accounts; run the drill. Recommended default: Fly secrets for runtime + GitHub environment secrets for CI, no separate secrets manager.
 
 ## Blocked on owner (credentials / deployments / accounts)
 
