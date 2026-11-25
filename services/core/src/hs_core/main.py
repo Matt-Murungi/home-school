@@ -32,6 +32,9 @@ from .ledger import AppwriteLedgerStore, LedgerService
 from .logging_setup import configure_logging, request_id_var
 from .notifications import build_notification_service
 from .notifications import dispatch as notification_dispatch_job
+from .notifications.api import router as notifications_router
+from .notifications.suppression import SuppressionList
+from .notifications.webhooks import WebhookProcessor
 from .observability import ErrorReporter, build_reporter, report_once
 from .permissions.wiring import wire_permissions
 from .repository import Repository, build_repository
@@ -127,11 +130,19 @@ def create_app(
     )
     otp_jobs.bind(app.state.repository)
     notification_dispatch_job.bind(app.state.notifications)
+    notification_dispatch_job.bind_repository(app.state.repository)
+    app.state.email_webhooks = WebhookProcessor(
+        app.state.notifications.email.sender,
+        app.state.notifications,
+        app.state.notifications.email.suppression or SuppressionList(app.state.repository),
+        app.state.repository,
+    )
     errors.install(app)
     app.include_router(jobs_router)
     app.include_router(otp_router)
     app.include_router(audit_events_router)
     app.include_router(catalogue_router)
+    app.include_router(notifications_router)
 
     @app.middleware("http")
     async def request_context(request: Request, call_next):

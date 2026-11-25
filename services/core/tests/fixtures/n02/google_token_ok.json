@@ -1,0 +1,5 @@
+{
+  "access_token": "ya29.example-access-token-canary",
+  "expires_in": 3599,
+  "token_type": "Bearer"
+}

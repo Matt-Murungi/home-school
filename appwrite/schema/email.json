@@ -1,0 +1,167 @@
+{
+ "domain": "email",
+ "description": "Email provider bookkeeping owned by the core service (N02, SR section 8): the suppression list (addresses we never email again) and the processed-webhook log that makes provider callbacks idempotent. Server-only: no table or row permissions, no address and no message content is stored (addresses are hashed).",
+ "tables": [
+  {
+   "$id": "email_suppression",
+   "name": "email_suppression",
+   "enabled": true,
+   "rowSecurity": true,
+   "$permissions": [],
+   "columns": [
+    {
+     "key": "address_hash",
+     "type": "varchar",
+     "size": 64,
+     "required": true
+    },
+    {
+     "key": "reason",
+     "type": "string",
+     "format": "enum",
+     "elements": [
+      "hard_bounce",
+      "complaint",
+      "provider_suppressed",
+      "manual"
+     ],
+     "required": true
+    },
+    {
+     "key": "source_event_id",
+     "type": "varchar",
+     "size": 128,
+     "required": false
+    },
+    {
+     "key": "created_at",
+     "type": "datetime",
+     "required": true
+    },
+    {
+     "key": "revoked_at",
+     "type": "datetime",
+     "required": false
+    }
+   ],
+   "indexes": [
+    {
+     "key": "unique_address_hash",
+     "type": "unique",
+     "columns": [
+      "address_hash"
+     ],
+     "orders": [
+      "ASC"
+     ]
+    },
+    {
+     "key": "by_created",
+     "type": "key",
+     "columns": [
+      "created_at"
+     ],
+     "orders": [
+      "ASC"
+     ]
+    }
+   ]
+  },
+  {
+   "$id": "webhook_event",
+   "name": "webhook_event",
+   "enabled": true,
+   "rowSecurity": true,
+   "$permissions": [],
+   "columns": [
+    {
+     "key": "provider",
+     "type": "string",
+     "format": "enum",
+     "elements": [
+      "resend"
+     ],
+     "required": true
+    },
+    {
+     "key": "event_id",
+     "type": "varchar",
+     "size": 128,
+     "required": true
+    },
+    {
+     "key": "event_type",
+     "type": "varchar",
+     "size": 64,
+     "required": false
+    },
+    {
+     "key": "status",
+     "type": "string",
+     "format": "enum",
+     "elements": [
+      "processing",
+      "done"
+     ],
+     "required": true
+    },
+    {
+     "key": "received_at",
+     "type": "datetime",
+     "required": true
+    },
+    {
+     "key": "processed_at",
+     "type": "datetime",
+     "required": false
+    },
+    {
+     "key": "expires_at",
+     "type": "datetime",
+     "required": true
+    }
+   ],
+   "indexes": [
+    {
+     "key": "unique_provider_event",
+     "type": "unique",
+     "columns": [
+      "provider",
+      "event_id"
+     ],
+     "orders": [
+      "ASC",
+      "ASC"
+     ]
+    },
+    {
+     "key": "by_expires",
+     "type": "key",
+     "columns": [
+      "expires_at"
+     ],
+     "orders": [
+      "ASC"
+     ]
+    }
+   ]
+  }
+ ],
+ "meta": {
+  "email_suppression": {
+   "deletion": "history",
+   "note": "Addresses that must never be emailed again: hard bounce, spam complaint, the provider's own suppression, or a manual entry. address_hash = sha256 hex of 'hs-email-suppression:' + the address lower-cased (a plain hash, no secret: it only needs to match at send time; with a copy of the table an attacker can test guesses of known addresses, so the table is server-only and has no read permission). Row $id = sha256(email_suppression, address_hash)[:36], so adding an address twice is idempotent (Conflict = already listed). Never removed: a release (support fixed a typo, the owner approves) sets revoked_at and the address may be emailed again until the provider reports a new bounce, which clears revoked_at. Applies to ALL email including safeguarding mail (owner default: safeguarding falls back to push/in-app and alerts an admin).",
+   "non_fk": {
+    "source_event_id": "provider webhook event id (svix-id), not a user"
+   }
+  },
+  "webhook_event": {
+   "deletion": "hard",
+   "note": "One row per processed provider webhook delivery, the replay and duplicate guard. Row $id = sha256(webhook_event, provider:event_id)[:36]; create is the atomic claim. status processing = claimed, effects may be half applied (a retry re-applies them, they are idempotent); done = finished, a repeat is acknowledged and ignored. No payload, address or recipient is stored. The webhook-event-cleanup job hard-deletes rows after expires_at (7 days, far longer than the 5 minute signature timestamp tolerance, so a replay of an old body fails the timestamp check before it needs the row).",
+   "non_fk": {
+    "event_id": "provider event id (svix-id), not a user"
+   }
+  }
+ },
+ "relations": []
+}

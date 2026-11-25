@@ -147,6 +147,16 @@ class Settings(BaseSettings):
     notify_retry_base_s: int = 60
     notify_lease_s: int = 120
     notify_escalate_after_min: int = 15
+    # N02 providers. Resend (email) and FCM (push): owner-blocked, no accounts yet. An adapter is
+    # used ONLY when every setting of its group is present and valid; none set = the permanent-
+    # failure placeholders of N01 (never fake success). A half-set group fails startup.
+    resend_api_key: SecretStr = SecretStr("")
+    resend_webhook_secret: SecretStr = SecretStr("")  # `whsec_...` from the Resend webhook page
+    email_from: str = ""  # one plain address on the verified sending domain (D05)
+    email_from_name: str = "Home School"
+    email_reply_to: str = ""  # optional monitored mailbox
+    fcm_service_account_json: SecretStr = SecretStr("")  # the Firebase service account key (JSON)
+    fcm_project_id: str = ""  # optional: defaults to project_id inside the JSON
     # K01 catalogue read API. Published versions never change: a year, immutable.
     catalogue_immutable_max_age_s: int = 31536000
     catalogue_current_max_age_s: int = 60  # pointers: current version, curricula, version lists
@@ -172,9 +182,59 @@ class Settings(BaseSettings):
     audit_recover_grace_s: int = 300  # in-flight changes younger than this are left alone
     admin_audit_rate_per_min: int = 60  # admin-UI audit events per admin per minute (429 above)
 
+    def email_configured(self) -> bool:
+        return bool(
+            self.resend_api_key.get_secret_value().strip()
+            and self.resend_webhook_secret.get_secret_value().strip()
+            and self.email_from.strip()
+        )
+
+    def push_configured(self) -> bool:
+        return bool(self.fcm_service_account_json.get_secret_value().strip())
+
+    def _provider_problems(self) -> list[str]:
+        """N02: a provider group is all-or-nothing and must parse. Names only, never values."""
+        from .notifications.fcm import parse_service_account
+        from .notifications.resend import ResendEmailSender
+
+        out: list[str] = []
+        parts = {
+            "RESEND_API_KEY": bool(self.resend_api_key.get_secret_value().strip()),
+            "RESEND_WEBHOOK_SECRET": bool(self.resend_webhook_secret.get_secret_value().strip()),
+            "EMAIL_FROM": bool(self.email_from.strip()),
+        }
+        if any(parts.values()):
+            if not all(parts.values()):
+                missing = ", ".join(k for k, v in parts.items() if not v)
+                out.append(f"email provider is half configured, missing: {missing}")
+            else:
+                try:
+                    ResendEmailSender(
+                        self.resend_api_key.get_secret_value(),
+                        self.resend_webhook_secret.get_secret_value(),
+                        self.email_from,
+                        self.email_reply_to or None,
+                        self.email_from_name,
+                    )
+                except ValueError as e:  # messages name the variable, never the value
+                    out.append(str(e))
+        elif self.email_reply_to.strip():
+            out.append("EMAIL_REPLY_TO is set but the email provider is not configured")
+        if self.push_configured():
+            try:
+                parse_service_account(
+                    self.fcm_service_account_json.get_secret_value(), self.fcm_project_id
+                )
+            except ValueError as e:
+                out.append(str(e))
+        elif self.fcm_project_id.strip():
+            out.append("FCM_PROJECT_ID is set but FCM_SERVICE_ACCOUNT_JSON is not")
+        return out
+
     def problems(self) -> list[str]:
         """Variable-name-only list of what is wrong for this environment."""
         out: list[str] = []
+        out += self._provider_problems()
         dsn = self.sentry_dsn.get_secret_value().strip()
         if dsn and urlparse(dsn).scheme != "https":
             out.append("SENTRY_DSN must be an https DSN")

@@ -37,7 +37,7 @@ Rotate each server secret on its interval (table below). Put a calendar reminder
 | `PLAY_UPLOAD_KEYSTORE` | app-stores (owner-blocked) | platform-owner | 365 d | signing-credential | yes | Sign app bundles as us for upload to Play. Play App Signing holds the real app signing key, so a leaked upload key can be reset through Play support; still a release-integrity risk. |
 | `PLAY_UPLOAD_KEYSTORE_PASSWORD` | codemagic (owner-blocked) | platform-owner | 365 d | signing-credential | yes | With the keystore file, signs uploads to Play. Stored as a Codemagic secure variable; never committed. |
 | `RESEND_API_KEY` | core-service | platform-owner | 180 d | provider-key | yes | Send email as our domain (receipts, safeguarding notices); phishing and reputation risk. Restrict to sending only (ADR 0005). |
-| `RESEND_WEBHOOK_SECRET` | core-service | platform-owner | 180 d | webhook-secret | yes | Forge delivery and bounce events. |
+| `RESEND_WEBHOOK_SECRET` | core-service | platform-owner | 180 d | webhook-secret | no | Forge delivery and bounce events. |
 | `SENTRY_AUTH_TOKEN` | ci-deploy | platform-owner | 90 d | github-env-secret | yes | Upload source maps and manage releases in Sentry; scoped to project:releases only. |
 | `SENTRY_DSN` | core-service | platform-owner | 365 d | provider-key | yes | Write-only: submit fake events to our Sentry project. Low severity; rotate by creating a new client key and deleting the old one. |
 <!-- END GENERATED:schedule -->

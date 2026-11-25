@@ -40,3 +40,34 @@ def notification_dispatch(ctx: JobContext) -> Done | Continue:
     if service is None:
         raise RuntimeError("notification-dispatch ran before the service was bound")
     return make_handler(service)(ctx)
+
+
+# ------------------------------------------------------------------ webhook-event-cleanup (N02)
+_bound_repo: dict[str, object] = {}
+
+
+def bind_repository(repo) -> None:
+    _bound_repo["repo"] = repo
+
+
+def make_webhook_cleanup_handler(repo, clock=None, page: int = PAGE):
+    from datetime import UTC, datetime
+
+    from .webhooks import cleanup_webhook_events
+
+    now_fn = clock or (lambda: datetime.now(UTC))
+
+    def handler(ctx: JobContext) -> Done | Continue:
+        n = cleanup_webhook_events(repo, now_fn(), page)
+        if n >= page:
+            return Continue(cursor=None, items=n)
+        return Done(items=n)
+
+    return handler
+
+
+def webhook_event_cleanup(ctx: JobContext) -> Done | Continue:
+    repo = _bound_repo.get("repo")
+    if repo is None:
+        raise RuntimeError("webhook-event-cleanup ran before the repository was bound")
+    return make_webhook_cleanup_handler(repo)(ctx)

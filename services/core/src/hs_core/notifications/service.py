@@ -43,6 +43,7 @@ from ..repository import Conflict, NotFound, Repository
 from . import engine, preferences, quiet_hours
 from .catalog import EVENTS, EventDef
 from .channels import (
+    AddressSuppression,
     ChannelResult,
     EmailChannel,
     EmailSender,
@@ -51,6 +52,7 @@ from .channels import (
     InAppMessage,
     PushChannel,
     PushMessage,
+    send_each,
 )
 from .config import NotificationConfig
 from .devices import DeviceRegistry, token_hash
@@ -256,11 +258,14 @@ class NotificationService:
         clock: Callable[[], datetime] | None = None,
         alerts: AlertSink | None = None,
         escalation: EscalationHooks | None = None,
+        suppression: AddressSuppression | None = None,
+        email_from: str = "",
+        email_reply_to: str | None = None,
     ) -> None:
         self.repo = repo
         self.store = store
         self.push = push
-        self.email = EmailChannel(email_sender)
+        self.email = EmailChannel(email_sender, email_from, email_reply_to, suppression)
         self.in_app = in_app
         self.directory = directory
         self.devices = devices
@@ -383,7 +388,14 @@ class NotificationService:
     ) -> None:
         """Provider receipt (email webhook, push receipt). Idempotent and order-safe: a later
         `delivered` never reopens a row that failed."""
-        if kind not in ("delivered", "bounced", "bounced_soft", "complained"):
+        if kind not in (
+            "delivered",
+            "bounced",
+            "bounced_soft",
+            "complained",
+            "failed",
+            "suppressed",
+        ):
             raise ValueError(f"unknown delivery event {kind!r}")
         with self._row_locks(notification_id):
             row = self.repo.get(TABLE, notification_id)
@@ -397,6 +409,13 @@ class NotificationService:
                 if status in ("sent", "delivered"):
                     patch["status"] = "failed"
                     patch["last_error"] = "bounced:" + _EMAIL_RE.sub("[address]", reason)[:120]
+                    self._maybe_alert_failed(row)
+            elif kind in ("failed", "suppressed"):
+                # the provider did not send it (our request failed late, or the address is on the
+                # provider's suppression list): not delivered
+                if status in ("sent", "delivered"):
+                    patch["status"] = "failed"
+                    patch["last_error"] = f"provider_{kind}"
                     self._maybe_alert_failed(row)
             elif kind == "bounced_soft":
                 soft = meta.setdefault("soft_bounces", [])
@@ -718,7 +737,7 @@ class NotificationService:
         group = payload["meta"].get("group", 0)
         uid = row["user_id"]
         if channel is Channel.PUSH:
-            return self._deliver_push(rid, row, rendered, group)
+            return self._deliver_push(rid, row, rendered, group, payload["meta"])
         if channel is Channel.EMAIL:
             to = self.directory.email_for(uid)
             if not to:
@@ -735,28 +754,37 @@ class NotificationService:
             InAppMessage(uid, rendered.title, rendered.body, row.get("deep_link"), f"{rid}:{group}")
         )
 
-    def _deliver_push(self, rid: str, row: dict, rendered: Rendered, group: int) -> ChannelResult:
+    def _deliver_push(
+        self, rid: str, row: dict, rendered: Rendered, group: int, meta: dict
+    ) -> ChannelResult:
         targets = self.devices.active_tokens(row["user_id"])
         data = {"notification_id": rid}
         if row.get("deep_link"):
             data["deep_link"] = row["deep_link"]
+        priority = meta.get("priority", "operational")
+        ttl_s = None
+        if meta.get("not_after"):
+            ttl_s = max(0, int((_dt(meta["not_after"]) - self._now()).total_seconds()))
+        messages = [
+            PushMessage(
+                t.token,
+                rendered.title,
+                rendered.body,
+                data,
+                f"{rid}:{group}:{token_hash(t.token)[:12]}",
+                priority=priority,
+                ttl_s=ttl_s,
+                channel=f"hs_{priority}",
+            )
+            for t in targets
+        ]
+        results = send_each(self.push, messages) if messages else []
         accepted: ChannelResult | None = None
         transient = False
         transient_detail = "transient"
+        retry_after: float | None = None
         unregistered = 0
-        for t in targets:
-            try:
-                res = self.push.send(
-                    PushMessage(
-                        t.token,
-                        rendered.title,
-                        rendered.body,
-                        data,
-                        f"{rid}:{group}:{token_hash(t.token)[:12]}",
-                    )
-                )
-            except Exception as e:  # noqa: BLE001 - one device must not stop the others
-                res = self._raised(rid, Channel.PUSH, e)
+        for t, res in zip(targets, results, strict=True):
             if res.accepted:
                 accepted = accepted or res
             elif res.failure is FailureKind.UNREGISTERED:
@@ -766,10 +794,14 @@ class NotificationService:
                 transient = True
                 if res.detail.startswith("exception:"):
                     transient_detail = res.detail
+                if res.retry_after_s is not None:
+                    retry_after = max(retry_after or 0.0, res.retry_after_s)
         if accepted:
             return accepted
         if transient:
-            return ChannelResult(False, FailureKind.TRANSIENT, detail=transient_detail)
+            return ChannelResult(
+                False, FailureKind.TRANSIENT, detail=transient_detail, retry_after_s=retry_after
+            )
         gone = unregistered == len(targets)  # includes "no device registered"
         return ChannelResult(
             False, FailureKind.PERMANENT, detail="no_device" if gone else "permanent"
@@ -804,6 +836,8 @@ class NotificationService:
         if transient and attempts < self.config.max_attempts:
             meta["group"] = meta.get("group", 0) + 1
             wait = self.config.retry_base_s * 2 ** (attempts - 1)
+            if result.retry_after_s:  # provider back-pressure (already clamped by the adapter)
+                wait = max(wait, result.retry_after_s)
             self.repo.update(
                 TABLE,
                 rid,

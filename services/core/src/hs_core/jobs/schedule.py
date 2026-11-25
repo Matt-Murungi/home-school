@@ -12,7 +12,7 @@ from datetime import datetime, timedelta
 
 from ..audit.recover import audit_recover
 from ..auth_otp.jobs import otp_cleanup
-from ..notifications.dispatch import notification_dispatch
+from ..notifications.dispatch import notification_dispatch, webhook_event_cleanup
 from ..permissions.jobs import address_revoke, permission_audit, permission_reconcile
 from ..travel.jobs import travel_cache_refresh
 from .handlers import heartbeat
@@ -51,6 +51,14 @@ JOBS: list[JobSpec] = [
         max_attempts=3,
         catch_up=timedelta(minutes=5),
         timeout=timedelta(seconds=30),
+    ),
+    # N02: purge processed email-webhook ids after 7 days (replay guard rows). Idempotent, chunked.
+    JobSpec(
+        "webhook-event-cleanup",
+        webhook_event_cleanup,
+        schedule=Schedule(timedelta(days=1), anchor=datetime(2026, 1, 1, 3, tzinfo=KAMPALA)),
+        max_attempts=3,
+        catch_up=timedelta(days=1),
     ),
     # M05 (#40, ADR 0012): permission jobs. All three recompute from state, so repeats are safe.
     JobSpec(

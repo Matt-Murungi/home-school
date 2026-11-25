@@ -1,0 +1,13 @@
+{
+  "error": {
+    "code": 404,
+    "message": "x",
+    "status": "NOT_FOUND",
+    "details": [
+      {
+        "@type": "type.googleapis.com/google.firebase.fcm.v1.FcmError",
+        "errorCode": "UNREGISTERED"
+      }
+    ]
+  }
+}

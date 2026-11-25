@@ -1,0 +1,13 @@
+{
+  "error": {
+    "code": 401,
+    "message": "x",
+    "status": "UNAUTHENTICATED",
+    "details": [
+      {
+        "@type": "type.googleapis.com/google.firebase.fcm.v1.FcmError",
+        "errorCode": "UNAUTHENTICATED"
+      }
+    ]
+  }
+}

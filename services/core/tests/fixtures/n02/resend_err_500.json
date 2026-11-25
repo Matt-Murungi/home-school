@@ -1,0 +1,5 @@
+{
+  "statusCode": 500,
+  "name": "application_error",
+  "message": "oops"
+}

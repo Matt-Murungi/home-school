@@ -212,6 +212,7 @@ Owner steps to verify: see memory.md, ticket M05, "Owner-blocked".
 - `billing_claim`: B03 idempotency claims, server only (table arrives with its own ticket)
 - `billing_credit`: B03 billing credits, server only (table arrives with its own ticket)
 - `billing_payment`: B03 payment flags, server only (table arrives with its own ticket)
+- `email_suppression`: N02 addresses never emailed again (hashed), server only; support reads through an endpoint
 - `job_attempt`: F04 job runner attempts, server only (planned schema) (table arrives with its own ticket)
 - `job_run`: F04 job runner state, server only (planned schema) (table arrives with its own ticket)
 - `otp_challenge`: A01 one-time code hashes, server only (table arrives with its own ticket)
@@ -222,6 +223,7 @@ Owner steps to verify: see memory.md, ticket M05, "Owner-blocked".
 - `teacher_schedule_lease`: S01 per-teacher scheduling lease, server only (table arrives with its own ticket)
 - `travel_time_cache`: X01 zone-pair travel time cache, server only (table arrives with its own ticket)
 - `travel_usage`: X01 Google Routes usage counters, server only (table arrives with its own ticket)
+- `webhook_event`: N02 processed email-provider webhook ids (replay guard), server only
 
 ### Buckets (file permission = the owning row's permission)
 

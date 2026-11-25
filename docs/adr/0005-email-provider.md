@@ -109,11 +109,11 @@ class EmailSender(Protocol):
 | `bounced` (soft/transient) | `email.delivery_delayed` / transient `email.bounced` | `Bounce` (transient) | `Bounce`, type Transient, or `DeliveryDelay` | Record; retry per the job runner; suppress only after repeated failures |
 | `complained` | `email.complained` | `SpamComplaint` | `Complaint` | Suppress the address immediately; never send non-essential mail to it again; review the template |
 
-Exact provider event names and fields are written from memory of the public docs and are **to be verified** when the adapter is built; the mapping table is the contract, the names are the adapter's detail.
+Exact provider event names and fields: N02 (#127) checked the Resend event list against the public docs on 26 Nov 2026 (https://resend.com/docs/webhooks/event-types): `email.sent`, `delivered`, `bounced`, `complained`, `failed`, `suppressed`, `delivery_delayed`, `opened`, `clicked`, `scheduled`, `received` exist. Mapping used by the adapter: `email.failed` -> row failed, no suppression; `email.suppressed` -> row failed and the address is added to our list; `email.bounced` with `bounce.type` Permanent is hard, anything else soft. Signature scheme (Svix, https://docs.svix.com/receiving/verifying-payloads/how-manual): headers `svix-id`, `svix-timestamp`, `svix-signature`, secret `whsec_` + base64, HMAC-SHA256 over `id.timestamp.body`. Idempotency (https://resend.com/docs/api-reference/emails/send-email): `Idempotency-Key` header, max 256 characters, keys expire after 24 hours. This is still from documentation only and **unverified until a real account is used**; see docs/ops/notifications.md for the assumptions list.
 
 Rules that follow:
 
-- A suppressed address is never sent to, except safeguarding mail where a human decides.
+- A suppressed address is never sent to. N02 default (owner question): this includes safeguarding mail; safeguarding already goes out on push and in-app at the same time, and a failed safeguarding email raises an admin alert so a human follows up by phone.
 - Webhook handling is idempotent: events can repeat and arrive out of order (a `delivered` after a `bounced` must not reopen the address).
 - The webhook endpoint is on the core service, public, signature-checked, and rejects stale timestamps.
 

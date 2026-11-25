@@ -1,0 +1,17 @@
+{
+  "type": "email.delivered",
+  "created_at": "2027-01-18T09:00:10.000Z",
+  "data": {
+    "email_id": "56761188-7520-42d8-8898-ff6fc54ce618",
+    "created_at": "2027-01-18T09:00:00.000Z",
+    "from": "Home School <no-reply@mail.example.org>",
+    "to": [
+      "canary.person@example.org"
+    ],
+    "subject": "Subject",
+    "tags": {
+      "template": "payment_failed_parent",
+      "notification_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    }
+  }
+}

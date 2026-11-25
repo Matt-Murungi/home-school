@@ -2523,6 +2523,152 @@
       ]
     },
     {
+      "$id": "email_suppression",
+      "databaseId": "main",
+      "name": "email_suppression",
+      "enabled": true,
+      "rowSecurity": true,
+      "$permissions": [],
+      "columns": [
+        {
+          "key": "address_hash",
+          "type": "varchar",
+          "size": 64,
+          "required": true
+        },
+        {
+          "key": "reason",
+          "type": "string",
+          "format": "enum",
+          "elements": [
+            "hard_bounce",
+            "complaint",
+            "provider_suppressed",
+            "manual"
+          ],
+          "required": true
+        },
+        {
+          "key": "source_event_id",
+          "type": "varchar",
+          "size": 128,
+          "required": false
+        },
+        {
+          "key": "created_at",
+          "type": "datetime",
+          "required": true
+        },
+        {
+          "key": "revoked_at",
+          "type": "datetime",
+          "required": false
+        }
+      ],
+      "indexes": [
+        {
+          "key": "unique_address_hash",
+          "type": "unique",
+          "columns": [
+            "address_hash"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_created",
+          "type": "key",
+          "columns": [
+            "created_at"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        }
+      ]
+    },
+    {
+      "$id": "webhook_event",
+      "databaseId": "main",
+      "name": "webhook_event",
+      "enabled": true,
+      "rowSecurity": true,
+      "$permissions": [],
+      "columns": [
+        {
+          "key": "provider",
+          "type": "string",
+          "format": "enum",
+          "elements": [
+            "resend"
+          ],
+          "required": true
+        },
+        {
+          "key": "event_id",
+          "type": "varchar",
+          "size": 128,
+          "required": true
+        },
+        {
+          "key": "event_type",
+          "type": "varchar",
+          "size": 64,
+          "required": false
+        },
+        {
+          "key": "status",
+          "type": "string",
+          "format": "enum",
+          "elements": [
+            "processing",
+            "done"
+          ],
+          "required": true
+        },
+        {
+          "key": "received_at",
+          "type": "datetime",
+          "required": true
+        },
+        {
+          "key": "processed_at",
+          "type": "datetime",
+          "required": false
+        },
+        {
+          "key": "expires_at",
+          "type": "datetime",
+          "required": true
+        }
+      ],
+      "indexes": [
+        {
+          "key": "unique_provider_event",
+          "type": "unique",
+          "columns": [
+            "provider",
+            "event_id"
+          ],
+          "orders": [
+            "ASC",
+            "ASC"
+          ]
+        },
+        {
+          "key": "by_expires",
+          "type": "key",
+          "columns": [
+            "expires_at"
+          ],
+          "orders": [
+            "ASC"
+          ]
+        }
+      ]
+    },
+    {
       "$id": "travel_time_cache",
       "databaseId": "main",
       "name": "travel_time_cache",

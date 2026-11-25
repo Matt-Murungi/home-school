@@ -575,6 +575,8 @@ SERVICE_ONLY_TABLES: dict[str, str] = {
     "schema_migration": "migration runner bookkeeping",
     "sample_item": "CI sample table",
     "access_window": "permission service bookkeeping (when time-limited access lapses)",
+    "email_suppression": "N02 addresses never emailed again (hashed), server only; support reads through an endpoint",
+    "webhook_event": "N02 processed email-provider webhook ids (replay guard), server only",
 }
 # Tables owned by tickets that are not on main yet. Decided now so their merge does not leave a
 # table without a decision; `test_decisions_cover_every_table` allows these to be absent.

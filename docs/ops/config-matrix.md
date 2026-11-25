@@ -60,6 +60,10 @@ Which variable exists in which environment, what kind it is and where it lives. 
 | `CATALOGUE_IMMUTABLE_MAX_AGE_S` | config | core-service | 31536000 | 31536000 | 31536000 | fly_env |
 | `CORE_API_URL` | config | app-admin | http://localhost:8080 or unset | https URL of the staging core service | https URL of the production core service | host_env |
 | `CORE_SERVICE_URL` | config | job-tick-function | own core service URL | own core service URL | own core service URL | appwrite_function_variable |
+| `EMAIL_FROM` | config | core-service | unset (no sending) | no-reply@mail.<staging-domain> (D05) | no-reply@mail.<domain> (D05) | fly_env |
+| `EMAIL_FROM_NAME` | config | core-service | Home School [dev] | Home School [staging] | Home School | fly_env |
+| `EMAIL_REPLY_TO` | config | core-service | unset | support@<staging-domain> | support@<domain> | fly_env |
+| `FCM_PROJECT_ID` | config | core-service | unset (read from the key JSON) | unset (read from the key JSON) | unset (read from the key JSON) | fly_env |
 | `GIT_SHA` | config | core-service | set by build | set by build | set by build | fly_env |
 | `HS_DEBUG` | config | core-service | false | false | false | fly_env |
 | `HS_ENV` | config | core-service | dev | staging | production | fly_env |
