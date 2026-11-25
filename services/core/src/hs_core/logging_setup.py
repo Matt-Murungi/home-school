@@ -8,6 +8,8 @@ import sys
 from contextvars import ContextVar
 from datetime import UTC, datetime
 
+from .observability.scrub import scrub_text
+
 request_id_var: ContextVar[str] = ContextVar("request_id", default="-")
 _RESERVED = set(logging.LogRecord("", 0, "", 0, "", (), None).__dict__) | {"message", "asctime"}
 
@@ -18,14 +20,14 @@ class JsonFormatter(logging.Formatter):
             "ts": datetime.fromtimestamp(record.created, UTC).isoformat(),
             "level": record.levelname.lower(),
             "logger": record.name,
-            "message": record.getMessage(),
+            "message": scrub_text(record.getMessage()),
             "request_id": request_id_var.get(),
         }
         for k, v in record.__dict__.items():
             if k not in _RESERVED and k not in d:
                 d[k] = v
         if record.exc_info:
-            d["exc"] = self.formatException(record.exc_info)
+            d["exc"] = scrub_text(self.formatException(record.exc_info))
         return json.dumps(d, default=str)
 
 

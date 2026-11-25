@@ -11,7 +11,16 @@ import json
 import sys
 from pathlib import Path
 
-ALLOWED_TOP = {"apps", "packages", "services", "appwrite", "docs", "scripts", "spikes"}
+ALLOWED_TOP = {
+    "apps",
+    "packages",
+    "services",
+    "appwrite",
+    "docs",
+    "ops",
+    "scripts",
+    "spikes",
+}
 GROUPS = ("apps", "packages", "services")
 IGNORE = {"node_modules", "__pycache__"}
 

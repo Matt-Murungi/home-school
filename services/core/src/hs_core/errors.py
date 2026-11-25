@@ -10,6 +10,7 @@ from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from .logging_setup import request_id_var
+from .observability import report_once
 
 log = logging.getLogger("hs_core.errors")
 
@@ -53,6 +54,7 @@ def install(app: FastAPI) -> None:
         return JSONResponse(body("validation_error", "Invalid request", fields=fields), 422)
 
     @app.exception_handler(Exception)
-    async def _any(_: Request, e: Exception):
+    async def _any(request: Request, e: Exception):
         log.error("unhandled exception", exc_info=e)
+        report_once(request.app.state.reporter, e, request_id_var.get())
         return JSONResponse(body("internal_error", "Internal server error"), 500)
