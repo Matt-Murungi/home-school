@@ -62,6 +62,7 @@ Reviewer writes: commands run, results, criterion-by-criterion verdict, findings
 | docs/legal (policy inventory) | `python3 docs/legal/check-policy-inventory.py` (fails on missing purpose/consumer ticket/owner/status or unknown ticket #) |
 | docs/adr (ADR lint; reuse for every decision ticket) | `python3 docs/adr/check-adrs.py` (all ADRs) or `python3 docs/adr/check-adrs.py docs/adr/00NN-x.md`. Needs `# ADR NNNN — title` (number = file name), `- **Status:**` (Proposed/Accepted/Superseded/Deprecated), `- **Date:**`, `- **Ticket:**`, and `## Context`, `## Decision`, `## Consequences`. Exit 1 on failure. Stdlib only. |
 | root tooling (F01) | `make test` (every implemented package per `packages.json`; planned ones skip with a message; `HS_STRICT=1` fails on missing tools, `HS_SKIP=id,id`) and `make lint` (layout guard + secret scan + package lint). F01 tests alone: `python3 -m unittest discover -s scripts/tests -v`. Stdlib only. |
+| apps/admin (F06) | `cd apps/admin && npm ci && npx tsc --noEmit && npm test` (vitest + React Testing Library, offline, 63 tests); then `npm run lint` and `npm run build`. Root `make test` runs it via `packages.json`. If `~/.npm` has root-owned files, add `--cache <tmpdir>` to npm. Playwright not used (needs browser download). |
 | appwrite (F02) | `cd appwrite && python3 -m unittest discover -s tests -v` (60 tests, stdlib only, offline). Also `python3 appwrite/check_keys.py` validates `appwrite/keys.md`. Migration runner: `python3 appwrite/migrate.py --env staging` (needs real env, owner-blocked). |
 
 (Add a row for each new package.)
@@ -246,6 +247,30 @@ Suggested order: E00 decisions (D01–D03, D05; D04, D06 later/owner) → E01 fo
 
 - **Unverified:** actual `docker build` / container run (docker not installed here); real Appwrite calls (read-only live project, nothing contacted); "container runs on staging, /health reachable on staging URL" and "deployed to staging" (owner-blocked, below).
 
+### F06 · Scaffold admin dashboard app (#32)
+
+- **Status:** ready-for-review · branch `f06-admin-scaffold` (2 commits on origin/main, pushed, no PR). Blocked-by #21 merged.
+- **Built (all in `apps/admin/` + `packages.json` flipped to implemented + README layout row):** Next.js 15 App Router + TS. `src/lib/auth/{types,flow,fake,appwrite}.ts` (AuthProvider interface, sign-in + MFA flow, in-memory fake, Appwrite SSR impl using `setSession`, no key); `src/app/api/session/route.ts` is the only place the session cookie (`hs_admin_session`, httpOnly, sameSite strict) is set, plus a 10-min pending-MFA cookie; `src/middleware.ts` redirects to `/login?next=` when no cookie; `(admin)/layout.tsx` validates the session with Appwrite per request, then applies `canAccessPath` (redirect to `/forbidden`); `src/lib/{roles,nav,config,pagination,forms,access}.ts`; components AdminShell, Sidebar (14 Design Brief items, filtered by role), TopBar (search placeholder, admin + role, sign out), EnvBadge, DataTable (server-side sort/filter/page links, `5,000+`), ReasonField; empty page per nav item; login page with MFA step; `.env.example` (empty, no key var); README.
+- **Test result:** `npm ci && npx tsc --noEmit && npm test` -> 63 passed; `npm run lint` clean; `npm run build` clean; `make lint` ok. Manual: built app, unauthenticated `/payments` -> 307 `/login?next=%2Fpayments`; `/login` renders badge.
+- **AC / edge mapping**
+
+| Criterion / edge | Test |
+|---|---|
+| Sidebar matches mockup nav list | `tests/roles.test.ts` "has the 14 mockup items in order"; `shell.test.tsx` sidebar per role + aria-current |
+| Env badge on every page | `shell.test.tsx` (badge inside shell, Production distinct); `config.test.ts` (default Local, never Production); login page also shows it |
+| Table: server-side pagination, sorting, filters | `table.test.tsx` (sort aria-sort/toggle, filters kept in links, empty state, Last only when exact); `pagination.test.ts` |
+| 5,000 cap shows `5,000+`, next/prev only | `pagination.test.ts`, `table.test.tsx` |
+| Form validation + reason for change | `forms.test.tsx` (server validate, ReasonField required + error) |
+| Auth redirect unauthenticated | `access.test.ts` (redirect with next, open-redirect guard, /login bounce) + manual curl |
+| Role guard allow/deny per label | `roles.test.ts` 16-case matrix incl. boundary, unknown route, multi-role, none |
+| MFA step behind interface + fake | `auth.test.ts` (ok, wrong password, wrong code, non-admin, no MFA enrolled, blank) |
+| No API key in client bundle | `no-api-key.test.ts` (no setKey/API_KEY in src, node-appwrite only in server-only modules, client components import no server modules, `.env.example` empty, built `.next/static` scanned when a build exists, no tracked .env) |
+| Narrow window: sidebar stacks, tables scroll in their box | `table.test.tsx` asserts scroll wrapper; stacking is CSS media query (`globals.css`), NOT visually tested |
+| Deployed to staging, empty pages load | owner-blocked (see below); pages build and are routed |
+
+- **Deviations/notes:** role-to-nav visibility in `src/lib/nav.ts` is my assumption (SR does not tabulate per screen). Role labels checked as alphanumeric only. Sort/filter are URL-driven; the actual Appwrite queries come with each screen ticket. A cookie Appwrite rejects ends at `/api/session/clear` -> `/login?expired=1`. With no Appwrite config a request carrying a bogus cookie returns 500 (acceptable; misconfiguration). Playwright skipped: browser download needs network. `AppwriteAuthProvider` is unit-untested against a real server; the `user_more_factors_required` error type and `listMfaFactors` before MFA are from SDK knowledge, to verify on staging.
+- **Blocked on owner:** staging Appwrite project + a test admin user with label and TOTP/email MFA enrolled to verify real login/MFA end to end; staging deploy URL (hosting choice for the admin app is not decided: ADR 0004 does not name it; default Vercel-style Node host or Fly) and `ADMIN_ENV`, `APPWRITE_ENDPOINT`, `APPWRITE_PROJECT_ID` values; confirm MFA factor policy (TOTP vs email).
+
 ## Blocked on owner (credentials / deployments / accounts)
 
 - F02: create the three Appwrite projects, keys and secrets-manager entries; run `appwrite push` and the runner against dev; staging push from CI (F07). Steps in the F02 ticket block.
@@ -255,6 +280,7 @@ Suggested order: E00 decisions (D01–D03, D05; D04, D06 later/owner) → E01 fo
 - F01: GitHub branch protection on `main` (Settings > Branches > rule for `main`): require a pull request before merging (1 approval can stay 0 because the reviewer agent posts comment reviews under the owner's account; enable "Dismiss stale approvals" off), require status checks to pass and branch up to date, the checks being the F07 (#33) job names (suggest `lint` and `test`, running `make lint` and `HS_STRICT=1 make test`), restrict force-push and deletion, and allow squash merge only. Optionally a CODEOWNERS review requirement and a GitHub team in `.github/CODEOWNERS` (currently `@Matt-Murungi`). Can only be applied once F07 CI exists.
 - D06: engage a Ugandan lawyer; choose positioning; approve pilot registration route; do the PDPO registration, pay fee, sign DPAs; lawyer to deliver the written note and final policy texts.
 - F03: Fly.io app `fly.toml`, staging deploy and secrets (`APPWRITE_API_KEY`, project/database IDs) per ADR 0003; non-live Appwrite project for staging; Docker image build/run proof (docker not installed on the build machine); AppwriteJwtVerifier and AppwriteRepository against a real non-live project.
+- F06: staging Appwrite project + test admin with MFA to verify real login/MFA; deploy target and env values for the admin app (see F06 block).
 
 ## Questions for the owner (collected; ask at the end)
 
